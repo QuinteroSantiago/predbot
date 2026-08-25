@@ -47,13 +47,30 @@ case "${1:-status}" in
     # Never starts the service: installing code and arming real-money trading are
     # two different decisions and must stay two different commands.
     cd "$(dirname "$0")/.."
+
+    # Refuse to deploy code that has no commit behind it. The journal stamps the
+    # build id at ARM time, and that stamp is worthless if it can point at a
+    # working tree that has since changed: the whole point is to be able to ask
+    # "what code placed that trade?" months later and get a real answer.
+    if ! git rev-parse --git-dir >/dev/null 2>&1; then
+      echo "refusing: not a git repository — live builds must be traceable to a commit." >&2; exit 1
+    fi
+    if [[ -n "$(git status --porcelain)" ]]; then
+      echo "refusing: working tree is dirty. Commit (or stash) before deploying live:" >&2
+      git status --short >&2
+      exit 1
+    fi
+    BUILD_ID="$(git rev-parse --short HEAD)"
+    echo "Build $BUILD_ID"
+
     echo "Running tests…"
     GOTOOLCHAIN=auto go test ./... >/dev/null || { echo "TESTS FAILED — not deploying."; exit 1; }
     tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
     echo "Building amd64 binaries…"
     for c in live dumppos preflight; do
       out="$tmp/$([ "$c" = live ] && echo predbot-live || echo "$c")"
-      CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOTOOLCHAIN=auto go build -trimpath -o "$out" "./cmd/$c"
+      CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOTOOLCHAIN=auto go build -trimpath \
+        -ldflags "-X main.build=$BUILD_ID" -o "$out" "./cmd/$c"
     done
     echo "Copying to $REMOTE…"
     scp -o BatchMode=yes -q "$tmp"/* "$REMOTE:/tmp/"
@@ -71,7 +88,7 @@ case "${1:-status}" in
       sudo systemctl disable predbot-live >/dev/null 2>&1 || true
       echo "unit: $(systemctl is-enabled predbot-live 2>&1)  state: $(systemctl is-active predbot-live)"
     '
-    echo "DEPLOYED — not started. Arm with: $0 start"
+    echo "DEPLOYED build $BUILD_ID — not started. Arm with: $0 start"
     ;;
   clear)
     "${SSH[@]}" "sudo rm -f /var/lib/predbot/KILLED && echo 'KILLED marker removed'"

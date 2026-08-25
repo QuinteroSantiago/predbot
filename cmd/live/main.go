@@ -40,6 +40,16 @@ import (
 	"predbot/internal/venue/polymarketus"
 )
 
+// build identifies the source state this binary was compiled from. Set at link
+// time by scripts/trading.sh deploy-live via
+//
+//	-ldflags "-X main.build=<short-sha>"
+//
+// It defaults to "dev" for a hand-built binary. This exists so a journal line
+// can name its own source: `start` runs whatever is already on the host, so
+// without a stamp there is nothing tying a trade to the code that placed it.
+var build = "dev"
+
 func main() {
 	cfgPath := flag.String("config", "config/config.yaml", "path to config.yaml")
 	mktPath := flag.String("markets", "config/markets.yaml", "path to markets.yaml")
@@ -194,6 +204,7 @@ func main() {
 		kEx = kx
 		pEx = exec.NewPolyUSExecutor("https://api.polymarket.us", pSign)
 		slog.Warn("LIVE MODE ARMED — real orders will be placed",
+			"build", build,
 			"max_order_contracts", *maxOrderContracts,
 			"max_unhedged_contracts", *maxUnhedgedContracts,
 			"pnl_floor_usd", *pnlFloor)
