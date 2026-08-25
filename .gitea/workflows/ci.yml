@@ -20,11 +20,15 @@ jobs:
       - name: Checkout the pushed commit
         run: |
           set -e
+          # cd out FIRST: the step starts inside $GITHUB_WORKSPACE, and removing
+          # the directory you are standing in leaves the shell with no cwd, which
+          # git reports as "Unable to read current working directory".
+          cd /
           rm -rf "$GITHUB_WORKSPACE"
-          git clone --quiet \
-            "http://oauth2:${{ secrets.GITEA_TOKEN }}@localhost:8802/${{ gitea.repository }}.git" \
-            "$GITHUB_WORKSPACE"
+          mkdir -p "$GITHUB_WORKSPACE"
           cd "$GITHUB_WORKSPACE"
+          git clone --quiet \
+            "http://oauth2:${{ secrets.GITEA_TOKEN }}@localhost:8802/${{ gitea.repository }}.git" .
           git checkout --quiet "${{ gitea.sha }}"
           echo "testing $(git rev-parse --short HEAD)"
 
