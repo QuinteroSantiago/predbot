@@ -78,13 +78,6 @@ case "${1:-status}" in
       CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOTOOLCHAIN=auto go build -trimpath \
         -ldflags "-X main.build=$BUILD_ID" -o "$out" "./cmd/$c"
     done
-    if grep -q '^\s*-adopt-positions' systemd/predbot-live.service; then
-      echo
-      echo "  *** WARNING: the unit has -adopt-positions set. ***"
-      echo "  Startup will ACCEPT any pre-existing position instead of refusing,"
-      echo "  including one caused by a silent fill. Remove it after this start."
-      echo
-    fi
     echo "Copying to $REMOTE…"
     scp -o BatchMode=yes -q "$tmp"/* "$REMOTE:/tmp/"
     scp -o BatchMode=yes -q systemd/predbot-live.service "$REMOTE:/tmp/predbot-live.service"
