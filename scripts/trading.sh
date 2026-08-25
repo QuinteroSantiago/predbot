@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Control predbot LIVE TRADING (real money) on the sandbox VM.
 #
-#   trading.sh start    arm and run continuously
+#   trading.sh start    arm and run continuously (extra args go to preflight)
 #   trading.sh stop     stop trading (graceful; cancels nothing — see note)
 #   trading.sh kill     ENGAGE KILL SWITCH: stop AND block restarts until cleared
 #   trading.sh status   is it running, what has it done
@@ -17,9 +17,15 @@ SSH=(ssh -o BatchMode=yes "$REMOTE")
 
 case "${1:-status}" in
   start)
+    # Extra args are passed to preflight, e.g. `start -adopt-positions`. NOTE:
+    # preflight and the SERVICE must agree — adopting also needs the flag in
+    # predbot-live.service's ExecStart, which is a deliberate edit, on purpose.
     echo "Pre-flight reconciliation…"
-    "${SSH[@]}" 'set -a; . /etc/predbot/env; set +a; /opt/predbot/preflight' || {
-      echo "PRE-FLIGHT FAILED — not starting."; exit 1; }
+    "${SSH[@]}" "set -a; . /etc/predbot/env; set +a; /opt/predbot/preflight ${*:2}" || {
+      echo "PRE-FLIGHT FAILED — not starting."
+      echo "If it refused over pre-existing positions: flatten them, or (having"
+      echo "reviewed them) add -adopt-positions to BOTH this command and the unit."
+      exit 1; }
     "${SSH[@]}" "sudo systemctl start $SVC && sleep 3 && systemctl is-active $SVC"
     echo "LIVE TRADING STARTED. Stop with: $0 stop   |  Emergency: $0 kill"
     ;;

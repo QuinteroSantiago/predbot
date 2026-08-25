@@ -1,9 +1,11 @@
 package live
 
 import (
-	"fmt"
 	"context"
+	"fmt"
 	"log/slog"
+	"sort"
+	"strings"
 	"time"
 
 	"predbot/internal/risk"
@@ -25,8 +27,26 @@ type Supervisor struct {
 	ErrorWindow    time.Duration
 	PnLFloorUSD    float64 // realized+unrealized below this -> kill (negative number)
 
+	// AdoptExisting allows startup to proceed with positions already on the
+	// venues, seeding them into the ledger instead of refusing. Opt-in only:
+	// the default is to refuse, because at startup the ledger is empty by
+	// definition, so every venue position is one the bot cannot account for.
+	AdoptExisting bool
+
+	preExisting  map[string]float64 // venueID -> contracts, found by Reconcile
 	errTimes     []time.Time
 	unhedgedFrom time.Time
+}
+
+// PreExisting returns the positions Reconcile found on the venues at startup.
+// Only meaningful with AdoptExisting; callers seed the Trader with it so the
+// drift monitor does not immediately kill over positions it was told to keep.
+func (s *Supervisor) PreExisting() map[string]float64 {
+	out := make(map[string]float64, len(s.preExisting))
+	for k, v := range s.preExisting {
+		out[k] = v
+	}
+	return out
 }
 
 func NewSupervisor(accounts []AccountClient, engine *risk.Engine, trader *Trader) *Supervisor {
@@ -45,10 +65,16 @@ func NewSupervisor(accounts []AccountClient, engine *risk.Engine, trader *Trader
 // caller MUST NOT trade in that case. Any pre-existing open order or position is
 // reported loudly: the bot did not create it in this run, so a human should look.
 func (s *Supervisor) Reconcile(ctx context.Context) error {
+	s.preExisting = map[string]float64{}
+	var found []string
 	for _, a := range s.accounts {
 		pos, err := a.Positions(ctx)
 		if err != nil {
 			return err
+		}
+		for id, q := range pos {
+			s.preExisting[id] = q
+			found = append(found, fmt.Sprintf("%s %s=%v", a.Venue(), id, q))
 		}
 		orders, err := a.OpenOrders(ctx)
 		if err != nil {
@@ -66,6 +92,21 @@ func (s *Supervisor) Reconcile(ctx context.Context) error {
 		if bal, err := a.BalanceUSD(ctx); err == nil {
 			s.log.Info("venue balance", "venue", a.Venue(), "usd", bal)
 		}
+	}
+
+	// Fail CLOSED. This used to warn and return nil, so preflight printed
+	// "reconcile OK" and the bot armed — and then the drift monitor, reading the
+	// exact same number 30s later, killed. Two components, identical data,
+	// opposite verdicts, with a 30-second window in between where the bot was
+	// live and free to trade. Whatever the answer is, it has to be the same one.
+	sort.Strings(found)
+	if len(found) > 0 && !s.AdoptExisting {
+		return fmt.Errorf("live: %d pre-existing position(s) the bot cannot account for: %s — flatten them, or pass -adopt-positions if this is a hedge you have reviewed",
+			len(found), strings.Join(found, ", "))
+	}
+	if len(found) > 0 {
+		s.log.Warn("ADOPTING pre-existing positions — the bot will treat these as its own",
+			"count", len(found), "positions", strings.Join(found, ", "))
 	}
 	return nil
 }

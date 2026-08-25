@@ -152,6 +152,18 @@ func (t *Trader) Positions() map[string]float64 {
 	return out
 }
 
+// Adopt seeds the ledger with positions that already existed on the venues at
+// startup. Without this, adopting at the supervisor level would be pointless:
+// the drift monitor compares the venues against this map, so an adopted
+// position the ledger has never heard of is indistinguishable from drift.
+func (t *Trader) Adopt(pos map[string]float64) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	for k, v := range pos {
+		t.posByVenueID[k] = v
+	}
+}
+
 // Stats returns a copy of the running tally.
 func (t *Trader) Stats() Stats {
 	t.mu.Lock()

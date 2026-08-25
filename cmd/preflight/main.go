@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"net/http"
 	"os"
@@ -17,6 +18,12 @@ import (
 )
 
 func main() {
+	// Mirrors the live binary's flag: preflight must reach the SAME verdict the
+	// bot will, or it is not a preflight.
+	adoptPositions := flag.Bool("adopt-positions", false,
+		"accept positions already on the venues instead of refusing")
+	flag.Parse()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 
@@ -27,6 +34,7 @@ func main() {
 
 	eng := risk.New(risk.Config{}, nil, "")
 	sup := live.NewSupervisor([]live.AccountClient{kAcct, pAcct}, eng, nil)
+	sup.AdoptExisting = *adoptPositions
 
 	fmt.Println("=== predbot preflight: READ-ONLY reconciliation (places nothing) ===")
 	if err := sup.Reconcile(ctx); err != nil {
