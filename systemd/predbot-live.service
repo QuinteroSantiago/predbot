@@ -21,11 +21,23 @@ ExecStart=/opt/predbot/predbot-live \
   -markets /opt/predbot/config/markets.yaml \
   -dry-run=false \
   -i-understand-this-places-real-orders \
+  -adopt-positions \
   -max-order-contracts=5 \
   -max-unhedged-contracts=10 \
   -pnl-floor-usd=-25 \
   -min-depth-contracts=10 \
   -sports=mlb
+
+# TEMPORARY — REMOVE AFTER THE NEXT SUCCESSFUL START.
+#
+# -adopt-positions above makes startup accept positions already on the venues
+# instead of refusing. Added 2026-08-25 to restart on top of a REVIEWED hedge
+# (kalshi KXGROK-GROK5-26OCT01 +5 / polymarketus aimc-xai-grok-5-2026-09-30 -5).
+#
+# While it is present the bot will silently adopt ANY position it finds at
+# startup, including one produced by a real silent fill — which is precisely the
+# thing startup reconciliation exists to catch. Leaving it here permanently
+# disables that check. scripts/trading.sh deploy-live warns while it is set.
 
 # SIGUSR1 = engage the kill switch without stopping (writes the KILLED marker,
 # which then blocks any restart until a human removes it).
