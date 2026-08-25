@@ -1,0 +1,54 @@
+# predbot LIVE TRADING — REAL ORDERS, REAL MONEY (design §8, §11, §17 Phase 4).
+#
+# Deliberately NOT enabled at boot: a reboot must never silently resume trading.
+# Start it explicitly; stop it with `systemctl stop predbot-live`.
+#
+# Restart=no is also deliberate. If the process dies mid-pair it may hold an
+# unhedged position; an automatic restart could compound that before a human
+# looks. Startup reconciliation runs on every manual start.
+[Unit]
+Description=predbot LIVE TRADING (real orders, real money)
+After=network-online.target chronyd.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=predbot
+Group=predbot
+WorkingDirectory=/opt/predbot
+ExecStart=/opt/predbot/predbot-live \
+  -config /opt/predbot/config/config.yaml \
+  -markets /opt/predbot/config/markets.yaml \
+  -dry-run=false \
+  -i-understand-this-places-real-orders \
+  -max-order-contracts=5 \
+  -max-unhedged-contracts=10 \
+  -pnl-floor-usd=-25 \
+  -min-depth-contracts=10 \
+  -sports=mlb
+
+# SIGUSR1 = engage the kill switch without stopping (writes the KILLED marker,
+# which then blocks any restart until a human removes it).
+ExecReload=/bin/kill -USR1 $MAINPID
+
+Restart=no
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+EnvironmentFile=/etc/predbot/env
+Environment=OTEL_EXPORTER_OTLP_ENDPOINT=http://192.168.3.198:4318
+Environment=OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+Environment=OTEL_SERVICE_NAME=predbot-live
+Environment=OTEL_METRIC_EXPORT_INTERVAL=10000
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/predbot
+StateDirectory=predbot
+
+# NOT [Install]-enabled on purpose — no WantedBy, so `systemctl enable` is an
+# explicit, deliberate act rather than something that happens by default.
+[Install]
+WantedBy=

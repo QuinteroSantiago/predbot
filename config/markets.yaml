@@ -1,0 +1,247 @@
+# Canonical market -> venue identifiers (design §12). Manually QA'd.
+# Every entry MUST state both venues' resolution sources and whether they are
+# identical; a mismatch is not tradeable regardless of edge. The Book Manager
+# (Phase 2) refuses to key a snapshot to a canonical ID absent from this file.
+#
+# Cross-category basket, hand-QA'd against live Kalshi + Polymarket US rules on
+# 2026-08-22 (auto-captured by Claude; human sign-off PENDING). Both venues here
+# resolve on the same underlying event. Categories:
+#   - US elections: chamber control + state Senate + state Governor, all Nov-3-2026.
+#     Party-based on both; Kalshi resolves on the party candidate being *sworn in*
+#     Jan-2027, Poly on the nominee *winning* Nov-3 (diverge only on a contested count).
+#   - Monetary policy: Fed 2026 rate cut.
+#   - Crypto: BTC above $200k / $250k during 2026 — BOTH settle on the SAME index
+#     (CF Bitcoin Real-Time Index / BRTI), same threshold, same Jan-1-2027 deadline,
+#     same "ever-above" semantic. Cleanest cross-venue match in the basket.
+#   - Culture (awards): 78th Emmys Outstanding Drama Series, 4 nominees; both settle
+#     on the Sep-14-2026 telecast per The Emmys / Television Academy.
+#   - Tech (AI release): Grok 5 released before Oct-1-2026. Both define "release" the
+#     same way (public availability, closed beta excluded, paid tier ok), same
+#     deadline, sourced from xAI. Kalshi's is the cumulative "Before October" market.
+#
+# DELIBERATELY EXCLUDED after checking (resolution mismatch — do NOT re-add
+# without re-QA): government shutdown (Kalshi KXGOVTSHUTDOWN-26OCT01 = "shut down
+# AT 10am ET Oct 1" vs Poly "shutdown BY Oct 1" — a brief Sept shutdown splits them).
+
+# ==== US House & Senate control, 2026 midterms (resolve ~2027-02-01) ====
+- canonical: HOUSE-2026-CONTROL-DEM
+  resolves_note: "Kalshi CONTROLH-2026-D (Democratic wins U.S. House control 2026) vs Poly US 'paccc-usho-midterms-2026-11-03-dem'. Same? YES in substance; Kalshi tie-break wording unverified. QA'd by Claude 2026-08-22, human sign-off PENDING"
+  resolution_date: 2027-02-01
+  venues:
+    kalshi:
+      ticker: "CONTROLH-2026-D"
+    polymarketus:
+      slug: "paccc-usho-midterms-2026-11-03-dem"
+
+- canonical: HOUSE-2026-CONTROL-REP
+  resolves_note: "Kalshi CONTROLH-2026-R (Republican wins U.S. House control 2026) vs Poly US 'paccc-usho-midterms-2026-11-03-rep'. Same? YES in substance; Kalshi tie-break wording unverified. QA'd by Claude 2026-08-22, human sign-off PENDING"
+  resolution_date: 2027-02-01
+  venues:
+    kalshi:
+      ticker: "CONTROLH-2026-R"
+    polymarketus:
+      slug: "paccc-usho-midterms-2026-11-03-rep"
+
+- canonical: SENATE-2026-CONTROL-DEM
+  resolves_note: "Kalshi CONTROLS-2026-D (Democratic wins U.S. Senate control 2026) vs Poly US 'paccc-usse-midterms-2026-11-03-dem'. Same? YES in substance; Kalshi tie-break wording unverified. QA'd by Claude 2026-08-22, human sign-off PENDING"
+  resolution_date: 2027-02-01
+  venues:
+    kalshi:
+      ticker: "CONTROLS-2026-D"
+    polymarketus:
+      slug: "paccc-usse-midterms-2026-11-03-dem"
+
+- canonical: SENATE-2026-CONTROL-REP
+  resolves_note: "Kalshi CONTROLS-2026-R (Republican wins U.S. Senate control 2026) vs Poly US 'paccc-usse-midterms-2026-11-03-rep'. Same? YES in substance; Kalshi tie-break wording unverified. QA'd by Claude 2026-08-22, human sign-off PENDING"
+  resolution_date: 2027-02-01
+  venues:
+    kalshi:
+      ticker: "CONTROLS-2026-R"
+    polymarketus:
+      slug: "paccc-usse-midterms-2026-11-03-rep"
+
+# ==== State U.S. Senate races, Democratic outcome (resolve 2026-11-03) ====
+- canonical: SENATE-TX-2026-DEM
+  resolves_note: "Kalshi SENATETX-26-D (Democrat sworn in as Texas Senator for 2027 term) vs Poly US 'ewc-usse-tx-2026-11-03-dem' (Democratic nominee wins Texas Senate). Same event; Kalshi=sworn-in Jan-2027, Poly=wins Nov-3. QA'd by Claude 2026-08-22, human sign-off PENDING"
+  resolution_date: 2026-11-03
+  venues:
+    kalshi:
+      ticker: "SENATETX-26-D"
+    polymarketus:
+      slug: "ewc-usse-tx-2026-11-03-dem"
+
+- canonical: SENATE-GA-2026-DEM
+  resolves_note: "Kalshi SENATEGA-26-D (Democrat sworn in as Georgia Senator for 2027 term) vs Poly US 'ewc-usse-ga-2026-11-03-dem' (Democratic nominee wins Georgia Senate). Same event; Kalshi=sworn-in Jan-2027, Poly=wins Nov-3. QA'd by Claude 2026-08-22, human sign-off PENDING"
+  resolution_date: 2026-11-03
+  venues:
+    kalshi:
+      ticker: "SENATEGA-26-D"
+    polymarketus:
+      slug: "ewc-usse-ga-2026-11-03-dem"
+
+- canonical: SENATE-NC-2026-DEM
+  resolves_note: "Kalshi SENATENC-26-D (Democrat sworn in as North Carolina Senator for 2027 term) vs Poly US 'ewc-usse-nc-2026-11-03-dem' (Democratic nominee wins North Carolina Senate). Same event; Kalshi=sworn-in Jan-2027, Poly=wins Nov-3. QA'd by Claude 2026-08-22, human sign-off PENDING"
+  resolution_date: 2026-11-03
+  venues:
+    kalshi:
+      ticker: "SENATENC-26-D"
+    polymarketus:
+      slug: "ewc-usse-nc-2026-11-03-dem"
+
+- canonical: SENATE-ME-2026-DEM
+  resolves_note: "Kalshi SENATEME-26-D (Democrat sworn in as Maine Senator for 2027 term) vs Poly US 'ewc-usse-me-2026-11-03-dem' (Democratic nominee wins Maine Senate). Same event; Kalshi=sworn-in Jan-2027, Poly=wins Nov-3. QA'd by Claude 2026-08-22, human sign-off PENDING"
+  resolution_date: 2026-11-03
+  venues:
+    kalshi:
+      ticker: "SENATEME-26-D"
+    polymarketus:
+      slug: "ewc-usse-me-2026-11-03-dem"
+
+- canonical: SENATE-MI-2026-DEM
+  resolves_note: "Kalshi SENATEMI-26-D (Democrat sworn in as Michigan Senator for 2027 term) vs Poly US 'ewc-usse-mi-2026-11-03-dem' (Democratic nominee wins Michigan Senate). Same event; Kalshi=sworn-in Jan-2027, Poly=wins Nov-3. QA'd by Claude 2026-08-22, human sign-off PENDING"
+  resolution_date: 2026-11-03
+  venues:
+    kalshi:
+      ticker: "SENATEMI-26-D"
+    polymarketus:
+      slug: "ewc-usse-mi-2026-11-03-dem"
+
+- canonical: SENATE-NH-2026-DEM
+  resolves_note: "Kalshi SENATENH-26-D (Democrat sworn in as New Hampshire Senator for 2027 term) vs Poly US 'ewc-usse-nh-2026-11-03-dem' (Democratic nominee wins New Hampshire Senate). Same event; Kalshi=sworn-in Jan-2027, Poly=wins Nov-3. QA'd by Claude 2026-08-22, human sign-off PENDING"
+  resolution_date: 2026-11-03
+  venues:
+    kalshi:
+      ticker: "SENATENH-26-D"
+    polymarketus:
+      slug: "ewc-usse-nh-2026-11-03-dem"
+
+- canonical: SENATE-MN-2026-DEM
+  resolves_note: "Kalshi SENATEMN-26-D (Democrat sworn in as Minnesota Senator for 2027 term) vs Poly US 'ewc-usse-mn-2026-11-03-dem' (Democratic nominee wins Minnesota Senate). Same event; Kalshi=sworn-in Jan-2027, Poly=wins Nov-3. QA'd by Claude 2026-08-22, human sign-off PENDING"
+  resolution_date: 2026-11-03
+  venues:
+    kalshi:
+      ticker: "SENATEMN-26-D"
+    polymarketus:
+      slug: "ewc-usse-mn-2026-11-03-dem"
+
+# ==== State Governor races, Democratic outcome (resolve 2026-11-03) ====
+- canonical: GOV-GA-2026-DEM
+  resolves_note: "Kalshi GOVPARTYGA-26-D (Democrat wins Georgia Governor) vs Poly US 'ewc-usgub-ga-2026-11-03-dem'. Same party outcome; Kalshi=sworn-in vs Poly=wins Nov-3. QA'd by Claude 2026-08-22, human sign-off PENDING"
+  resolution_date: 2026-11-03
+  venues:
+    kalshi:
+      ticker: "GOVPARTYGA-26-D"
+    polymarketus:
+      slug: "ewc-usgub-ga-2026-11-03-dem"
+
+- canonical: GOV-MI-2026-DEM
+  resolves_note: "Kalshi GOVPARTYMI-26-D (Democrat wins Michigan Governor) vs Poly US 'ewc-usgub-mi-2026-11-03-dem'. Same party outcome; Kalshi=sworn-in vs Poly=wins Nov-3. QA'd by Claude 2026-08-22, human sign-off PENDING"
+  resolution_date: 2026-11-03
+  venues:
+    kalshi:
+      ticker: "GOVPARTYMI-26-D"
+    polymarketus:
+      slug: "ewc-usgub-mi-2026-11-03-dem"
+
+- canonical: GOV-OH-2026-DEM
+  resolves_note: "Kalshi GOVPARTYOH-26-D (Democrat wins Ohio Governor) vs Poly US 'ewc-usgub-oh-2026-11-03-dem'. Same party outcome; Kalshi=sworn-in vs Poly=wins Nov-3. QA'd by Claude 2026-08-22, human sign-off PENDING"
+  resolution_date: 2026-11-03
+  venues:
+    kalshi:
+      ticker: "GOVPARTYOH-26-D"
+    polymarketus:
+      slug: "ewc-usgub-oh-2026-11-03-dem"
+
+- canonical: GOV-NV-2026-DEM
+  resolves_note: "Kalshi GOVPARTYNV-26-D (Democrat wins Nevada Governor) vs Poly US 'ewc-usgub-nv-2026-11-03-dem'. Same party outcome; Kalshi=sworn-in vs Poly=wins Nov-3. QA'd by Claude 2026-08-22, human sign-off PENDING"
+  resolution_date: 2026-11-03
+  venues:
+    kalshi:
+      ticker: "GOVPARTYNV-26-D"
+    polymarketus:
+      slug: "ewc-usgub-nv-2026-11-03-dem"
+
+- canonical: GOV-AZ-2026-DEM
+  resolves_note: "Kalshi GOVPARTYAZ-26-D (Democrat wins Arizona Governor) vs Poly US 'ewc-usgub-az-2026-11-03-dem'. Same party outcome; Kalshi=sworn-in vs Poly=wins Nov-3. QA'd by Claude 2026-08-22, human sign-off PENDING"
+  resolution_date: 2026-11-03
+  venues:
+    kalshi:
+      ticker: "GOVPARTYAZ-26-D"
+    polymarketus:
+      slug: "ewc-usgub-az-2026-11-03-dem"
+
+# ==== Monetary policy (resolve by 2026-12-31) ====
+- canonical: FED-2026-RATE-CUT
+  resolves_note: "Kalshi KXRATECUT-26DEC31 (Fed cuts target range at least once Feb-Dec 2026) vs Poly US 'cbpac-usfed-2026-cut' (Fed decreases upper bound by 2026-12-31). Same? YES. QA'd by Claude 2026-08-22, human sign-off PENDING"
+  resolution_date: 2026-12-31
+  venues:
+    kalshi:
+      ticker: "KXRATECUT-26DEC31"
+    polymarketus:
+      slug: "cbpac-usfed-2026-cut"
+
+# ==== Crypto: BTC price thresholds, 2026 (both settle on CF BRTI; resolve by 2026-12-31) ====
+- canonical: BTC-ABOVE-200K-2026
+  resolves_note: "Kalshi KXBTC2026200-27JAN01-200000 vs Poly US 'cpc-btc-above-yr-12-31-2026-200k' — both: BTC above $200k at any point before 2027 per the CF Bitcoin Real-Time Index (BRTI). Same index + threshold + deadline + semantic. Cleanest match. QA'd by Claude 2026-08-22, human sign-off PENDING"
+  resolution_date: 2026-12-31
+  venues:
+    kalshi:
+      ticker: "KXBTC2026200-27JAN01-200000"
+    polymarketus:
+      slug: "cpc-btc-above-yr-12-31-2026-200k"
+
+- canonical: BTC-ABOVE-250K-2026
+  resolves_note: "Kalshi KXBTC2026250-27JAN01-250000 vs Poly US 'cpc-btc-above-yr-12-31-2026-250k' — both: BTC above $250k at any point before 2027 per the CF Bitcoin Real-Time Index (BRTI). Same index + threshold + deadline + semantic. Cleanest match. QA'd by Claude 2026-08-22, human sign-off PENDING"
+  resolution_date: 2026-12-31
+  venues:
+    kalshi:
+      ticker: "KXBTC2026250-27JAN01-250000"
+    polymarketus:
+      slug: "cpc-btc-above-yr-12-31-2026-250k"
+
+# ==== Culture: 78th Emmys, Outstanding Drama Series (resolve 2026-09-14) ====
+- canonical: EMMY-DRAMA-2026-PLU
+  resolves_note: "Kalshi KXEMMYDSERIES-26SEP14-PLU ('Pluribus' wins Outstanding Drama Series, 78th Emmys) vs Poly US 'tac-emmys-ds-2026-09-14-plurib' (same). Both sourced from The Emmys / Television Academy telecast. Same? YES. QA'd by Claude 2026-08-22, human sign-off PENDING"
+  resolution_date: 2026-09-14
+  venues:
+    kalshi:
+      ticker: "KXEMMYDSERIES-26SEP14-PLU"
+    polymarketus:
+      slug: "tac-emmys-ds-2026-09-14-plurib"
+
+- canonical: EMMY-DRAMA-2026-PIT
+  resolves_note: "Kalshi KXEMMYDSERIES-26SEP14-PIT ('The Pitt' wins Outstanding Drama Series, 78th Emmys) vs Poly US 'tac-emmys-ds-2026-09-14-thepit' (same). Both sourced from The Emmys / Television Academy telecast. Same? YES. QA'd by Claude 2026-08-22, human sign-off PENDING"
+  resolution_date: 2026-09-14
+  venues:
+    kalshi:
+      ticker: "KXEMMYDSERIES-26SEP14-PIT"
+    polymarketus:
+      slug: "tac-emmys-ds-2026-09-14-thepit"
+
+- canonical: EMMY-DRAMA-2026-SLO
+  resolves_note: "Kalshi KXEMMYDSERIES-26SEP14-SLO ('Slow Horses' wins Outstanding Drama Series, 78th Emmys) vs Poly US 'tac-emmys-ds-2026-09-14-slowho' (same). Both sourced from The Emmys / Television Academy telecast. Same? YES. QA'd by Claude 2026-08-22, human sign-off PENDING"
+  resolution_date: 2026-09-14
+  venues:
+    kalshi:
+      ticker: "KXEMMYDSERIES-26SEP14-SLO"
+    polymarketus:
+      slug: "tac-emmys-ds-2026-09-14-slowho"
+
+- canonical: EMMY-DRAMA-2026-DIP
+  resolves_note: "Kalshi KXEMMYDSERIES-26SEP14-DIP ('The Diplomat' wins Outstanding Drama Series, 78th Emmys) vs Poly US 'tac-emmys-ds-2026-09-14-thedip' (same). Both sourced from The Emmys / Television Academy telecast. Same? YES. QA'd by Claude 2026-08-22, human sign-off PENDING"
+  resolution_date: 2026-09-14
+  venues:
+    kalshi:
+      ticker: "KXEMMYDSERIES-26SEP14-DIP"
+    polymarketus:
+      slug: "tac-emmys-ds-2026-09-14-thedip"
+
+# ==== Tech: AI model release (resolve by 2026-09-30) ====
+- canonical: TECH-GROK5-RELEASE-2026
+  resolves_note: "Kalshi KXGROK-GROK5-26OCT01 (xAI releases Grok 5 before Oct 1, 2026; release=public, closed beta excluded, paid tier ok) vs Poly US 'aimc-xai-grok-5-2026-09-30' (Grok 5 released by Sep 30; same release definition). Both sourced from xAI. Same? YES. QA'd by Claude 2026-08-22, human sign-off PENDING"
+  resolution_date: 2026-09-30
+  venues:
+    kalshi:
+      ticker: "KXGROK-GROK5-26OCT01"
+    polymarketus:
+      slug: "aimc-xai-grok-5-2026-09-30"

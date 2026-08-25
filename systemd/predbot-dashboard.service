@@ -1,0 +1,8 @@
+[Unit]
+Description=Rebuild the predbot Fee Wall arbitrage dashboard from latest data
+After=predbot-backup.service network-online.target
+
+[Service]
+Type=oneshot
+User=santiago
+ExecStart=/home/santiago/gomu-apps/predbot/scripts/gen-dashboard.sh

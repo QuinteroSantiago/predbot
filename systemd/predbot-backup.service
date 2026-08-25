@@ -1,0 +1,9 @@
+[Unit]
+Description=Pull predbot recorder data from the sandbox VM to the Pi
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=santiago
+ExecStart=/home/santiago/gomu-apps/predbot/scripts/pull-backup.sh

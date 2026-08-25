@@ -1,0 +1,6 @@
+[Unit]
+Description=Prune predbot recorder data (keeps hours where an arb edge appeared)
+[Service]
+Type=oneshot
+ExecStart=/opt/predbot/prune-data.sh --apply
+Environment=KEEP_DAYS=14

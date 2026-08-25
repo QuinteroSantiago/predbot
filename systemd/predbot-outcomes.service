@@ -1,0 +1,7 @@
+[Unit]
+Description=Record how predbot markets resolved (needed for directional backtests)
+After=network-online.target
+[Service]
+Type=oneshot
+User=predbot
+ExecStart=/opt/predbot/outcomes -markets /opt/predbot/config/markets.yaml -sports mlb -out /var/lib/predbot/data/outcomes.jsonl

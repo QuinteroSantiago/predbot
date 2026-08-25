@@ -1,0 +1,24 @@
+# Compiled binaries. Built into the repo root by `go build` and by
+# scripts/redeploy.sh / scripts/trading.sh deploy-live; ~110MB of them.
+/backtest
+/discover-sports
+/dumppos
+/filltest
+/live
+/outcomes
+/predbot-live
+/predbot-record
+/preflight
+/record
+/testorder
+
+# Recorded market data and local state.
+/data/
+*.jsonl
+*.jsonl.gz
+
+# Credentials NEVER belong here — they live in /etc/predbot/env (0600) on the
+# host, injected via the units' EnvironmentFile. See config/config.yaml.
+.env
+*.pem
+*.key

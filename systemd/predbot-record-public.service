@@ -1,0 +1,36 @@
+# Phase 1 recorder, PUBLIC-REST mode (no credentials; design §16 open item #5).
+# Deployed on the amd64 k3s-sandbox VM (192.168.3.172); ships telemetry to the
+# Pi's LGTM stack over the LAN. Hardened: dedicated user, no secrets, writable
+# path scoped to the data dir.
+[Unit]
+Description=predbot Phase 1 feed recorder (public REST: Kalshi + Polymarket US)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=predbot
+Group=predbot
+WorkingDirectory=/opt/predbot
+ExecStart=/opt/predbot/predbot-record -public -config /opt/predbot/config/config.yaml -markets /opt/predbot/config/markets.yaml
+# SIGHUP flushes/rotates the open gzip files without stopping the service.
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+
+# Telemetry to the Pi's LGTM over the LAN (OTLP 4318 is LAN-bound).
+Environment=OTEL_EXPORTER_OTLP_ENDPOINT=http://192.168.3.198:4318
+Environment=OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+Environment=OTEL_SERVICE_NAME=predbot
+Environment=PREDBOT_HEALTH_ADDR=127.0.0.1:9487
+
+# Hardening (no secrets in public mode — no EnvironmentFile needed).
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/predbot/data
+StateDirectory=predbot
+
+[Install]
+WantedBy=multi-user.target

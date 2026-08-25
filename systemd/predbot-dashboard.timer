@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily rebuild of the predbot Fee Wall dashboard
+
+[Timer]
+OnCalendar=*-*-* 00:30:00
+Persistent=true
+RandomizedDelaySec=10m
+
+[Install]
+WantedBy=timers.target
