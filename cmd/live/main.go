@@ -17,6 +17,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -237,7 +238,30 @@ func main() {
 	// venues against the trader's ledger, so an adopted position it has never
 	// heard of would read as drift and kill on the first tick.
 	if *adoptPositions {
-		trader.Adopt(sup.PreExisting())
+		adopted := sup.PreExisting()
+		trader.Adopt(adopted)
+
+		// Also tell the RISK ENGINE, which keys by canonical market while the
+		// venues report by their own ids. Without this the position cap treats
+		// adopted exposure as flat: harmless for a hedged pair (it nets to zero
+		// either way) but wrong for a naked or partial leg, which is exactly the
+		// kind of position worth adopting carefully.
+		byCanonical := map[string]core.Qty{}
+		canonicalOf := config.CanonicalByVenueID(markets)
+		for venueID, contracts := range adopted {
+			canonical, ok := canonicalOf[venueID]
+			if !ok {
+				slog.Warn("adopted a position in a market that is not in markets.yaml — the risk engine cannot cap it",
+					"market", venueID, "contracts", contracts)
+				continue
+			}
+			byCanonical[canonical] += core.Qty(math.Round(contracts * 100))
+		}
+		for canonical, net := range byCanonical {
+			engine.AdoptPosition(canonical, net)
+			slog.Warn("adopted position seeded into the risk engine",
+				"canonical", canonical, "net_yes_contracts", net.String())
+		}
 	}
 	go live.NewDriftMonitor([]live.AccountClient{kAcct, pAcct}, engine, trader.Positions).Run(rootCtx)
 

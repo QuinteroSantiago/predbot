@@ -1,6 +1,7 @@
 package risk
 
 import (
+	"errors"
 	"path/filepath"
 	"testing"
 
@@ -109,5 +110,51 @@ func TestRejectReleasesReservation(t *testing.T) {
 	e.OnReject("MKT", i)
 	if e.inflight["MKT"] != 0 || e.bp["kalshi"] != 1_000_000 {
 		t.Errorf("reject must restore inflight+bp: inflight=%d bp=%d", e.inflight["MKT"], e.bp["kalshi"])
+	}
+}
+
+// A hedged pair nets to zero in YES terms, so it consumes NO position cap —
+// whether this process opened it or adopted it at startup. Pinned because the
+// distinction drives what adoption has to seed.
+func TestHedgedPairConsumesNoPositionCap(t *testing.T) {
+	e := New(Config{MaxOrderQty: 1000, DefaultMaxPos: 500,
+		MinBP: map[string]int64{"kalshi": 0, "polymarketus": 0}, MaxUnhedged: 100000},
+		map[string]int64{"kalshi": 1e9, "polymarketus": 1e9}, "")
+
+	buy := core.Intent{Venue: "kalshi", VenueID: "K", Side: core.BuyYes, Px: 5000, Qty: 500, TIF: core.IOC}
+	sell := core.Intent{Venue: "polymarketus", VenueID: "P", Side: core.SellYes, Px: 6000, Qty: 500, TIF: core.IOC}
+	for _, i := range []core.Intent{buy, sell} {
+		if err := e.CheckAndReserve("MKT", i); err != nil {
+			t.Fatalf("reserve %v: %v", i.Side, err)
+		}
+		e.OnFill("MKT", i, i.Qty)
+	}
+	if got := e.Position("MKT"); got != 0 {
+		t.Fatalf("hedged pair left position %v; want 0", got)
+	}
+}
+
+// An adopted UNBALANCED position must consume the cap. Without seeding, the
+// engine reads live directional risk as flat and allows a full position on top.
+func TestAdoptedNakedPositionConsumesTheCap(t *testing.T) {
+	e := New(Config{MaxOrderQty: 1000, DefaultMaxPos: 500,
+		MinBP: map[string]int64{"kalshi": 0}, MaxUnhedged: 100000},
+		map[string]int64{"kalshi": 1e9}, "")
+
+	e.AdoptPosition("MKT", 500) // long 5 YES, adopted at startup, unhedged
+
+	if got := e.Position("MKT"); got != 500 {
+		t.Fatalf("adopted position = %v; want 500", got)
+	}
+	// The cap is 500 and it is already fully used: buying more must be refused.
+	err := e.CheckAndReserve("MKT", core.Intent{Venue: "kalshi", VenueID: "K",
+		Side: core.BuyYes, Px: 5000, Qty: 500, TIF: core.IOC})
+	if !errors.Is(err, ErrPositionCap) {
+		t.Fatalf("want ErrPositionCap on top of an adopted position, got %v", err)
+	}
+	// Reducing it must still be allowed.
+	if err := e.CheckAndReserve("MKT", core.Intent{Venue: "kalshi", VenueID: "K",
+		Side: core.SellYes, Px: 5000, Qty: 500, TIF: core.IOC}); err != nil {
+		t.Errorf("selling down an adopted position must be allowed, got %v", err)
 	}
 }

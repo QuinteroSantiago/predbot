@@ -114,6 +114,23 @@ func LoadMarkets(path string) ([]Market, error) {
 	return m, nil
 }
 
+// CanonicalByVenueID maps every venue-specific market id (Kalshi ticker,
+// Polymarket slug) back to its canonical market. Venue APIs report positions by
+// their own id, so this is what turns a venue position into something the risk
+// engine — which keys by canonical market — can account for.
+func CanonicalByVenueID(ms []Market) map[string]string {
+	out := make(map[string]string, len(ms)*2)
+	for _, m := range ms {
+		if t := m.Venues.Kalshi.Ticker; t != "" {
+			out[t] = m.Canonical
+		}
+		if s := m.Venues.PolymarketUS.Slug; s != "" {
+			out[s] = m.Canonical
+		}
+	}
+	return out
+}
+
 // KalshiTickers returns the Kalshi market tickers to subscribe to.
 func KalshiTickers(ms []Market) []string {
 	out := make([]string, 0, len(ms))

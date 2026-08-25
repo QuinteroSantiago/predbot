@@ -188,6 +188,19 @@ func (e *Engine) Killed() bool {
 	return e.killed
 }
 
+// AdoptPosition seeds a filled net position this process did not open, so the
+// position cap accounts for exposure that already existed at startup.
+//
+// It matters only for an UNBALANCED position. A hedged pair nets to zero in YES
+// terms and consumes no cap — the same whether this process opened it or adopted
+// it. A naked or partial leg does not, and without seeding, the engine would
+// treat that live directional risk as flat and allow a full position on top.
+func (e *Engine) AdoptPosition(canonical string, net core.Qty) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.pos[canonical] = net
+}
+
 // Position returns the current filled net position for a market.
 func (e *Engine) Position(canonical string) core.Qty {
 	e.mu.Lock()
