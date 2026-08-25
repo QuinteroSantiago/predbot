@@ -58,6 +58,8 @@ func main() {
 	arm := flag.Bool("i-understand-this-places-real-orders", false, "required to place real orders")
 	adoptPositions := flag.Bool("adopt-positions", false,
 		"start with positions already on the venues, treating them as the bot's own (default: refuse)")
+	adoptFile := flag.String("adopt-marker", "/var/lib/predbot/ADOPT",
+		"one-shot adoption marker; present = adopt, and it is CONSUMED on read")
 	maxOrderContracts := flag.Float64("max-order-contracts", 5, "hard cap: contracts per order")
 	maxUnhedgedContracts := flag.Float64("max-unhedged-contracts", 10, "hard cap: total unhedged contracts")
 	pnlFloor := flag.Float64("pnl-floor-usd", -25, "kill if realized P&L drops below this")
@@ -178,7 +180,25 @@ func main() {
 	pAcct := live.NewPolyUSAccount("https://api.polymarket.us", pSign)
 	sup := live.NewSupervisor([]live.AccountClient{kAcct, pAcct}, engine, nil)
 	sup.PnLFloorUSD = *pnlFloor
-	sup.AdoptExisting = *adoptPositions
+
+	// One-shot adoption, mirroring the KILLED marker in reverse: a human puts the
+	// file there deliberately, and it is CONSUMED here so it cannot survive into
+	// the next start. Adoption is a decision about one specific set of positions
+	// that a human has just looked at — it must never become a standing setting,
+	// which is exactly what carrying -adopt-positions in the unit would make it.
+	adopt := *adoptPositions
+	if _, err := os.Stat(*adoptFile); err == nil {
+		adopt = true
+		if err := os.Remove(*adoptFile); err != nil {
+			// If it cannot be consumed it would silently adopt on every restart.
+			slog.Error("adoption marker could not be removed — refusing to adopt on a permission it cannot give back",
+				"file", *adoptFile, "err", err)
+			os.Exit(1)
+		}
+		slog.Warn("one-shot adoption marker consumed — this start may adopt; the next may not",
+			"file", *adoptFile)
+	}
+	sup.AdoptExisting = adopt
 
 	recCtx, recCancel := context.WithTimeout(rootCtx, 45*time.Second)
 	if err := sup.Reconcile(recCtx); err != nil {
@@ -237,7 +257,7 @@ func main() {
 	// Seed anything Reconcile was told to adopt: the drift monitor compares the
 	// venues against the trader's ledger, so an adopted position it has never
 	// heard of would read as drift and kill on the first tick.
-	if *adoptPositions {
+	if adopt {
 		adopted := sup.PreExisting()
 		trader.Adopt(adopted)
 

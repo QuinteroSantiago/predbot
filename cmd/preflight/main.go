@@ -22,6 +22,8 @@ func main() {
 	// bot will, or it is not a preflight.
 	adoptPositions := flag.Bool("adopt-positions", false,
 		"accept positions already on the venues instead of refusing")
+	adoptFile := flag.String("adopt-marker", "/var/lib/predbot/ADOPT",
+		"one-shot adoption marker; preflight READS it but never consumes it")
 	flag.Parse()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
@@ -34,7 +36,14 @@ func main() {
 
 	eng := risk.New(risk.Config{}, nil, "")
 	sup := live.NewSupervisor([]live.AccountClient{kAcct, pAcct}, eng, nil)
+	// Read the same marker the service will, so preflight reaches the SAME
+	// verdict — but never consume it: preflight runs FIRST, and eating the
+	// marker here would leave the service to refuse a moment later.
 	sup.AdoptExisting = *adoptPositions
+	if _, err := os.Stat(*adoptFile); err == nil {
+		fmt.Println("one-shot adoption marker present:", *adoptFile)
+		sup.AdoptExisting = true
+	}
 
 	fmt.Println("=== predbot preflight: READ-ONLY reconciliation (places nothing) ===")
 	if err := sup.Reconcile(ctx); err != nil {

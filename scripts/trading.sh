@@ -7,6 +7,8 @@
 #   trading.sh status   is it running, what has it done
 #   trading.sh logs     follow the live log
 #   trading.sh clear    remove the KILLED marker (human decision, after review)
+#   trading.sh adopt-once   permit the NEXT start to adopt the positions already
+#                           on the venues. Consumed by that start — never sticks.
 #   trading.sh deploy-live  test, build and install the live binary + unit
 #                           (NEVER starts it — arming stays a separate act)
 set -euo pipefail
@@ -48,6 +50,22 @@ case "${1:-status}" in
   logs)
     "${SSH[@]}" "journalctl -u $SVC -f -o cat"
     ;;
+  adopt-once)
+    # The mirror image of the KILLED marker: a deliberate human permission, and
+    # one the bot destroys as it uses it. Adoption applies to the specific
+    # positions someone has just reviewed, so it must not outlive that review —
+    # which is why this is a marker and not a flag in the unit.
+    echo "Positions that the next start would adopt:"
+    "${SSH[@]}" 'set -a; . /etc/predbot/env; set +a; /opt/predbot/dumppos' 2>/dev/null \
+      | grep -E '^\s{6}|PARSED' || true
+    echo
+    read -r -p "Adopt these on the next start? [y/N] " ok
+    [[ "$ok" == "y" || "$ok" == "Y" ]] || { echo "aborted — marker NOT written."; exit 1; }
+    "${SSH[@]}" "sudo -u predbot touch /var/lib/predbot/ADOPT"
+    echo "ADOPT marker written. It is consumed by the next start; the one after"
+    echo "that refuses pre-existing positions again."
+    ;;
+
   deploy-live)
     # Deliberately separate from scripts/redeploy.sh, which deploys the RECORDER.
     # Never starts the service: installing code and arming real-money trading are
@@ -100,5 +118,5 @@ case "${1:-status}" in
     "${SSH[@]}" "sudo rm -f /var/lib/predbot/KILLED && echo 'KILLED marker removed'"
     ;;
   *)
-    echo "usage: $0 {start|stop|kill|status|logs|clear|deploy-live}"; exit 2 ;;
+    echo "usage: $0 {start|stop|kill|status|logs|clear|adopt-once|deploy-live}"; exit 2 ;;
 esac
