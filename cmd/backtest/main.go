@@ -29,6 +29,7 @@ func main() {
 	skewMS := flag.Int64("skew", -1, "override max cross-venue skew in ms (-1 = use config)")
 	hours := flag.Int("hours", 0, "only replay the most recent N hours (0 = use -days)")
 	days := flag.Int("days", 0, "only replay the most recent N days of data (0 = all; large archives need a bound)")
+	leadlag := flag.Bool("leadlag", false, "read-only: measure whether one venue's mid leads the other (cross-venue lead-lag), no trading")
 	adverse := flag.Bool("adverse", false, "measure adverse selection: where price goes AFTER a hypothetical maker fill")
 	maker := flag.Bool("maker", false, "use the MAKER strategy: rest one leg (earns the Poly rebate) and take the other")
 	exportPath := flag.String("export", "", "write detected opportunities to this JSON file")
@@ -97,6 +98,32 @@ func main() {
 	if len(sportsMarkets) > 0 {
 		fmt.Printf("reconstructed %d cross-listed sports markets from recorded data\n", len(sportsMarkets))
 	}
+	// Lead-lag is a standalone read-only pass: feed each venue's YES mid into the
+	// analyzer (canonical via a pure lookup, no book mutation) and print the
+	// report. It never touches the trading sim below.
+	if *leadlag {
+		ll := backtest.NewLeadLag()
+		_ = backtest.StreamReplay(dir, window, func(s core.BookSnapshot) error {
+			canonical, ok := bm.Canonical(s.Venue, s.VenueID)
+			if !ok {
+				return nil
+			}
+			bid, okB := s.BestYesBid()
+			ask, okA := s.BestYesAsk()
+			if !okB || !okA {
+				return nil // one-sided book: no valid mid
+			}
+			mid := float64(int64(bid.Px)+int64(ask.Px)) / 2 / 100 // cents
+			ll.Observe(canonical, s.Venue, mid, s.TsRecv)
+			return nil
+		})
+		span := time.Duration(lastTs-firstTs) * time.Nanosecond
+		fmt.Printf("Replayed %d snapshots over %s across %d markets\n\n",
+			nSnaps, span.Round(time.Minute), len(bm.Canonicals()))
+		fmt.Print(ll.Report())
+		return
+	}
+
 	fees := backtest.Fees{KalshiMult: cfg.Backtest.KalshiFeeMult}
 	rep := backtest.NewReport()
 	sim := backtest.NewSim(fees, cfg.Backtest.LatencyMS, rep)
