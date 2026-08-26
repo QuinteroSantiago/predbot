@@ -37,8 +37,21 @@ type Metrics struct {
 func NewMetrics() (*Metrics, error) {
 	m := otel.Meter(serviceName)
 	var err error
+	// Both latency histograms (book age, feed latency) carry real values from
+	// sub-millisecond (an in-process channel hop, ~0.1ms) up to multi-second
+	// stalls. OTel's DEFAULT explicit buckets start [0, 5, 10, 25, …]s, so 100%
+	// of observations land in the single (0,5]s bucket and histogram_quantile
+	// can only interpolate its edges — pinning every quantile panel to p50=2.5s
+	// / p95=4.75s regardless of the true ms-scale latency (diagnosed 2026-08-26).
+	// These fine boundaries resolve the ms range where the real distribution is.
+	// NOTE: pre-existing series keep the old `le` buckets until they age out of
+	// the query window; new series use these from the next recorder restart.
+	latencyBuckets := []float64{
+		0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5,
+	}
 	mk := func(name, desc, unit string) metric.Float64Histogram {
-		h, e := m.Float64Histogram(name, metric.WithDescription(desc), metric.WithUnit(unit))
+		h, e := m.Float64Histogram(name, metric.WithDescription(desc), metric.WithUnit(unit),
+			metric.WithExplicitBucketBoundaries(latencyBuckets...))
 		if e != nil {
 			err = e
 		}
