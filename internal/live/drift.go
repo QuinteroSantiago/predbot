@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sort"
+	"strings"
 	"time"
 
 	"predbot/internal/risk"
@@ -78,6 +80,32 @@ func (d *DriftMonitor) check(ctx context.Context) {
 			d.log.Warn("position read failed; cannot verify drift", "venue", a.Venue(), "err", err)
 			continue
 		}
+		// Reconciliation log EVERY poll — venue truth vs what the bot believes,
+		// per held position. This makes the hedge state (and any naked/half-filled
+		// leg) continuously visible in the journal, not only at the moment it
+		// trips the kill. INFO when everything matches, WARN when it does not.
+		var held, mism int
+		var detail []string
+		for venueID, qty := range actual {
+			if qty == 0 {
+				continue
+			}
+			held++
+			exp := want[venueID]
+			tag := "ok"
+			if diff := qty - exp; diff > d.Tolerance || diff < -d.Tolerance {
+				tag, mism = "MISMATCH", mism+1
+			}
+			detail = append(detail, fmt.Sprintf("%s venue=%.2f bot=%.2f %s", venueID, qty, exp, tag))
+		}
+		sort.Strings(detail)
+		rec := d.log.Info
+		if mism > 0 {
+			rec = d.log.Warn
+		}
+		rec("position reconciliation", "venue", a.Venue(), "held", held,
+			"mismatches", mism, "detail", strings.Join(detail, " | "))
+
 		for venueID, qty := range actual {
 			exp := want[venueID]
 			if diff := qty - exp; diff > d.Tolerance || diff < -d.Tolerance {

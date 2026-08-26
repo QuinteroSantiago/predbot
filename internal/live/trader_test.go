@@ -627,3 +627,39 @@ func TestFillWaitIsShorterThanHedgeGrace(t *testing.T) {
 		t.Errorf("fillWait = %v; want 1s", tr.fillWait)
 	}
 }
+
+func TestPairVerdict(t *testing.T) {
+	k := core.Intent{Venue: "kalshi", Qty: 500}
+	p := core.Intent{Venue: "polymarketus", Qty: 500}
+	cases := []struct {
+		name           string
+		f1, f2         core.Qty
+		wantVerdict    string
+		wantNakedVenue string
+		wantNakedQty   core.Qty
+	}{
+		{"clean hedge", 500, 500, "HEDGED", "", 0},
+		{"both zero", 0, 0, "BOTH_ZERO", "", 0},
+		{"thin equal fill", 200, 200, "HEDGED_PARTIAL", "", 0},
+		{"naked leg1 (kalshi over)", 500, 0, "LEGGED", "kalshi", 500},
+		{"naked leg2 (poly over)", 0, 500, "LEGGED", "polymarketus", 500},
+		{"partial legged", 500, 200, "LEGGED", "kalshi", 300},
+	}
+	for _, c := range cases {
+		v, nv, nq := pairVerdict(k, p, c.f1, c.f2)
+		if v != c.wantVerdict || nv != c.wantNakedVenue || nq != c.wantNakedQty {
+			t.Errorf("%s: got (%q,%q,%v), want (%q,%q,%v)", c.name, v, nv, nq, c.wantVerdict, c.wantNakedVenue, c.wantNakedQty)
+		}
+	}
+}
+
+func TestLegState(t *testing.T) {
+	for _, c := range []struct {
+		req, filled core.Qty
+		want        string
+	}{{500, 500, "FULL"}, {500, 200, "PARTIAL"}, {500, 0, "NONE"}} {
+		if got := legState(c.req, c.filled); got != c.want {
+			t.Errorf("legState(%v,%v)=%q want %q", c.req, c.filled, got, c.want)
+		}
+	}
+}

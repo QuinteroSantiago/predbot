@@ -144,6 +144,24 @@ func RegisterPositionsGauge(snapshot func() []Position) error {
 	return err
 }
 
+// RegisterUnhedgedGauge publishes the live unhedged (naked-leg) exposure per
+// market as predbot_unhedged_contracts{canonical}. Any nonzero value is a leg
+// that filled without its hedge — the exact failure this surfaces on a
+// dashboard. snapshot() returns canonical -> contracts.
+func RegisterUnhedgedGauge(snapshot func() map[string]float64) error {
+	m := otel.Meter(serviceName)
+	_, err := m.Float64ObservableGauge("predbot_unhedged_contracts",
+		metric.WithDescription("current unhedged (naked-leg) contracts per market — nonzero = a leg without its hedge"),
+		metric.WithUnit("{contract}"),
+		metric.WithFloat64Callback(func(_ context.Context, o metric.Float64Observer) error {
+			for canonical, qty := range snapshot() {
+				o.Observe(qty, metric.WithAttributes(attribute.String("canonical", canonical)))
+			}
+			return nil
+		}))
+	return err
+}
+
 // PaperStats is the paper account's state for the metrics gauges (design §17
 // Phase 3): live-simulated P&L, no real money.
 type PaperStats struct {

@@ -286,6 +286,11 @@ func main() {
 	}
 	go live.NewDriftMonitor([]live.AccountClient{kAcct, pAcct}, engine, trader.Positions).Run(rootCtx)
 
+	// Publish live unhedged (naked-leg) exposure per market to the dashboard.
+	if err := obs.RegisterUnhedgedGauge(engine.UnhedgedSnapshot); err != nil {
+		slog.Warn("unhedged gauge disabled", "err", err)
+	}
+
 	// Live positions surface (Grafana): poll each venue's authoritative positions
 	// on a slow ticker and publish them as predbot_position_contracts{venue,market}.
 	// Polling happens in this goroutine, never in the metric callback, so venue

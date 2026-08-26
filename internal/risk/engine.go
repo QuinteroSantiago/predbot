@@ -159,6 +159,19 @@ func (e *Engine) SetUnhedged(pairID string, qty core.Qty) {
 	}
 }
 
+// UnhedgedSnapshot returns the current unhedged quantity per pair, in contracts.
+// For observability: a naked / half-filled leg shows up here as a nonzero entry
+// (published as predbot_unhedged_contracts{canonical}).
+func (e *Engine) UnhedgedSnapshot() map[string]float64 {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	out := make(map[string]float64, len(e.unhedged))
+	for k, q := range e.unhedged {
+		out[k] = float64(q) / 100
+	}
+	return out
+}
+
 func (e *Engine) totalUnhedgedLocked() core.Qty {
 	var t core.Qty
 	for _, q := range e.unhedged {

@@ -232,6 +232,12 @@ func (t *Trader) ExecutePair(ctx context.Context, canonical string, legs []core.
 		t.log.Warn("leg placement failed", "canonical", canonical, "venue", second.Venue, "err", r2.err)
 	}
 
+	// 3b. Emit ONE structured summary of the whole placement — both legs and the
+	//     resulting hedge verdict — so a naked or half-filled pair is legible from
+	//     a single log line instead of stitched together from several. Pure
+	//     observability; it changes nothing about what follows.
+	t.logPairOutcome(canonical, first, second, r1.filled, r2.filled)
+
 	// 4. Neither side filled: nothing to hedge, but "no fill reported" is not
 	//    proof of no position. Both legs were live, so BOTH must be verified.
 	if r1.filled == 0 && r2.filled == 0 {
@@ -293,6 +299,62 @@ func (t *Trader) ExecutePair(ctx context.Context, canonical string, legs []core.
 		t.completeOrExit(ctx, canonical, held, missing, qty)
 	}()
 	return nil
+}
+
+// legState classifies one leg's fill against what was requested.
+func legState(req, filled core.Qty) string {
+	switch {
+	case filled <= 0:
+		return "NONE"
+	case filled < req:
+		return "PARTIAL"
+	default:
+		return "FULL"
+	}
+}
+
+// pairVerdict summarises a two-leg placement into one label plus each leg's
+// state. Pure (no I/O) so the classification is unit-testable:
+//   - BOTH_ZERO       neither leg took — nothing at risk (still verify silently)
+//   - HEDGED          equal fills, both fully filled — a clean pair
+//   - HEDGED_PARTIAL  equal fills but under the requested size (thin fill)
+//   - LEGGED          unequal fills — the difference is a NAKED leg (the bug class)
+func pairVerdict(first, second core.Intent, f1, f2 core.Qty) (verdict, nakedVenue string, nakedQty core.Qty) {
+	switch {
+	case f1 == 0 && f2 == 0:
+		return "BOTH_ZERO", "", 0
+	case f1 == f2:
+		if f1 < first.Qty || f2 < second.Qty {
+			return "HEDGED_PARTIAL", "", 0
+		}
+		return "HEDGED", "", 0
+	default:
+		naked := f1 - f2
+		if naked < 0 {
+			return "LEGGED", second.Venue, -naked
+		}
+		return "LEGGED", first.Venue, naked
+	}
+}
+
+// logPairOutcome emits ONE line describing a pair placement end to end. INFO for
+// a clean hedge, WARN for anything a human would want to notice (a naked leg, a
+// thin fill, or an unexpected miss). This is the entry to reach for first when
+// debugging naked/half-filled legs. Observability only.
+func (t *Trader) logPairOutcome(canonical string, first, second core.Intent, f1, f2 core.Qty) {
+	verdict, nakedVenue, nakedQty := pairVerdict(first, second, f1, f2)
+	legFmt := func(i core.Intent, filled core.Qty) string {
+		return fmt.Sprintf("%s %s @%s req=%s filled=%s [%s]",
+			i.Venue, i.Side.String(), i.Px.String(), i.Qty.String(), filled.String(), legState(i.Qty, filled))
+	}
+	log := t.log.Info
+	if verdict != "HEDGED" {
+		log = t.log.Warn
+	}
+	log("PAIR OUTCOME "+verdict,
+		"canonical", canonical, "verdict", verdict,
+		"leg1", legFmt(first, f1), "leg2", legFmt(second, f2),
+		"naked_venue", nakedVenue, "naked_qty", nakedQty.String())
 }
 
 // verifyNoSilentFill confirms the venue holds no position for a leg that
