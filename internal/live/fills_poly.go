@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"predbot/internal/core"
@@ -49,13 +50,63 @@ type PolyUSFills struct {
 	dial  venue.Dialer
 	slugs func() []string // markets to subscribe to; re-read on each refresh
 	log   *slog.Logger
+
+	// poke requests an immediate re-subscribe (coalesced, size 1) so a newly
+	// traded slug is covered without waiting for the periodic ticker.
+	poke chan struct{}
+
+	mu sync.Mutex
+	// covered is the slug set the stream has subscribed to on the CURRENT live
+	// connection. Empty while disconnected. The trading loop gates Polymarket
+	// orders on this: placing on an uncovered slug fills with no execution event
+	// = a silent fill / naked leg (the 2026-08-25/-26 incidents).
+	covered map[string]bool
 }
 
 // NewPolyUSFills builds the stream. slugs must return the CURRENT set of market
-// slugs being traded (it is re-read periodically so newly discovered sports
+// slugs being traded (it is re-read on each subscribe so newly discovered sports
 // games are picked up).
 func NewPolyUSFills(dial venue.Dialer, slugs func() []string) *PolyUSFills {
-	return &PolyUSFills{dial: dial, slugs: slugs, log: slog.With("component", "polyus-fills")}
+	return &PolyUSFills{dial: dial, slugs: slugs,
+		poke:    make(chan struct{}, 1),
+		covered: map[string]bool{},
+		log:     slog.With("component", "polyus-fills")}
+}
+
+// Covers reports whether the fill stream is currently subscribed to slug on the
+// live connection. Returns false while disconnected or before the first
+// subscribe. The trading loop MUST gate Polymarket orders on this.
+func (p *PolyUSFills) Covers(slug string) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.covered[slug]
+}
+
+// Resubscribe requests an immediate (re)subscribe to the current market set.
+// Non-blocking and coalescing: call it whenever the traded set changes (e.g. a
+// new sports game) so a freshly added slug becomes covered promptly instead of
+// waiting up to the periodic re-subscribe interval.
+func (p *PolyUSFills) Resubscribe() {
+	select {
+	case p.poke <- struct{}{}:
+	default:
+	}
+}
+
+func (p *PolyUSFills) setCovered(slugs []string) {
+	next := make(map[string]bool, len(slugs))
+	for _, s := range slugs {
+		next[s] = true
+	}
+	p.mu.Lock()
+	p.covered = next
+	p.mu.Unlock()
+}
+
+func (p *PolyUSFills) clearCovered() {
+	p.mu.Lock()
+	p.covered = map[string]bool{}
+	p.mu.Unlock()
 }
 
 type polyPrivateEnvelope struct {
@@ -91,6 +142,7 @@ func (p *PolyUSFills) Run(ctx context.Context, h FillHandler) {
 	for ctx.Err() == nil {
 		conn, err := p.dial(ctx)
 		if err != nil {
+			p.clearCovered() // not subscribed to anything while down
 			p.log.Warn("private stream dial failed", "err", err)
 			if sleepCtx(ctx, backoff) != nil {
 				return
@@ -127,6 +179,10 @@ func (p *PolyUSFills) Run(ctx context.Context, h FillHandler) {
 				},
 			})
 			_ = conn.Write(ctx, snap)
+			// Mark these slugs covered only AFTER the subscribe is on the wire, so
+			// the trading-loop gate never sees a slug as covered before we asked
+			// the venue to stream its fills.
+			p.setCovered(slugs)
 			return len(slugs)
 		}
 		n := subscribe()
@@ -142,6 +198,10 @@ func (p *PolyUSFills) Run(ctx context.Context, h FillHandler) {
 				case <-reSub.Done():
 					return
 				case <-t.C:
+					subscribe()
+				case <-p.poke:
+					// Event-driven: the traded set changed (e.g. a new sports
+					// game), so cover it now instead of waiting for the ticker.
 					subscribe()
 				}
 			}
@@ -175,6 +235,7 @@ func (p *PolyUSFills) Run(ctx context.Context, h FillHandler) {
 			})
 		}
 		_ = conn.Close()
+		p.clearCovered() // subscriptions die with the connection
 		p.log.Warn("private order stream disconnected — reconcile positions (fills may have been missed)")
 	}
 }

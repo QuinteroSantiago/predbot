@@ -354,7 +354,7 @@ func main() {
 	go live.NewKalshiFills(kDial).Run(rootCtx, trader.OnFill)
 	// Poly needs an EXPLICIT slug list (an empty list subscribes to nothing), and
 	// it must follow the dynamically discovered sports markets.
-	go live.NewPolyUSFills(pPrivDial, func() []string {
+	polyFills := live.NewPolyUSFills(pPrivDial, func() []string {
 		var out []string
 		for _, c := range bm.Canonicals() {
 			if id, ok := bm.VenueID(c, "polymarketus"); ok {
@@ -362,7 +362,8 @@ func main() {
 			}
 		}
 		return out
-	}).Run(rootCtx, trader.OnFill)
+	})
+	go polyFills.Run(rootCtx, trader.OnFill)
 
 	// --- market data --------------------------------------------------------
 	// Per-venue drains: each venue's snapshots feed an independent goroutine, so
@@ -485,6 +486,19 @@ func main() {
 				}
 				legs := strategy.CrossVenue(canonical, books, strategy.Exposure{InFlight: inFlight}, fees, scfg)
 				if len(legs) == 0 {
+					continue
+				}
+				// Silent-fill guard (2026-08-25/-26 naked-leg incidents): never
+				// act on a Polymarket slug the private fill stream is not yet
+				// subscribed to — the order would fill with no execution event and
+				// leave a naked leg. A dynamically discovered sports market reaches
+				// the book (and this loop) before the fill stream's periodic
+				// re-subscribe covers it; skip it and poke an immediate
+				// re-subscribe so a later tick can trade it safely.
+				if slug, ok := bm.VenueID(canonical, "polymarketus"); !ok || !polyFills.Covers(slug) {
+					polyFills.Resubscribe()
+					slog.Warn("skip: Poly fill stream not yet subscribed to slug — deferring to avoid a silent fill",
+						"canonical", canonical, "slug", slug)
 					continue
 				}
 				if *dryRun {
