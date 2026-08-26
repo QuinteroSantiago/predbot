@@ -70,27 +70,74 @@ func Venue(v string) metric.MeasurementOption {
 	return metric.WithAttributes(attribute.String("venue", v))
 }
 
-// MarketEdge is one market's current cross-venue gross edge, in cents.
+// MarketEdge is one market's current cross-venue gross edge, in cents, with the
+// fillable size (contracts) behind it. A wide edge with near-zero size is a
+// phantom against a thin book, so both travel together: consumers gate on size.
 type MarketEdge struct {
 	Market   string
 	Category string
 	Cents    float64
+	Size     float64 // fillable contracts at that edge (min of both tops)
 }
 
-// RegisterCrossEdgeGauge installs an async gauge that, on each collection, asks
-// snapshot() for the current cross-venue gross edge of every fresh market and
-// reports it as predbot_cross_edge_cents{market,category}. This is the live arb
-// surface: a positive value near/above the ~3.25c fee wall is a live opportunity.
+// RegisterCrossEdgeGauge installs async gauges that, on each collection, ask
+// snapshot() for the current cross-venue edge of every fresh market and report
+// it as predbot_cross_edge_cents{market,category} plus the fillable size behind
+// it as predbot_cross_edge_size{market,category}. This is the live arb surface:
+// an edge above the ~3.25c fee wall is only a real opportunity when the size is
+// also non-trivial — a wide edge on a one-lot book is not executable.
 func RegisterCrossEdgeGauge(snapshot func() []MarketEdge) error {
 	m := otel.Meter(serviceName)
-	_, err := m.Float64ObservableGauge("predbot_cross_edge_cents",
+	attrs := func(e MarketEdge) metric.MeasurementOption {
+		return metric.WithAttributes(
+			attribute.String("market", e.Market),
+			attribute.String("category", e.Category))
+	}
+	_, errC := m.Float64ObservableGauge("predbot_cross_edge_cents",
 		metric.WithDescription("current best cross-venue gross edge per market, in cents"),
 		metric.WithUnit("cents"),
 		metric.WithFloat64Callback(func(_ context.Context, o metric.Float64Observer) error {
 			for _, e := range snapshot() {
-				o.Observe(e.Cents, metric.WithAttributes(
-					attribute.String("market", e.Market),
-					attribute.String("category", e.Category)))
+				o.Observe(e.Cents, attrs(e))
+			}
+			return nil
+		}))
+	_, errS := m.Float64ObservableGauge("predbot_cross_edge_size",
+		metric.WithDescription("fillable contracts behind the best cross-venue edge (min of both tops)"),
+		// Unit "{contract}" is an OTel annotation the OTLP→Prometheus translator
+		// drops from the name; plain "1" would append a bogus `_ratio` suffix.
+		metric.WithUnit("{contract}"),
+		metric.WithFloat64Callback(func(_ context.Context, o metric.Float64Observer) error {
+			for _, e := range snapshot() {
+				o.Observe(e.Size, attrs(e))
+			}
+			return nil
+		}))
+	return errors.Join(errC, errS)
+}
+
+// Position is one venue+market holding, as the venue's own account reports it.
+// Contracts is signed: positive is long YES, negative a short/naked leg.
+type Position struct {
+	Venue     string
+	Market    string // canonical id when known, else the venue's own market id
+	Contracts float64
+}
+
+// RegisterPositionsGauge installs an async gauge reporting live positions read
+// from the venues themselves, as predbot_position_contracts{venue,market}. It is
+// the authoritative "what do we actually hold right now" surface — worth watching
+// even when the bot is idle, since a naked leg is an emergency.
+func RegisterPositionsGauge(snapshot func() []Position) error {
+	m := otel.Meter(serviceName)
+	_, err := m.Float64ObservableGauge("predbot_position_contracts",
+		metric.WithDescription("net contracts held per venue+market, from the venue's own account (signed)"),
+		metric.WithUnit("{contract}"), // annotation unit → no Prometheus name suffix (see cross_edge_size)
+		metric.WithFloat64Callback(func(_ context.Context, o metric.Float64Observer) error {
+			for _, p := range snapshot() {
+				o.Observe(p.Contracts, metric.WithAttributes(
+					attribute.String("venue", p.Venue),
+					attribute.String("market", p.Market)))
 			}
 			return nil
 		}))

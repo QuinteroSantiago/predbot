@@ -91,6 +91,7 @@ func main() {
 	bm := book.NewManager(markets)
 	type liveEdge struct {
 		cents  float64
+		size   float64
 		cat    string
 		oldest int64
 	}
@@ -105,7 +106,7 @@ func main() {
 			if now-e.oldest > int64(20*time.Second) {
 				continue // a venue went quiet — drop rather than report a stale edge
 			}
-			out = append(out, obs.MarketEdge{Market: mkt, Category: e.cat, Cents: e.cents})
+			out = append(out, obs.MarketEdge{Market: mkt, Category: e.cat, Cents: e.cents, Size: e.size})
 		}
 		return out
 	}); err != nil {
@@ -259,9 +260,9 @@ func main() {
 				met.BookAge.Record(rootCtx, age, obs.Venue(s.Venue))
 				// Update the live cross-venue edge for this market.
 				if canonical, ok := bm.Update(s); ok {
-					if cents, oldest, ok := bm.CrossEdge(canonical); ok {
+					if cents, size, oldest, ok := bm.CrossEdge(canonical); ok {
 						edgeMu.Lock()
-						liveEdges[canonical] = liveEdge{cents, marketCategory(canonical), oldest}
+						liveEdges[canonical] = liveEdge{cents, size, marketCategory(canonical), oldest}
 						edgeMu.Unlock()
 						// An opportunity (or near-miss) appeared: pin this hour and
 						// its neighbours so retention never deletes the evidence.

@@ -23,6 +23,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -284,6 +285,65 @@ func main() {
 		}
 	}
 	go live.NewDriftMonitor([]live.AccountClient{kAcct, pAcct}, engine, trader.Positions).Run(rootCtx)
+
+	// Live positions surface (Grafana): poll each venue's authoritative positions
+	// on a slow ticker and publish them as predbot_position_contracts{venue,market}.
+	// Polling happens in this goroutine, never in the metric callback, so venue
+	// REST stays off the scrape path. On a read error we keep the last-known
+	// values rather than blanking what is a safety view of real exposure.
+	{
+		canonicalOf := config.CanonicalByVenueID(markets)
+		accts := map[string]live.AccountClient{"kalshi": kAcct, "polymarketus": pAcct}
+		var posMu sync.Mutex
+		posByVenue := map[string]map[string]float64{} // venue -> venueID -> contracts
+		if err := obs.RegisterPositionsGauge(func() []obs.Position {
+			posMu.Lock()
+			defer posMu.Unlock()
+			var out []obs.Position
+			for v, held := range posByVenue {
+				for venueID, qty := range held {
+					if qty == 0 {
+						continue
+					}
+					market := venueID
+					if c, ok := canonicalOf[venueID]; ok {
+						market = c
+					}
+					out = append(out, obs.Position{Venue: v, Market: market, Contracts: qty})
+				}
+			}
+			return out
+		}); err != nil {
+			slog.Warn("positions gauge disabled", "err", err)
+		}
+		go func() {
+			poll := func() {
+				for venueName, a := range accts {
+					cctx, cancel := context.WithTimeout(rootCtx, 15*time.Second)
+					pos, err := a.Positions(cctx)
+					cancel()
+					if err != nil {
+						slog.Warn("positions poll failed", "venue", venueName, "err", err)
+						continue // keep last-known rather than blanking the safety view
+					}
+					posMu.Lock()
+					posByVenue[venueName] = pos
+					posMu.Unlock()
+				}
+			}
+			poll()
+			t := time.NewTicker(15 * time.Second)
+			defer t.Stop()
+			for {
+				select {
+				case <-rootCtx.Done():
+					return
+				case <-t.C:
+					poll()
+				}
+			}
+		}()
+	}
 
 	// --- private fill streams (fills are never assumed) ---------------------
 	go live.NewKalshiFills(kDial).Run(rootCtx, trader.OnFill)

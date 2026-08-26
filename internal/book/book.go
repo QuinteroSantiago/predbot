@@ -95,13 +95,19 @@ func (m *Manager) Pair(canonical string) (map[string]core.BookSnapshot, bool) {
 }
 
 // CrossEdge returns the best cross-venue gross edge for a canonical market in
-// cents (max over both directions of best-bid − best-ask), plus the oldest of
-// the venues' receive times so the caller can gate on freshness. ok is false
-// unless every mapped venue has a book with both a bid and an ask.
-func (m *Manager) CrossEdge(canonical string) (cents float64, oldestRecv int64, ok bool) {
+// cents (max over both directions of best-bid − best-ask), the fillable size in
+// contracts behind that edge (the min of the two tops' quantities), and the
+// oldest of the venues' receive times so the caller can gate on freshness. ok is
+// false unless every mapped venue has a book with both a bid and an ask.
+//
+// The size matters as much as the edge: a wide edge against a one-lot book is a
+// phantom, not an arb. Callers (and the live-arb surface) gate on size the same
+// way the trading strategy does (min-depth), so dust edges never read as
+// opportunities.
+func (m *Manager) CrossEdge(canonical string) (cents, sizeContracts float64, oldestRecv int64, ok bool) {
 	books, ready := m.Pair(canonical)
 	if !ready {
-		return 0, 0, false
+		return 0, 0, 0, false
 	}
 	venues := make([]string, 0, len(books))
 	oldest := int64(1)<<62 - 1
@@ -112,6 +118,7 @@ func (m *Manager) CrossEdge(canonical string) (cents float64, oldestRecv int64, 
 		}
 	}
 	var best int64
+	var bestQty core.Qty
 	found := false
 	for i := range venues {
 		for j := range venues {
@@ -124,14 +131,18 @@ func (m *Manager) CrossEdge(canonical string) (cents float64, oldestRecv int64, 
 			if okA && okB {
 				if e := int64(bid.Px) - int64(ask.Px); !found || e > best {
 					best, found = e, true
+					bestQty = ask.Qty
+					if bid.Qty < bestQty {
+						bestQty = bid.Qty // fillable size is the shallower of the two tops
+					}
 				}
 			}
 		}
 	}
 	if !found {
-		return 0, 0, false
+		return 0, 0, 0, false
 	}
-	return float64(best) / 100, oldest, true
+	return float64(best) / 100, float64(bestQty) / 100, oldest, true
 }
 
 // Canonicals returns all canonical ids known to the manager.
