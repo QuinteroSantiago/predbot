@@ -7,10 +7,13 @@
 package main
 
 import (
+	"bufio"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"time"
 
 	"predbot/internal/backtest"
@@ -30,6 +33,8 @@ func main() {
 	hours := flag.Int("hours", 0, "only replay the most recent N hours (0 = use -days)")
 	days := flag.Int("days", 0, "only replay the most recent N days of data (0 = all; large archives need a bound)")
 	leadlag := flag.Bool("leadlag", false, "read-only: measure whether one venue's mid leads the other (cross-venue lead-lag), no trading")
+	longshot := flag.Bool("longshot", false, "read-only: calibration / favorite-longshot bias from opening price vs settled outcome")
+	outcomesPath := flag.String("outcomes", "", "outcomes.jsonl for -longshot (default: <data>/outcomes.jsonl)")
 	adverse := flag.Bool("adverse", false, "measure adverse selection: where price goes AFTER a hypothetical maker fill")
 	maker := flag.Bool("maker", false, "use the MAKER strategy: rest one leg (earns the Poly rebate) and take the other")
 	exportPath := flag.String("export", "", "write detected opportunities to this JSON file")
@@ -121,6 +126,39 @@ func main() {
 		fmt.Printf("Replayed %d snapshots over %s across %d markets\n\n",
 			nSnaps, span.Round(time.Minute), len(bm.Canonicals()))
 		fmt.Print(ll.Report())
+		return
+	}
+
+	// Favorite-longshot / calibration: join settled outcomes to each market's
+	// OPENING recorded mid (the first two-sided price = a pre-game forecast), then
+	// compare implied prob to realized YES. Standalone read-only pass.
+	if *longshot {
+		op := *outcomesPath
+		if op == "" {
+			op = filepath.Join(dir, "outcomes.jsonl")
+		}
+		outcomes, err := loadOutcomes(op)
+		if err != nil {
+			slog.Error("outcomes load failed", "err", err, "path", op)
+			os.Exit(1)
+		}
+		if len(outcomes) == 0 {
+			fmt.Printf("no settled outcomes in %s — run cmd/outcomes first\n", op)
+			return
+		}
+		ls := backtest.NewLongshot(outcomes)
+		_ = backtest.StreamReplay(dir, window, func(s core.BookSnapshot) error {
+			bid, okB := s.BestYesBid()
+			ask, okA := s.BestYesAsk()
+			if !okB || !okA {
+				return nil
+			}
+			prob := float64(int64(bid.Px)+int64(ask.Px)) / 2 / float64(core.OneDollar)
+			ls.ObserveMid(s.Venue+"|"+s.VenueID, prob)
+			return nil
+		})
+		fmt.Printf("Loaded %d settled outcomes; replayed %d snapshots\n\n", len(outcomes), nSnaps)
+		fmt.Print(ls.Report())
 		return
 	}
 
@@ -299,6 +337,36 @@ func main() {
 			restsPlaced, restsFilled, pct)
 	}
 	fmt.Print(rep.String())
+}
+
+// loadOutcomes reads outcomes.jsonl into "venue|venueID" -> 1 (yes) / 0 (no).
+func loadOutcomes(path string) (map[string]int, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	out := map[string]int{}
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 1024*1024), 4*1024*1024)
+	for sc.Scan() {
+		var r struct {
+			Venue   string `json:"venue"`
+			VenueID string `json:"venue_id"`
+			Outcome string `json:"outcome"`
+		}
+		if json.Unmarshal(sc.Bytes(), &r) != nil || r.VenueID == "" {
+			continue
+		}
+		y := 0
+		if r.Outcome == "yes" {
+			y = 1
+		} else if r.Outcome != "no" {
+			continue // only settled yes/no
+		}
+		out[r.Venue+"|"+r.VenueID] = y
+	}
+	return out, sc.Err()
 }
 
 func staleAny(books map[string]core.BookSnapshot, now, maxAge int64) bool {
