@@ -67,3 +67,21 @@ func TestMatchGamesNoOverlap(t *testing.T) {
 		t.Errorf("expected no match across dates, got %+v", m)
 	}
 }
+
+func TestCanonicalFromPolySlug(t *testing.T) {
+	cases := []struct {
+		slug, want string
+		ok         bool
+	}{
+		{"aec-mlb-bos-mia-2026-08-25", "MLB-20260825-BOS", true}, // away=BOS is Poly's YES
+		{"aec-mlb-col-wsh-2026-08-25", "MLB-20260825-COL", true},
+		{"mlb-tb-det-2026-08-25", "MLB-20260825-TB", true}, // tolerate a missing aec- prefix
+		{"aec-mlb-garbage", "", false},
+	}
+	for _, c := range cases {
+		got, ok := CanonicalFromPolySlug("mlb", c.slug)
+		if ok != c.ok || got != c.want {
+			t.Errorf("CanonicalFromPolySlug(%q) = %q,%v; want %q,%v", c.slug, got, ok, c.want, c.ok)
+		}
+	}
+}

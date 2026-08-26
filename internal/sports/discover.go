@@ -195,6 +195,22 @@ func (c *Client) SettledKalshi(ctx context.Context, league string) ([]SettledRes
 	return out, nil
 }
 
+// CanonicalFromPolySlug maps a recorded Poly moneyline market slug
+// (e.g. "aec-mlb-bos-mia-2026-08-25") to its canonical (MLB-20260825-BOS), the
+// same id MatchGames/SettledKalshi produce. Used to attach a real Poly slug to a
+// settled game's outcome from RECORDED data — where Kalshi and Poly dates already
+// agreed at record time — rather than live Poly discovery, whose forward-looking
+// listing has rolled a game off by the time Kalshi marks it settled.
+func CanonicalFromPolySlug(league, marketSlug string) (string, bool) {
+	// Moneyline market slugs are the event slug with an "aec-" prefix.
+	ev := strings.TrimPrefix(marketSlug, "aec-")
+	date, away := parsePolyEventSlug(league, ev)
+	if away == "" {
+		return "", false
+	}
+	return fmt.Sprintf("%s-%s-%s", strings.ToUpper(league), strings.ReplaceAll(date, "-", ""), away), true
+}
+
 // DiscoverPoly returns today's open daily games for a league from the v2 Sports
 // API (docs.polymarket.us — the v1 markets listing does NOT contain them). Each
 // event's moneyline is the market whose sportsMarketType ends in
