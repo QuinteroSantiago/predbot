@@ -178,8 +178,11 @@ func main() {
 		}
 	}
 
-	// Each ingester emits into a shared channel; a single writer persists the
-	// normalized stream and updates book-age. The recorder is concurrency-safe.
+	// Each ingester emits into a shared channel. A fast drain goroutine updates
+	// the book manager, live edge, and book-age metric, then hands the snapshot
+	// to a dedicated archival writer: gzip + disk (WriteNormalized) runs off the
+	// trading/metric path, so book age reflects feed freshness rather than our
+	// own compression backlog. The recorder is concurrency-safe.
 	snaps := make(chan core.BookSnapshot, 1024)
 	var wg sync.WaitGroup
 	for _, it := range ingesters {
@@ -243,22 +246,37 @@ func main() {
 		slog.Info("paper trading ON (live SimExecutor, no real orders)")
 	}
 
+	// Archival writer: gzip + disk is the slow step, so it runs on its own
+	// goroutine off the trading/metric path. A single writer preserves per-file
+	// append order; the deep buffer absorbs venue bursts (e.g. Kalshi stamping
+	// many markets at the same ms). If the writer ever falls behind for real,
+	// the drain's send blocks and book age rises — an honest signal, no silent
+	// data loss (matches the old serial behaviour on a genuine disk stall).
+	toWrite := make(chan core.BookSnapshot, 8192)
+	writerDone := make(chan struct{})
+	go func() {
+		defer close(writerDone)
+		for s := range toWrite {
+			if err := rec.WriteNormalized(s); err != nil {
+				slog.Warn("normalized write failed", "venue", s.Venue, "err", err)
+			}
+		}
+	}()
+
 	drainDone := make(chan struct{})
 	go func() {
 		defer close(drainDone)
+		defer close(toWrite) // stop the writer once no more snapshots will arrive
 		for {
 			select {
 			case <-rootCtx.Done():
 				return
 			case s := <-snaps:
-				if !*noNormalized {
-					if err := rec.WriteNormalized(s); err != nil {
-						slog.Warn("normalized write failed", "venue", s.Venue, "err", err)
-					}
-				}
 				age := time.Since(time.Unix(0, s.TsRecv)).Seconds()
 				met.BookAge.Record(rootCtx, age, obs.Venue(s.Venue))
-				// Update the live cross-venue edge for this market.
+				// Update the live cross-venue edge for this market. Done before
+				// the archival hand-off so the trading view stays fresh even if
+				// the writer momentarily backs up.
 				if canonical, ok := bm.Update(s); ok {
 					if cents, size, oldest, ok := bm.CrossEdge(canonical); ok {
 						edgeMu.Lock()
@@ -272,12 +290,22 @@ func main() {
 						}
 					}
 				}
+				if !*noNormalized {
+					// Hand off gzip + disk to the archival writer. Selectable on
+					// ctx so a stalled writer can't hang shutdown.
+					select {
+					case toWrite <- s:
+					case <-rootCtx.Done():
+						return
+					}
+				}
 			}
 		}
 	}()
 
 	wg.Wait()      // ingesters exit on ctx cancel
-	<-drainDone    // drain loop exits on ctx cancel
+	<-drainDone    // drain loop exits on ctx cancel, closing toWrite
+	<-writerDone   // archival writer flushes remaining snapshots, then returns
 	if err := rec.Close(); err != nil {
 		slog.Warn("final flush failed", "err", err)
 	}

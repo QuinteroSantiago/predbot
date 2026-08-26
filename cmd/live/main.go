@@ -365,28 +365,56 @@ func main() {
 	}).Run(rootCtx, trader.OnFill)
 
 	// --- market data --------------------------------------------------------
-	snaps := make(chan core.BookSnapshot, 1024)
+	// Per-venue drains: each venue's snapshots feed an independent goroutine, so
+	// a burst from one venue (Kalshi stamps many markets at the same ms) can't
+	// stall book updates for the other. bm is RWMutex-safe, so both drains may
+	// call Update concurrently. Mirrors the recorder's de-serialized drain.
+	kalshiSnaps := make(chan core.BookSnapshot, 1024)
+	polySnaps := make(chan core.BookSnapshot, 1024)
 	go func() {
-		_ = kalshi.New(kDial, venue.NopRecorder(), met).Stream(rootCtx, config.KalshiTickers(markets), snaps)
+		_ = kalshi.New(kDial, venue.NopRecorder(), met).Stream(rootCtx, config.KalshiTickers(markets), kalshiSnaps)
 	}()
 	go func() {
-		_ = polymarketus.New(pDial, venue.NopRecorder(), met).Stream(rootCtx, config.PolyUSSlugs(markets), snaps)
+		_ = polymarketus.New(pDial, venue.NopRecorder(), met).Stream(rootCtx, config.PolyUSSlugs(markets), polySnaps)
 	}()
-	go func() {
+	drain := func(in <-chan core.BookSnapshot) {
 		for {
 			select {
 			case <-rootCtx.Done():
 				return
-			case s := <-snaps:
+			case s := <-in:
 				bm.Update(s)
 			}
 		}
-	}()
+	}
+	go drain(kalshiSnaps)
+	go drain(polySnaps)
 
 	// --- dynamic sports subscription (fast, liquid daily games) -------------
 	if leagues := splitCSV(*sportsLeagues); len(leagues) > 0 {
+		// The supervisor emits both venues into one channel; demux by venue into
+		// the same per-venue drains so sports markets get the same isolation.
+		sportsSnaps := make(chan core.BookSnapshot, 1024)
+		go func() {
+			for {
+				select {
+				case <-rootCtx.Done():
+					return
+				case s := <-sportsSnaps:
+					dst := kalshiSnaps
+					if s.Venue == "polymarketus" {
+						dst = polySnaps
+					}
+					select {
+					case dst <- s:
+					case <-rootCtx.Done():
+						return
+					}
+				}
+			}
+		}()
 		go (&sports.Supervisor{Leagues: leagues, KDial: kDial, PDial: pDial,
-			Rec: venue.NopRecorder(), Met: met, BM: bm, Out: snaps}).Run(rootCtx)
+			Rec: venue.NopRecorder(), Met: met, BM: bm, Out: sportsSnaps}).Run(rootCtx)
 		slog.Info("sports trading enabled", "leagues", leagues)
 	}
 
