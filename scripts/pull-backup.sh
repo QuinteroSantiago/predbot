@@ -9,7 +9,7 @@ set -euo pipefail
 
 # Use the ~/.ssh/config 'k3s-vm' alias, which pins IdentityFile id_ed25519_gitea
 # so this works under systemd with no ssh-agent (raw root@IP relies on the agent).
-REMOTE="${REMOTE:-k3s-vm}"
+REMOTE="${REMOTE:-predbot-vm}"
 SRC="/var/lib/predbot/data/"
 DEST="${DEST:-/home/santiago/backups/predbot/data}"
 SSH="ssh -o BatchMode=yes -o ConnectTimeout=10"

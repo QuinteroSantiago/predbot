@@ -12,7 +12,7 @@
 # Override target via env: REMOTE=root@host  SERVICE=predbot-record
 set -euo pipefail
 
-REMOTE="${REMOTE:-root@192.168.3.172}"
+REMOTE="${REMOTE:-root@192.168.3.173}"
 SERVICE="${SERVICE:-predbot-record}"
 REMOTE_DIR="${REMOTE_DIR:-/opt/predbot}"
 UNIT_SRC="systemd/predbot-record.service"

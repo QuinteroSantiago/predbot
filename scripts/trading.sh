@@ -13,7 +13,7 @@
 #                           (NEVER starts it — arming stays a separate act)
 set -euo pipefail
 
-REMOTE="${REMOTE:-k3s-vm}"
+REMOTE="${REMOTE:-predbot-vm}"
 SVC=predbot-live
 SSH=(ssh -o BatchMode=yes "$REMOTE")
 
