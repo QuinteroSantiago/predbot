@@ -129,6 +129,72 @@ func kalshiMarketSuffix(ticker string) string {
 	return ""
 }
 
+// SettledResult is one finished Kalshi market's outcome, ready to be stored.
+// Canonical is built the same way MatchGames builds it, so a recorded outcome
+// joins to the book/price history the recorder captured for that game.
+type SettledResult struct {
+	Canonical string // e.g. MLB-20260825-DET
+	Ticker    string // Kalshi market ticker
+	Result    string // "yes" | "no"
+	Status    string // venue status, e.g. "finalized"
+	CloseTime string
+}
+
+// SettledKalshi returns finished games' per-team results for a league in ONE
+// call. The settled-events endpoint returns nested markets that already carry
+// `result` inline, so no per-ticker fetch is needed — the whole point the
+// outcome recorder was missing: it discovered only status=open games (which are
+// never settled), so it recorded nothing. This asks for status=settled instead.
+func (c *Client) SettledKalshi(ctx context.Context, league string) ([]SettledResult, error) {
+	series, ok := leagueSeries[league]
+	if !ok {
+		return nil, fmt.Errorf("unknown league %q", league)
+	}
+	body, err := c.get(ctx, fmt.Sprintf("%s/events?series_ticker=%s&status=settled&with_nested_markets=true&limit=200", c.KalshiBase, series))
+	if err != nil {
+		return nil, err
+	}
+	var resp struct {
+		Events []struct {
+			EventTicker string `json:"event_ticker"`
+			Markets     []struct {
+				Ticker      string `json:"ticker"`
+				Status      string `json:"status"`
+				Result      string `json:"result"`
+				YesSubTitle string `json:"yes_sub_title"`
+				CloseTime   string `json:"close_time"`
+			} `json:"markets"`
+		} `json:"events"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, err
+	}
+	var out []SettledResult
+	for _, e := range resp.Events {
+		date := kalshiEventDate(series, e.EventTicker)
+		if date == "" {
+			continue
+		}
+		for _, m := range e.Markets {
+			if m.Result != "yes" && m.Result != "no" {
+				continue // not actually resolved
+			}
+			team := canonTeam(league, m.YesSubTitle)
+			if team == "" {
+				team = canonTeam(league, kalshiMarketSuffix(m.Ticker))
+			}
+			if team == "" {
+				continue
+			}
+			out = append(out, SettledResult{
+				Canonical: fmt.Sprintf("%s-%s-%s", strings.ToUpper(league), strings.ReplaceAll(date, "-", ""), team),
+				Ticker:    m.Ticker, Result: m.Result, Status: m.Status, CloseTime: m.CloseTime,
+			})
+		}
+	}
+	return out, nil
+}
+
 // DiscoverPoly returns today's open daily games for a league from the v2 Sports
 // API (docs.polymarket.us — the v1 markets listing does NOT contain them). Each
 // event's moneyline is the market whose sportsMarketType ends in

@@ -49,18 +49,21 @@ func main() {
 	}
 	// Sports games settle within hours, so they are the fastest source of
 	// resolved outcomes — exactly what a directional backtest needs volume of.
+	// Sports games settle within hours — the fastest source of resolved outcomes.
+	// SETTLED games (status=settled) are the ones we can record; the old code
+	// discovered status=open games, which are never settled, so it recorded
+	// nothing. Their results come back inline from one call, so we store them
+	// directly rather than re-fetching each ticker.
+	var settledSports []sports.SettledResult
 	if *withSports != "" {
 		c := sports.New()
 		for _, lg := range splitCSV(*withSports) {
-			k, e1 := c.DiscoverKalshi(ctx, lg)
-			p, e2 := c.DiscoverPoly(ctx, lg)
-			if e1 != nil || e2 != nil {
-				fmt.Println("sports discovery:", e1, e2)
+			sr, err := c.SettledKalshi(ctx, lg)
+			if err != nil {
+				fmt.Println("settled-sports discovery:", err)
 				continue
 			}
-			for _, m := range sports.MatchGames(k, p) {
-				targets = append(targets, target{m.Canonical, m.KalshiTicker, m.PolySlug})
-			}
+			settledSports = append(settledSports, sr...)
 		}
 	}
 
@@ -87,8 +90,24 @@ func main() {
 			}
 		}
 	}
-	fmt.Printf("checked %d markets; newly settled %d; total recorded %d (was %d)\n",
-		len(targets), settled, store.Count(), before)
+	// Settled sports outcomes carry their result inline from discovery, so store
+	// them directly (append-only store dedups on the ticker).
+	for _, sr := range settledSports {
+		if store.Has("kalshi", sr.Ticker) {
+			continue
+		}
+		r := outcome.Result{
+			Canonical: sr.Canonical, Venue: "kalshi", VenueID: sr.Ticker,
+			Outcome: sr.Result, Status: sr.Status, CloseTime: sr.CloseTime,
+			RecordedAt: time.Now().UTC().Format(time.RFC3339),
+		}
+		if store.Put(r) == nil {
+			settled++
+			fmt.Printf("SETTLED kalshi %-34s -> %s\n", sr.Ticker, sr.Result)
+		}
+	}
+	fmt.Printf("checked %d static + %d settled sports; newly settled %d; total recorded %d (was %d)\n",
+		len(targets), len(settledSports), settled, store.Count(), before)
 	_ = time.Now()
 }
 
