@@ -1,2047 +1,2322 @@
 {
-  "annotations": {
-    "list": []
+ "annotations": {
+  "list": []
+ },
+ "editable": true,
+ "panels": [
+  {
+   "type": "row",
+   "id": 38,
+   "title": "Portfolio value",
+   "collapsed": false,
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 0
+   },
+   "panels": []
   },
-  "editable": true,
-  "panels": [
-    {
-      "type": "row",
-      "id": 1,
-      "title": "Data recorded",
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 0
-      }
-    },
-    {
-      "type": "stat",
-      "id": 2,
-      "title": "Data on disk",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 0,
-        "y": 1
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "unit": "bytes",
-          "decimals": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "text",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum(predbot_data_bytes)",
-          "legendFormat": "",
-          "refId": "A",
-          "instant": true,
-          "range": false,
-          "format": "time_series"
-        }
+  {
+   "type": "stat",
+   "id": 39,
+   "title": "Total portfolio value",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 5,
+    "w": 8,
+    "x": 0,
+    "y": 1
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "thresholds"
+     },
+     "unit": "currencyUSD",
+     "decimals": 2,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       }
       ]
+     }
     },
-    {
-      "type": "stat",
-      "id": 3,
-      "title": "Raw",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 4,
-        "y": 1
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "unit": "bytes",
-          "decimals": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "text",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum(predbot_data_bytes{stream=\"raw\"})",
-          "legendFormat": "",
-          "refId": "A",
-          "instant": true,
-          "range": false,
-          "format": "time_series"
-        }
-      ]
-    },
-    {
-      "type": "stat",
-      "id": 4,
-      "title": "Normalized",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 8,
-        "y": 1
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "unit": "bytes",
-          "decimals": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "text",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum(predbot_data_bytes{stream=\"normalized\"})",
-          "legendFormat": "",
-          "refId": "A",
-          "instant": true,
-          "range": false,
-          "format": "time_series"
-        }
-      ]
-    },
-    {
-      "type": "stat",
-      "id": 5,
-      "title": "Snapshots recorded (range)",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 12,
-        "y": 1
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "unit": "short",
-          "decimals": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "text",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum(increase(predbot_snapshots_total[$__range]))",
-          "legendFormat": "",
-          "refId": "A",
-          "instant": false,
-          "range": true,
-          "format": "time_series"
-        }
-      ]
-    },
-    {
-      "type": "stat",
-      "id": 6,
-      "title": "Kalshi (range)",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 16,
-        "y": 1
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "unit": "short",
-          "decimals": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "text",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum(increase(predbot_snapshots_total{venue=\"kalshi\"}[$__range]))",
-          "legendFormat": "",
-          "refId": "A",
-          "instant": false,
-          "range": true,
-          "format": "time_series"
-        }
-      ]
-    },
-    {
-      "type": "stat",
-      "id": 7,
-      "title": "Poly US (range)",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 20,
-        "y": 1
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "unit": "short",
-          "decimals": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "text",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum(increase(predbot_snapshots_total{venue=\"polymarketus\"}[$__range]))",
-          "legendFormat": "",
-          "refId": "A",
-          "instant": false,
-          "range": true,
-          "format": "time_series"
-        }
-      ]
-    },
-    {
-      "type": "timeseries",
-      "id": 8,
-      "title": "Data on disk by stream",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 6,
-        "w": 24,
-        "x": 0,
-        "y": 5
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "drawStyle": "line",
-            "fillOpacity": 6,
-            "lineWidth": 1,
-            "showPoints": "never",
-            "spanNulls": true
-          },
-          "unit": "bytes",
-          "decimals": 0
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "calcs": [
-            "lastNotNull",
-            "max"
-          ],
-          "displayMode": "table",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum by (stream) (predbot_data_bytes)",
-          "legendFormat": "{{stream}}",
-          "refId": "A",
-          "instant": false,
-          "range": true,
-          "format": "time_series"
-        }
-      ]
-    },
-    {
-      "type": "row",
-      "id": 9,
-      "title": "Throughput & freshness",
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 11
-      }
-    },
-    {
-      "type": "stat",
-      "id": 10,
-      "title": "Snapshots/s (Kalshi)",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 0,
-        "y": 12
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "unit": "short",
-          "decimals": 1,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "text",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum(rate(predbot_snapshots_total{venue=\"kalshi\"}[5m]))",
-          "legendFormat": "",
-          "refId": "A",
-          "instant": false,
-          "range": true,
-          "format": "time_series"
-        }
-      ]
-    },
-    {
-      "type": "stat",
-      "id": 11,
-      "title": "Snapshots/s (Poly US)",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 4,
-        "y": 12
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "unit": "short",
-          "decimals": 1,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "text",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum(rate(predbot_snapshots_total{venue=\"polymarketus\"}[5m]))",
-          "legendFormat": "",
-          "refId": "A",
-          "instant": false,
-          "range": true,
-          "format": "time_series"
-        }
-      ]
-    },
-    {
-      "type": "timeseries",
-      "id": 12,
-      "title": "Normalized snapshots / s",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 16,
-        "x": 8,
-        "y": 12
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "drawStyle": "line",
-            "fillOpacity": 6,
-            "lineWidth": 1,
-            "showPoints": "never",
-            "spanNulls": true
-          },
-          "unit": "short",
-          "decimals": 1
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "calcs": [
-            "lastNotNull",
-            "max"
-          ],
-          "displayMode": "table",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum by (venue) (rate(predbot_snapshots_total[5m]))",
-          "legendFormat": "{{venue}}",
-          "refId": "A",
-          "instant": false,
-          "range": true,
-          "format": "time_series"
-        }
-      ]
-    },
-    {
-      "type": "timeseries",
-      "id": 13,
-      "title": "Feed latency (ts_recv - ts_server)",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 16
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "drawStyle": "line",
-            "fillOpacity": 6,
-            "lineWidth": 1,
-            "showPoints": "never",
-            "spanNulls": true
-          },
-          "unit": "s",
-          "decimals": 3
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "calcs": [
-            "lastNotNull",
-            "max"
-          ],
-          "displayMode": "table",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "histogram_quantile(0.50, sum by (le,venue) (rate(predbot_feed_latency_seconds_bucket[5m])))",
-          "legendFormat": "p50 {{venue}}",
-          "refId": "A",
-          "instant": false,
-          "range": true,
-          "format": "time_series"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "histogram_quantile(0.95, sum by (le,venue) (rate(predbot_feed_latency_seconds_bucket[5m])))",
-          "legendFormat": "p95 {{venue}}",
-          "refId": "B",
-          "instant": false,
-          "range": true,
-          "format": "time_series"
-        }
-      ]
-    },
-    {
-      "type": "timeseries",
-      "id": 14,
-      "title": "Book age (freshest snapshot)",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 16
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "drawStyle": "line",
-            "fillOpacity": 6,
-            "lineWidth": 1,
-            "showPoints": "never",
-            "spanNulls": true
-          },
-          "unit": "s",
-          "decimals": 3
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "calcs": [
-            "lastNotNull",
-            "max"
-          ],
-          "displayMode": "table",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "histogram_quantile(0.50, sum by (le,venue) (rate(predbot_book_age_seconds_bucket[5m])))",
-          "legendFormat": "p50 {{venue}}",
-          "refId": "A",
-          "instant": false,
-          "range": true,
-          "format": "time_series"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "histogram_quantile(0.95, sum by (le,venue) (rate(predbot_book_age_seconds_bucket[5m])))",
-          "legendFormat": "p95 {{venue}}",
-          "refId": "B",
-          "instant": false,
-          "range": true,
-          "format": "time_series"
-        }
-      ]
-    },
-    {
-      "type": "row",
-      "id": 15,
-      "title": "Feed integrity",
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 24
-      }
-    },
-    {
-      "type": "stat",
-      "id": 16,
-      "title": "Seq gaps (last 1h)",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 0,
-        "y": 25
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "unit": "short",
-          "decimals": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "orange",
-                "value": 1
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum(increase(predbot_seq_gaps_total[1h]))",
-          "legendFormat": "",
-          "refId": "A",
-          "instant": false,
-          "range": true,
-          "format": "time_series"
-        }
-      ]
-    },
-    {
-      "type": "stat",
-      "id": 17,
-      "title": "Reconnects (last 1h)",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 4,
-        "y": 25
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "unit": "short",
-          "decimals": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "orange",
-                "value": 1
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum(increase(predbot_reconnects_total[1h]))",
-          "legendFormat": "",
-          "refId": "A",
-          "instant": false,
-          "range": true,
-          "format": "time_series"
-        }
-      ]
-    },
-    {
-      "type": "timeseries",
-      "id": 18,
-      "title": "Seq gaps / s (Kalshi) \u00b7 Reconnects / s \u00b7 Parse errors / s",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 16,
-        "x": 8,
-        "y": 25
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "drawStyle": "line",
-            "fillOpacity": 6,
-            "lineWidth": 1,
-            "showPoints": "never",
-            "spanNulls": true
-          },
-          "unit": "short",
-          "decimals": 3
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "calcs": [
-            "lastNotNull",
-            "max"
-          ],
-          "displayMode": "table",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum(rate(predbot_seq_gaps_total{venue=\"kalshi\"}[5m]))",
-          "legendFormat": "seq gaps (kalshi)",
-          "refId": "A",
-          "instant": false,
-          "range": true,
-          "format": "time_series"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum by (venue) (rate(predbot_reconnects_total[5m]))",
-          "legendFormat": "reconnect {{venue}}",
-          "refId": "B",
-          "instant": false,
-          "range": true,
-          "format": "time_series"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum by (venue) (rate(predbot_parse_errors_total[5m]))",
-          "legendFormat": "parse err {{venue}}",
-          "refId": "C",
-          "instant": false,
-          "range": true,
-          "format": "time_series"
-        }
-      ]
-    },
-    {
-      "type": "row",
-      "id": 19,
-      "title": "Live arb surface",
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 33
-      }
-    },
-    {
-      "type": "stat",
-      "id": 20,
-      "title": "Real opportunities",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 6,
-        "x": 0,
-        "y": 34
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "unit": "none",
-          "decimals": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "text",
-                "value": null
-              },
-              {
-                "color": "green",
-                "value": 1
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "count( (predbot_cross_edge_cents > 3.25) and on(market,category) (predbot_cross_edge_size >= 10) ) or vector(0)",
-          "legendFormat": "",
-          "refId": "A",
-          "instant": true,
-          "range": false,
-          "format": "time_series"
-        }
-      ]
-    },
-    {
-      "type": "stat",
-      "id": 21,
-      "title": "Widest executable edge",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 6,
-        "x": 6,
-        "y": 34
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "unit": "none",
-          "decimals": 2,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "orange",
-                "value": 0
-              },
-              {
-                "color": "green",
-                "value": 3.25
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "max( predbot_cross_edge_cents and on(market,category) (predbot_cross_edge_size >= 10) ) or vector(0)",
-          "legendFormat": "",
-          "refId": "A",
-          "instant": true,
-          "range": false,
-          "format": "time_series"
-        }
-      ]
-    },
-    {
-      "type": "stat",
-      "id": 22,
-      "title": "Markets tracked",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 6,
-        "x": 12,
-        "y": 34
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "unit": "none",
-          "decimals": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "text",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "count(predbot_cross_edge_cents)",
-          "legendFormat": "",
-          "refId": "A",
-          "instant": true,
-          "range": false,
-          "format": "time_series"
-        }
-      ]
-    },
-    {
-      "type": "stat",
-      "id": 23,
-      "title": "Fee wall (\u00a2)",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 6,
-        "x": 18,
-        "y": 34
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "unit": "none",
-          "decimals": 2,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "text",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "vector(3.25)",
-          "legendFormat": "",
-          "refId": "A",
-          "instant": true,
-          "range": false,
-          "format": "time_series"
-        }
-      ]
-    },
-    {
-      "type": "table",
-      "id": 24,
-      "title": "Live edge by market (size-vetted)",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 12,
-        "w": 24,
-        "x": 0,
-        "y": 39
-      },
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "align": "auto"
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Edge (\u00a2)"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "none"
-              },
-              {
-                "id": "decimals",
-                "value": 2
-              },
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "mode": "gradient",
-                  "type": "color-background"
-                }
-              },
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "rgba(200,80,70,0.25)",
-                      "value": null
-                    },
-                    {
-                      "color": "rgba(120,120,120,0.15)",
-                      "value": 0
-                    },
-                    {
-                      "color": "rgba(60,160,90,0.5)",
-                      "value": 3.25
-                    }
-                  ]
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Size (contracts)"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "short"
-              },
-              {
-                "id": "decimals",
-                "value": 0
-              },
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "mode": "gradient",
-                  "type": "color-background"
-                }
-              },
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "rgba(120,120,120,0.10)",
-                      "value": null
-                    },
-                    {
-                      "color": "rgba(60,160,90,0.35)",
-                      "value": 10
-                    }
-                  ]
-                }
-              }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "showHeader": true,
-        "sortBy": [
-          {
-            "desc": true,
-            "displayName": "Edge (\u00a2)"
-          }
-        ]
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "predbot_cross_edge_cents",
-          "legendFormat": "",
-          "refId": "A",
-          "instant": true,
-          "range": false,
-          "format": "table"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "predbot_cross_edge_size",
-          "legendFormat": "",
-          "refId": "B",
-          "instant": true,
-          "range": false,
-          "format": "table"
-        }
-      ],
-      "transformations": [
-        {
-          "id": "merge",
-          "options": {}
-        },
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {
-              "Time": true,
-              "__name__": true,
-              "instance": true,
-              "job": true
-            },
-            "indexByName": {
-              "market": 0,
-              "category": 1,
-              "Value #A": 2,
-              "Value #B": 3
-            },
-            "renameByName": {
-              "market": "Market",
-              "category": "Category",
-              "Value #A": "Edge (\u00a2)",
-              "Value #B": "Size (contracts)"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "type": "text",
-      "id": 25,
-      "title": "",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 2,
-        "w": 24,
-        "x": 0,
-        "y": 51
-      },
-      "options": {
-        "mode": "markdown",
-        "content": "**Edge = best cross-venue `bid \u2212 ask` (\u00a2).** A row is a real opportunity only when **Edge > 3.25\u00a2 (fee wall) AND Size \u2265 10 contracts** \u2014 a wide edge on a thin book is a phantom, not an arb, which is why size is shown alongside every edge."
-      }
-    },
-    {
-      "type": "row",
-      "id": 26,
-      "title": "Positions (live, from the venues)",
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 53
-      }
-    },
-    {
-      "type": "stat",
-      "id": 27,
-      "title": "Open positions",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 6,
-        "x": 0,
-        "y": 54
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "unit": "none",
-          "decimals": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "orange",
-                "value": 1
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "count(predbot_position_contracts) or vector(0)",
-          "legendFormat": "",
-          "refId": "A",
-          "instant": true,
-          "range": false,
-          "format": "time_series"
-        }
-      ]
-    },
-    {
-      "type": "stat",
-      "id": 28,
-      "title": "Net long contracts",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 6,
-        "x": 6,
-        "y": 54
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "unit": "short",
-          "decimals": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "text",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum(predbot_position_contracts > 0) or vector(0)",
-          "legendFormat": "",
-          "refId": "A",
-          "instant": true,
-          "range": false,
-          "format": "time_series"
-        }
-      ]
-    },
-    {
-      "type": "stat",
-      "id": 29,
-      "title": "Net short contracts",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 6,
-        "x": 12,
-        "y": 54
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "unit": "short",
-          "decimals": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "red",
-                "value": null
-              },
-              {
-                "color": "text",
-                "value": 0
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum(predbot_position_contracts < 0) or vector(0)",
-          "legendFormat": "",
-          "refId": "A",
-          "instant": true,
-          "range": false,
-          "format": "time_series"
-        }
-      ]
-    },
-    {
-      "type": "stat",
-      "id": 30,
-      "title": "Venues holding",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 6,
-        "x": 18,
-        "y": 54
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "unit": "none",
-          "decimals": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "text",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "count(count by (venue) (predbot_position_contracts)) or vector(0)",
-          "legendFormat": "",
-          "refId": "A",
-          "instant": true,
-          "range": false,
-          "format": "time_series"
-        }
-      ]
-    },
-    {
-      "type": "table",
-      "id": 31,
-      "title": "Live positions",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 59
-      },
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "align": "auto"
-          }
-        },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Contracts"
-            },
-            "properties": [
-              {
-                "id": "unit",
-                "value": "short"
-              },
-              {
-                "id": "decimals",
-                "value": 2
-              },
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "mode": "color-text",
-                  "type": "color-text"
-                }
-              },
-              {
-                "id": "thresholds",
-                "value": {
-                  "mode": "absolute",
-                  "steps": [
-                    {
-                      "color": "red",
-                      "value": null
-                    },
-                    {
-                      "color": "text",
-                      "value": 0
-                    },
-                    {
-                      "color": "green",
-                      "value": 0.0001
-                    }
-                  ]
-                }
-              }
-            ]
-          }
-        ]
-      },
-      "options": {
-        "showHeader": true,
-        "sortBy": [
-          {
-            "desc": true,
-            "displayName": "Contracts"
-          }
-        ]
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "predbot_position_contracts",
-          "legendFormat": "",
-          "refId": "A",
-          "instant": true,
-          "range": false,
-          "format": "table"
-        }
-      ],
-      "transformations": [
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {
-              "Time": true,
-              "__name__": true,
-              "instance": true,
-              "job": true
-            },
-            "indexByName": {
-              "venue": 0,
-              "market": 1,
-              "Value": 2
-            },
-            "renameByName": {
-              "venue": "Venue",
-              "market": "Market",
-              "Value": "Contracts"
-            }
-          }
-        }
-      ]
-    },
-    {
-      "type": "text",
-      "id": 32,
-      "title": "",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 2,
-        "w": 24,
-        "x": 0,
-        "y": 67
-      },
-      "options": {
-        "mode": "markdown",
-        "content": "**Contracts is signed** \u2014 positive = long YES, **negative = a short / naked leg** (read straight from each venue's account every 15s). Empty when flat."
-      }
-    },
-    {
-      "type": "row",
-      "id": 33,
-      "title": "Naked / half-filled legs",
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 69
-      }
-    },
-    {
-      "type": "stat",
-      "id": 34,
-      "title": "Naked-leg exposure (contracts)",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 12,
-        "x": 0,
-        "y": 70
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "unit": "short",
-          "decimals": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 0.0001
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "sum(predbot_unhedged_contracts) or vector(0)",
-          "legendFormat": "",
-          "refId": "A",
-          "instant": true,
-          "range": false,
-          "format": "time_series"
-        }
-      ]
-    },
-    {
-      "type": "stat",
-      "id": 35,
-      "title": "Markets with a naked leg",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 12,
-        "x": 12,
-        "y": 70
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "unit": "none",
-          "decimals": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 1
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "colorMode": "value",
-        "graphMode": "area",
-        "justifyMode": "center",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "count(predbot_unhedged_contracts > 0) or vector(0)",
-          "legendFormat": "",
-          "refId": "A",
-          "instant": true,
-          "range": false,
-          "format": "time_series"
-        }
-      ]
-    },
-    {
-      "type": "timeseries",
-      "id": 36,
-      "title": "Unhedged contracts by market (nonzero = a leg without its hedge)",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 7,
-        "w": 24,
-        "x": 0,
-        "y": 75
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "drawStyle": "line",
-            "fillOpacity": 6,
-            "lineWidth": 1,
-            "showPoints": "never",
-            "spanNulls": true,
-            "thresholdsStyle": {
-              "mode": "line"
-            }
-          },
-          "unit": "short",
-          "decimals": 0,
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 0.0001
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "options": {
-        "legend": {
-          "calcs": [
-            "lastNotNull",
-            "max"
-          ],
-          "displayMode": "table",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "prometheus"
-          },
-          "expr": "predbot_unhedged_contracts",
-          "legendFormat": "{{canonical}}",
-          "refId": "A",
-          "instant": false,
-          "range": true,
-          "format": "time_series"
-        }
-      ]
-    },
-    {
-      "type": "text",
-      "id": 37,
-      "title": "",
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "gridPos": {
-        "h": 2,
-        "w": 24,
-        "x": 0,
-        "y": 82
-      },
-      "options": {
-        "mode": "markdown",
-        "content": "`predbot_unhedged_contracts` is nonzero whenever a leg filled without its hedge. Cross-reference the `predbot-live` journal: **`PAIR OUTCOME`** lines classify every placement (HEDGED / HEDGED_PARTIAL / LEGGED / BOTH_ZERO), and **`position reconciliation`** lines log venue-vs-belief every 30s."
-      }
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "value",
+    "graphMode": "area",
+    "justifyMode": "center",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
     }
-  ],
-  "refresh": "30s",
-  "schemaVersion": 39,
-  "tags": [
-    "predbot",
-    "trading"
-  ],
-  "time": {
-    "from": "now-6h",
-    "to": "now"
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(predbot_balance_usd)",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true,
+     "range": false,
+     "format": "time_series"
+    }
+   ]
   },
-  "timezone": "browser",
-  "title": "predbot",
-  "uid": "predbot"
+  {
+   "type": "stat",
+   "id": 40,
+   "title": "Kalshi",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 5,
+    "w": 8,
+    "x": 8,
+    "y": 1
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "thresholds"
+     },
+     "unit": "currencyUSD",
+     "decimals": 2,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "value",
+    "graphMode": "area",
+    "justifyMode": "center",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    }
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(predbot_balance_usd{venue=\"kalshi\"})",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true,
+     "range": false,
+     "format": "time_series"
+    }
+   ]
+  },
+  {
+   "type": "stat",
+   "id": 41,
+   "title": "Poly US",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 5,
+    "w": 8,
+    "x": 16,
+    "y": 1
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "thresholds"
+     },
+     "unit": "currencyUSD",
+     "decimals": 2,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "value",
+    "graphMode": "area",
+    "justifyMode": "center",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    }
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(predbot_balance_usd{venue=\"polymarketus\"})",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true,
+     "range": false,
+     "format": "time_series"
+    }
+   ]
+  },
+  {
+   "type": "timeseries",
+   "id": 42,
+   "title": "Balance by venue (+ total)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 7,
+    "w": 24,
+    "x": 0,
+    "y": 6
+   },
+   "fieldConfig": {
+    "defaults": {
+     "unit": "currencyUSD",
+     "decimals": 2,
+     "custom": {
+      "drawStyle": "line",
+      "lineWidth": 2,
+      "fillOpacity": 8,
+      "showPoints": "never",
+      "spanNulls": true
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Total"
+      },
+      "properties": [
+       {
+        "id": "custom.lineWidth",
+        "value": 3
+       },
+       {
+        "id": "color",
+        "value": {
+         "mode": "fixed",
+         "fixedColor": "green"
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "legend": {
+     "displayMode": "list",
+     "placement": "bottom",
+     "calcs": [
+      "lastNotNull"
+     ]
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "predbot_balance_usd",
+     "legendFormat": "{{venue}}",
+     "refId": "A",
+     "instant": false,
+     "range": true,
+     "format": "time_series"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(predbot_balance_usd)",
+     "legendFormat": "Total",
+     "refId": "B",
+     "instant": "B",
+     "range": false,
+     "format": "time_series"
+    }
+   ]
+  },
+  {
+   "type": "row",
+   "id": 1,
+   "title": "Data recorded",
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 13
+   }
+  },
+  {
+   "type": "stat",
+   "id": 2,
+   "title": "Data on disk",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 0,
+    "y": 14
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "thresholds"
+     },
+     "unit": "bytes",
+     "decimals": 0,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "value",
+    "graphMode": "area",
+    "justifyMode": "center",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    }
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(predbot_data_bytes)",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true,
+     "range": false,
+     "format": "time_series"
+    }
+   ]
+  },
+  {
+   "type": "stat",
+   "id": 3,
+   "title": "Raw",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 4,
+    "y": 14
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "thresholds"
+     },
+     "unit": "bytes",
+     "decimals": 0,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "value",
+    "graphMode": "area",
+    "justifyMode": "center",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    }
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(predbot_data_bytes{stream=\"raw\"})",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true,
+     "range": false,
+     "format": "time_series"
+    }
+   ]
+  },
+  {
+   "type": "stat",
+   "id": 4,
+   "title": "Normalized",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 8,
+    "y": 14
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "thresholds"
+     },
+     "unit": "bytes",
+     "decimals": 0,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "value",
+    "graphMode": "area",
+    "justifyMode": "center",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    }
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(predbot_data_bytes{stream=\"normalized\"})",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true,
+     "range": false,
+     "format": "time_series"
+    }
+   ]
+  },
+  {
+   "type": "stat",
+   "id": 5,
+   "title": "Snapshots recorded (range)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 12,
+    "y": 14
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "thresholds"
+     },
+     "unit": "short",
+     "decimals": 0,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "value",
+    "graphMode": "area",
+    "justifyMode": "center",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    }
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(increase(predbot_snapshots_total[$__range]))",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": false,
+     "range": true,
+     "format": "time_series"
+    }
+   ]
+  },
+  {
+   "type": "stat",
+   "id": 6,
+   "title": "Kalshi (range)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 16,
+    "y": 14
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "thresholds"
+     },
+     "unit": "short",
+     "decimals": 0,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "value",
+    "graphMode": "area",
+    "justifyMode": "center",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    }
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(increase(predbot_snapshots_total{venue=\"kalshi\"}[$__range]))",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": false,
+     "range": true,
+     "format": "time_series"
+    }
+   ]
+  },
+  {
+   "type": "stat",
+   "id": 7,
+   "title": "Poly US (range)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 20,
+    "y": 14
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "thresholds"
+     },
+     "unit": "short",
+     "decimals": 0,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "value",
+    "graphMode": "area",
+    "justifyMode": "center",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    }
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(increase(predbot_snapshots_total{venue=\"polymarketus\"}[$__range]))",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": false,
+     "range": true,
+     "format": "time_series"
+    }
+   ]
+  },
+  {
+   "type": "timeseries",
+   "id": 8,
+   "title": "Data on disk by stream",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 6,
+    "w": 24,
+    "x": 0,
+    "y": 18
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "palette-classic"
+     },
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 6,
+      "lineWidth": 1,
+      "showPoints": "never",
+      "spanNulls": true
+     },
+     "unit": "bytes",
+     "decimals": 0
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ],
+     "displayMode": "table",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum by (stream) (predbot_data_bytes)",
+     "legendFormat": "{{stream}}",
+     "refId": "A",
+     "instant": false,
+     "range": true,
+     "format": "time_series"
+    }
+   ]
+  },
+  {
+   "type": "row",
+   "id": 9,
+   "title": "Throughput & freshness",
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 24
+   }
+  },
+  {
+   "type": "stat",
+   "id": 10,
+   "title": "Snapshots/s (Kalshi)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 0,
+    "y": 25
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "thresholds"
+     },
+     "unit": "short",
+     "decimals": 1,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "value",
+    "graphMode": "area",
+    "justifyMode": "center",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    }
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(rate(predbot_snapshots_total{venue=\"kalshi\"}[5m]))",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": false,
+     "range": true,
+     "format": "time_series"
+    }
+   ]
+  },
+  {
+   "type": "stat",
+   "id": 11,
+   "title": "Snapshots/s (Poly US)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 4,
+    "y": 25
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "thresholds"
+     },
+     "unit": "short",
+     "decimals": 1,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "value",
+    "graphMode": "area",
+    "justifyMode": "center",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    }
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(rate(predbot_snapshots_total{venue=\"polymarketus\"}[5m]))",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": false,
+     "range": true,
+     "format": "time_series"
+    }
+   ]
+  },
+  {
+   "type": "timeseries",
+   "id": 12,
+   "title": "Normalized snapshots / s",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 16,
+    "x": 8,
+    "y": 25
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "palette-classic"
+     },
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 6,
+      "lineWidth": 1,
+      "showPoints": "never",
+      "spanNulls": true
+     },
+     "unit": "short",
+     "decimals": 1
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ],
+     "displayMode": "table",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum by (venue) (rate(predbot_snapshots_total[5m]))",
+     "legendFormat": "{{venue}}",
+     "refId": "A",
+     "instant": false,
+     "range": true,
+     "format": "time_series"
+    }
+   ]
+  },
+  {
+   "type": "timeseries",
+   "id": 13,
+   "title": "Feed latency (ts_recv - ts_server)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 0,
+    "y": 29
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "palette-classic"
+     },
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 6,
+      "lineWidth": 1,
+      "showPoints": "never",
+      "spanNulls": true
+     },
+     "unit": "s",
+     "decimals": 3
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ],
+     "displayMode": "table",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "histogram_quantile(0.50, sum by (le,venue) (rate(predbot_feed_latency_seconds_bucket[5m])))",
+     "legendFormat": "p50 {{venue}}",
+     "refId": "A",
+     "instant": false,
+     "range": true,
+     "format": "time_series"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "histogram_quantile(0.95, sum by (le,venue) (rate(predbot_feed_latency_seconds_bucket[5m])))",
+     "legendFormat": "p95 {{venue}}",
+     "refId": "B",
+     "instant": false,
+     "range": true,
+     "format": "time_series"
+    }
+   ]
+  },
+  {
+   "type": "timeseries",
+   "id": 14,
+   "title": "Book age (freshest snapshot)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 12,
+    "x": 12,
+    "y": 29
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "palette-classic"
+     },
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 6,
+      "lineWidth": 1,
+      "showPoints": "never",
+      "spanNulls": true
+     },
+     "unit": "s",
+     "decimals": 3
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ],
+     "displayMode": "table",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "histogram_quantile(0.50, sum by (le,venue) (rate(predbot_book_age_seconds_bucket[5m])))",
+     "legendFormat": "p50 {{venue}}",
+     "refId": "A",
+     "instant": false,
+     "range": true,
+     "format": "time_series"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "histogram_quantile(0.95, sum by (le,venue) (rate(predbot_book_age_seconds_bucket[5m])))",
+     "legendFormat": "p95 {{venue}}",
+     "refId": "B",
+     "instant": false,
+     "range": true,
+     "format": "time_series"
+    }
+   ]
+  },
+  {
+   "type": "row",
+   "id": 15,
+   "title": "Feed integrity",
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 37
+   }
+  },
+  {
+   "type": "stat",
+   "id": 16,
+   "title": "Seq gaps (last 1h)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 0,
+    "y": 38
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "thresholds"
+     },
+     "unit": "short",
+     "decimals": 0,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "orange",
+        "value": 1
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "value",
+    "graphMode": "area",
+    "justifyMode": "center",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    }
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(increase(predbot_seq_gaps_total[1h]))",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": false,
+     "range": true,
+     "format": "time_series"
+    }
+   ]
+  },
+  {
+   "type": "stat",
+   "id": 17,
+   "title": "Reconnects (last 1h)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 4,
+    "w": 4,
+    "x": 4,
+    "y": 38
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "thresholds"
+     },
+     "unit": "short",
+     "decimals": 0,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "orange",
+        "value": 1
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "value",
+    "graphMode": "area",
+    "justifyMode": "center",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    }
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(increase(predbot_reconnects_total[1h]))",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": false,
+     "range": true,
+     "format": "time_series"
+    }
+   ]
+  },
+  {
+   "type": "timeseries",
+   "id": 18,
+   "title": "Seq gaps / s (Kalshi) \u00b7 Reconnects / s \u00b7 Parse errors / s",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 16,
+    "x": 8,
+    "y": 38
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "palette-classic"
+     },
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 6,
+      "lineWidth": 1,
+      "showPoints": "never",
+      "spanNulls": true
+     },
+     "unit": "short",
+     "decimals": 3
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ],
+     "displayMode": "table",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(rate(predbot_seq_gaps_total{venue=\"kalshi\"}[5m]))",
+     "legendFormat": "seq gaps (kalshi)",
+     "refId": "A",
+     "instant": false,
+     "range": true,
+     "format": "time_series"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum by (venue) (rate(predbot_reconnects_total[5m]))",
+     "legendFormat": "reconnect {{venue}}",
+     "refId": "B",
+     "instant": false,
+     "range": true,
+     "format": "time_series"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum by (venue) (rate(predbot_parse_errors_total[5m]))",
+     "legendFormat": "parse err {{venue}}",
+     "refId": "C",
+     "instant": false,
+     "range": true,
+     "format": "time_series"
+    }
+   ]
+  },
+  {
+   "type": "row",
+   "id": 19,
+   "title": "Live arb surface",
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 46
+   }
+  },
+  {
+   "type": "stat",
+   "id": 20,
+   "title": "Real opportunities",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 5,
+    "w": 6,
+    "x": 0,
+    "y": 47
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "thresholds"
+     },
+     "unit": "none",
+     "decimals": 0,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       },
+       {
+        "color": "green",
+        "value": 1
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "value",
+    "graphMode": "area",
+    "justifyMode": "center",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    }
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "count( (predbot_cross_edge_cents > 3.25) and on(market,category) (predbot_cross_edge_size >= 10) ) or vector(0)",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true,
+     "range": false,
+     "format": "time_series"
+    }
+   ]
+  },
+  {
+   "type": "stat",
+   "id": 21,
+   "title": "Widest executable edge",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 5,
+    "w": 6,
+    "x": 6,
+    "y": 47
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "thresholds"
+     },
+     "unit": "none",
+     "decimals": 2,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "red",
+        "value": null
+       },
+       {
+        "color": "orange",
+        "value": 0
+       },
+       {
+        "color": "green",
+        "value": 3.25
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "value",
+    "graphMode": "area",
+    "justifyMode": "center",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    }
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "max( predbot_cross_edge_cents and on(market,category) (predbot_cross_edge_size >= 10) ) or vector(0)",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true,
+     "range": false,
+     "format": "time_series"
+    }
+   ]
+  },
+  {
+   "type": "stat",
+   "id": 22,
+   "title": "Markets tracked",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 5,
+    "w": 6,
+    "x": 12,
+    "y": 47
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "thresholds"
+     },
+     "unit": "none",
+     "decimals": 0,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "value",
+    "graphMode": "area",
+    "justifyMode": "center",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    }
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "count(predbot_cross_edge_cents)",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true,
+     "range": false,
+     "format": "time_series"
+    }
+   ]
+  },
+  {
+   "type": "stat",
+   "id": 23,
+   "title": "Fee wall (\u00a2)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 5,
+    "w": 6,
+    "x": 18,
+    "y": 47
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "thresholds"
+     },
+     "unit": "none",
+     "decimals": 2,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "value",
+    "graphMode": "area",
+    "justifyMode": "center",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    }
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "vector(3.25)",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true,
+     "range": false,
+     "format": "time_series"
+    }
+   ]
+  },
+  {
+   "type": "table",
+   "id": 24,
+   "title": "Live edge by market (size-vetted)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 12,
+    "w": 24,
+    "x": 0,
+    "y": 52
+   },
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "align": "auto"
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Edge (\u00a2)"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "none"
+       },
+       {
+        "id": "decimals",
+        "value": 2
+       },
+       {
+        "id": "custom.cellOptions",
+        "value": {
+         "mode": "gradient",
+         "type": "color-background"
+        }
+       },
+       {
+        "id": "thresholds",
+        "value": {
+         "mode": "absolute",
+         "steps": [
+          {
+           "color": "rgba(200,80,70,0.25)",
+           "value": null
+          },
+          {
+           "color": "rgba(120,120,120,0.15)",
+           "value": 0
+          },
+          {
+           "color": "rgba(60,160,90,0.5)",
+           "value": 3.25
+          }
+         ]
+        }
+       }
+      ]
+     },
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Size (contracts)"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "short"
+       },
+       {
+        "id": "decimals",
+        "value": 0
+       },
+       {
+        "id": "custom.cellOptions",
+        "value": {
+         "mode": "gradient",
+         "type": "color-background"
+        }
+       },
+       {
+        "id": "thresholds",
+        "value": {
+         "mode": "absolute",
+         "steps": [
+          {
+           "color": "rgba(120,120,120,0.10)",
+           "value": null
+          },
+          {
+           "color": "rgba(60,160,90,0.35)",
+           "value": 10
+          }
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "showHeader": true,
+    "sortBy": [
+     {
+      "desc": true,
+      "displayName": "Edge (\u00a2)"
+     }
+    ]
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "predbot_cross_edge_cents",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true,
+     "range": false,
+     "format": "table"
+    },
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "predbot_cross_edge_size",
+     "legendFormat": "",
+     "refId": "B",
+     "instant": true,
+     "range": false,
+     "format": "table"
+    }
+   ],
+   "transformations": [
+    {
+     "id": "merge",
+     "options": {}
+    },
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true,
+       "__name__": true,
+       "instance": true,
+       "job": true
+      },
+      "indexByName": {
+       "market": 0,
+       "category": 1,
+       "Value #A": 2,
+       "Value #B": 3
+      },
+      "renameByName": {
+       "market": "Market",
+       "category": "Category",
+       "Value #A": "Edge (\u00a2)",
+       "Value #B": "Size (contracts)"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "type": "text",
+   "id": 25,
+   "title": "",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 2,
+    "w": 24,
+    "x": 0,
+    "y": 64
+   },
+   "options": {
+    "mode": "markdown",
+    "content": "**Edge = best cross-venue `bid \u2212 ask` (\u00a2).** A row is a real opportunity only when **Edge > 3.25\u00a2 (fee wall) AND Size \u2265 10 contracts** \u2014 a wide edge on a thin book is a phantom, not an arb, which is why size is shown alongside every edge."
+   }
+  },
+  {
+   "type": "row",
+   "id": 26,
+   "title": "Positions (live, from the venues)",
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 66
+   }
+  },
+  {
+   "type": "stat",
+   "id": 27,
+   "title": "Open positions",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 5,
+    "w": 6,
+    "x": 0,
+    "y": 67
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "thresholds"
+     },
+     "unit": "none",
+     "decimals": 0,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "orange",
+        "value": 1
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "value",
+    "graphMode": "area",
+    "justifyMode": "center",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    }
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "count(predbot_position_contracts) or vector(0)",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true,
+     "range": false,
+     "format": "time_series"
+    }
+   ]
+  },
+  {
+   "type": "stat",
+   "id": 28,
+   "title": "Net long contracts",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 5,
+    "w": 6,
+    "x": 6,
+    "y": 67
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "thresholds"
+     },
+     "unit": "short",
+     "decimals": 0,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "value",
+    "graphMode": "area",
+    "justifyMode": "center",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    }
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(predbot_position_contracts > 0) or vector(0)",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true,
+     "range": false,
+     "format": "time_series"
+    }
+   ]
+  },
+  {
+   "type": "stat",
+   "id": 29,
+   "title": "Net short contracts",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 5,
+    "w": 6,
+    "x": 12,
+    "y": 67
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "thresholds"
+     },
+     "unit": "short",
+     "decimals": 0,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "red",
+        "value": null
+       },
+       {
+        "color": "text",
+        "value": 0
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "value",
+    "graphMode": "area",
+    "justifyMode": "center",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    }
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(predbot_position_contracts < 0) or vector(0)",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true,
+     "range": false,
+     "format": "time_series"
+    }
+   ]
+  },
+  {
+   "type": "stat",
+   "id": 30,
+   "title": "Venues holding",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 5,
+    "w": 6,
+    "x": 18,
+    "y": 67
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "thresholds"
+     },
+     "unit": "none",
+     "decimals": 0,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "text",
+        "value": null
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "value",
+    "graphMode": "area",
+    "justifyMode": "center",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    }
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "count(count by (venue) (predbot_position_contracts)) or vector(0)",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true,
+     "range": false,
+     "format": "time_series"
+    }
+   ]
+  },
+  {
+   "type": "table",
+   "id": 31,
+   "title": "Live positions",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 8,
+    "w": 24,
+    "x": 0,
+    "y": 72
+   },
+   "fieldConfig": {
+    "defaults": {
+     "custom": {
+      "align": "auto"
+     }
+    },
+    "overrides": [
+     {
+      "matcher": {
+       "id": "byName",
+       "options": "Contracts"
+      },
+      "properties": [
+       {
+        "id": "unit",
+        "value": "short"
+       },
+       {
+        "id": "decimals",
+        "value": 2
+       },
+       {
+        "id": "custom.cellOptions",
+        "value": {
+         "mode": "color-text",
+         "type": "color-text"
+        }
+       },
+       {
+        "id": "thresholds",
+        "value": {
+         "mode": "absolute",
+         "steps": [
+          {
+           "color": "red",
+           "value": null
+          },
+          {
+           "color": "text",
+           "value": 0
+          },
+          {
+           "color": "green",
+           "value": 0.0001
+          }
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "options": {
+    "showHeader": true,
+    "sortBy": [
+     {
+      "desc": true,
+      "displayName": "Contracts"
+     }
+    ]
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "predbot_position_contracts",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true,
+     "range": false,
+     "format": "table"
+    }
+   ],
+   "transformations": [
+    {
+     "id": "organize",
+     "options": {
+      "excludeByName": {
+       "Time": true,
+       "__name__": true,
+       "instance": true,
+       "job": true
+      },
+      "indexByName": {
+       "venue": 0,
+       "market": 1,
+       "Value": 2
+      },
+      "renameByName": {
+       "venue": "Venue",
+       "market": "Market",
+       "Value": "Contracts"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "type": "text",
+   "id": 32,
+   "title": "",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 2,
+    "w": 24,
+    "x": 0,
+    "y": 80
+   },
+   "options": {
+    "mode": "markdown",
+    "content": "**Contracts is signed** \u2014 positive = long YES, **negative = a short / naked leg** (read straight from each venue's account every 15s). Empty when flat."
+   }
+  },
+  {
+   "type": "row",
+   "id": 33,
+   "title": "Naked / half-filled legs",
+   "gridPos": {
+    "h": 1,
+    "w": 24,
+    "x": 0,
+    "y": 82
+   }
+  },
+  {
+   "type": "stat",
+   "id": 34,
+   "title": "Naked-leg exposure (contracts)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 5,
+    "w": 12,
+    "x": 0,
+    "y": 83
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "thresholds"
+     },
+     "unit": "short",
+     "decimals": 0,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "red",
+        "value": 0.0001
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "value",
+    "graphMode": "area",
+    "justifyMode": "center",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    }
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "sum(predbot_unhedged_contracts) or vector(0)",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true,
+     "range": false,
+     "format": "time_series"
+    }
+   ]
+  },
+  {
+   "type": "stat",
+   "id": 35,
+   "title": "Markets with a naked leg",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 5,
+    "w": 12,
+    "x": 12,
+    "y": 83
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "thresholds"
+     },
+     "unit": "none",
+     "decimals": 0,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "red",
+        "value": 1
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "colorMode": "value",
+    "graphMode": "area",
+    "justifyMode": "center",
+    "reduceOptions": {
+     "calcs": [
+      "lastNotNull"
+     ]
+    }
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "count(predbot_unhedged_contracts > 0) or vector(0)",
+     "legendFormat": "",
+     "refId": "A",
+     "instant": true,
+     "range": false,
+     "format": "time_series"
+    }
+   ]
+  },
+  {
+   "type": "timeseries",
+   "id": 36,
+   "title": "Unhedged contracts by market (nonzero = a leg without its hedge)",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 7,
+    "w": 24,
+    "x": 0,
+    "y": 88
+   },
+   "fieldConfig": {
+    "defaults": {
+     "color": {
+      "mode": "palette-classic"
+     },
+     "custom": {
+      "drawStyle": "line",
+      "fillOpacity": 6,
+      "lineWidth": 1,
+      "showPoints": "never",
+      "spanNulls": true,
+      "thresholdsStyle": {
+       "mode": "line"
+      }
+     },
+     "unit": "short",
+     "decimals": 0,
+     "thresholds": {
+      "mode": "absolute",
+      "steps": [
+       {
+        "color": "green",
+        "value": null
+       },
+       {
+        "color": "red",
+        "value": 0.0001
+       }
+      ]
+     }
+    },
+    "overrides": []
+   },
+   "options": {
+    "legend": {
+     "calcs": [
+      "lastNotNull",
+      "max"
+     ],
+     "displayMode": "table",
+     "placement": "bottom"
+    },
+    "tooltip": {
+     "mode": "multi",
+     "sort": "desc"
+    }
+   },
+   "targets": [
+    {
+     "datasource": {
+      "type": "prometheus",
+      "uid": "prometheus"
+     },
+     "expr": "predbot_unhedged_contracts",
+     "legendFormat": "{{canonical}}",
+     "refId": "A",
+     "instant": false,
+     "range": true,
+     "format": "time_series"
+    }
+   ]
+  },
+  {
+   "type": "text",
+   "id": 37,
+   "title": "",
+   "datasource": {
+    "type": "prometheus",
+    "uid": "prometheus"
+   },
+   "gridPos": {
+    "h": 2,
+    "w": 24,
+    "x": 0,
+    "y": 95
+   },
+   "options": {
+    "mode": "markdown",
+    "content": "`predbot_unhedged_contracts` is nonzero whenever a leg filled without its hedge. Cross-reference the `predbot-live` journal: **`PAIR OUTCOME`** lines classify every placement (HEDGED / HEDGED_PARTIAL / LEGGED / BOTH_ZERO), and **`position reconciliation`** lines log venue-vs-belief every 30s."
+   }
+  }
+ ],
+ "refresh": "30s",
+ "schemaVersion": 39,
+ "tags": [
+  "predbot",
+  "trading"
+ ],
+ "time": {
+  "from": "now-6h",
+  "to": "now"
+ },
+ "timezone": "browser",
+ "title": "predbot",
+ "uid": "predbot"
 }

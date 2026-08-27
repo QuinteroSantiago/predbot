@@ -26,6 +26,7 @@ import (
 	"predbot/internal/core"
 	"predbot/internal/exec"
 	"predbot/internal/journal"
+	"predbot/internal/live"
 	"predbot/internal/obs"
 	"predbot/internal/sports"
 	"predbot/internal/strategy"
@@ -153,6 +154,62 @@ func main() {
 		}
 		return venue.DialWS(cfg.PolymarketUS.WSURL, h)(ctx)
 	})
+
+	// Total portfolio value (Grafana): poll each venue's available balance on a
+	// slow ticker and publish it as predbot_balance_usd{venue}; the dashboard sums
+	// the series. This lives in the always-on recorder so the number shows even
+	// when the trade-only live bot is idle. Authenticated mode only — public REST
+	// polling has no credentials to read an account. Reads happen in this
+	// goroutine, never in the metric callback, so venue REST stays off the scrape
+	// path; on an error we keep the last-known value rather than blanking it.
+	if !*publicMode {
+		kSign := func(m, p string) (http.Header, error) { return kalshi.AuthHeaders(m, "/trade-api/v2"+p) }
+		pSign := func(m, p string) (http.Header, error) { return polymarketus.AuthHeaders(m, p) }
+		accts := []live.AccountClient{
+			live.NewKalshiAccount("https://api.elections.kalshi.com/trade-api/v2", kSign),
+			live.NewPolyUSAccount("https://api.polymarket.us", pSign),
+		}
+		var balMu sync.Mutex
+		balances := map[string]float64{}
+		if err := obs.RegisterBalanceGauge(func() []obs.VenueBalance {
+			balMu.Lock()
+			defer balMu.Unlock()
+			out := make([]obs.VenueBalance, 0, len(balances))
+			for v, usd := range balances {
+				out = append(out, obs.VenueBalance{Venue: v, USD: usd})
+			}
+			return out
+		}); err != nil {
+			slog.Warn("balance gauge disabled", "err", err)
+		}
+		go func() {
+			poll := func() {
+				for _, a := range accts {
+					bctx, bcancel := context.WithTimeout(rootCtx, 15*time.Second)
+					usd, err := a.BalanceUSD(bctx)
+					bcancel()
+					if err != nil {
+						slog.Warn("balance poll failed", "venue", a.Venue(), "err", err)
+						continue // keep last-known rather than reporting a false zero
+					}
+					balMu.Lock()
+					balances[a.Venue()] = usd
+					balMu.Unlock()
+				}
+			}
+			poll()
+			t := time.NewTicker(60 * time.Second)
+			defer t.Stop()
+			for {
+				select {
+				case <-rootCtx.Done():
+					return
+				case <-t.C:
+					poll()
+				}
+			}
+		}()
+	}
 
 	var ingesters []struct {
 		ing     venue.Ingester

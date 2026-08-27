@@ -157,6 +157,33 @@ func RegisterPositionsGauge(snapshot func() []Position) error {
 	return err
 }
 
+// VenueBalance is one venue's available balance in dollars (Kalshi cash /
+// Polymarket buying power). Summing across venues gives total account value —
+// the cash side of the portfolio, not marked-to-market open positions.
+type VenueBalance struct {
+	Venue string
+	USD   float64
+}
+
+// RegisterBalanceGauge publishes each venue's available balance as
+// predbot_balance_usd{venue}. A Grafana panel sums the series for total
+// portfolio value. Lives in the always-on recorder (not the trade-only live
+// bot) so the number is visible even when the bot is idle. On a read error the
+// poller keeps the last-known value rather than reporting zero (see cmd/record).
+func RegisterBalanceGauge(snapshot func() []VenueBalance) error {
+	m := otel.Meter(serviceName)
+	_, err := m.Float64ObservableGauge("predbot_balance_usd",
+		metric.WithDescription("available balance per venue in USD (Kalshi cash / Poly buying power); sum = total portfolio cash"),
+		metric.WithUnit("usd"),
+		metric.WithFloat64Callback(func(_ context.Context, o metric.Float64Observer) error {
+			for _, b := range snapshot() {
+				o.Observe(b.USD, metric.WithAttributes(attribute.String("venue", b.Venue)))
+			}
+			return nil
+		}))
+	return err
+}
+
 // RegisterUnhedgedGauge publishes the live unhedged (naked-leg) exposure per
 // market as predbot_unhedged_contracts{canonical}. Any nonzero value is a leg
 // that filled without its hedge — the exact failure this surfaces on a
