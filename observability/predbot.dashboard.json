@@ -1167,7 +1167,7 @@
     {
       "type": "timeseries",
       "id": 18,
-      "title": "Seq gaps / s (Kalshi) · Reconnects / s · Parse errors / s",
+      "title": "Seq gaps / s (Kalshi) \u00b7 Reconnects / s \u00b7 Parse errors / s",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1251,7 +1251,7 @@
     {
       "type": "row",
       "id": 19,
-      "title": "Live arb surface (monitor)",
+      "title": "Live MLB arb surface (monitor)",
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -1390,7 +1390,7 @@
     {
       "type": "stat",
       "id": 22,
-      "title": "Markets tracked",
+      "title": "MLB games tracked",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1448,7 +1448,7 @@
     {
       "type": "stat",
       "id": 23,
-      "title": "Fee wall (¢)",
+      "title": "Fee wall (\u00a2)",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1506,7 +1506,7 @@
     {
       "type": "table",
       "id": 24,
-      "title": "Live edge by market (size- & volume-vetted)",
+      "title": "Live edge by MLB game (size- & volume-vetted)",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1527,7 +1527,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "Edge (¢)"
+              "options": "Edge (\u00a2)"
             },
             "properties": [
               {
@@ -1613,7 +1613,7 @@
         "sortBy": [
           {
             "desc": true,
-            "displayName": "Edge (¢)"
+            "displayName": "Edge (\u00a2)"
           }
         ]
       },
@@ -1678,7 +1678,7 @@
             "renameByName": {
               "market": "Market",
               "category": "Category",
-              "Value #A": "Edge (¢)",
+              "Value #A": "Edge (\u00a2)",
               "Value #B": "Size (contracts)",
               "Value #C": "Last trade (s)"
             }
@@ -1702,7 +1702,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "**Edge = best cross-venue `bid − ask` (¢).** A row is a *real* opportunity only when **Edge > 3.25¢ (fee wall) AND Size ≥ 10 contracts AND the market has actually traded in the last 5 min** — a wide edge on a thin or untraded book (a lone maker repricing an illiquid quote) is a phantom, not an arb.\n\nThis surface is a **monitor, not a trigger.** predbot's own measurements show these three conditions almost never co-occur at retail size, so the live-execution path is **retired (2026-08-28)** and this dashboard is the product."
+        "content": "**Edge = best cross-venue `bid \u2212 ask` (\u00a2).** A row is a *real* opportunity only when **Edge > 3.25\u00a2 (fee wall) AND Size \u2265 10 contracts AND the market has actually traded in the last 5\u202fmin** \u2014 a wide edge on a thin or untraded book (a lone maker repricing an illiquid quote) is a phantom, not an arb.\n\nThe universe is now **MLB daily games only** (narrowed 2026-08-28): the static cross-category markets were thin and repriced on zero volume, so their edges were phantom. The **Size \u2265 10** gate is the same liquidity floor the recorder now enforces on its paper trades (`min_depth`). This surface is a **monitor**; predbot paper-trades these in the background to measure whether an MLB edge survives \u2014 live execution stays parked until it does."
       }
     },
     {
@@ -2085,7 +2085,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "**Contracts is signed** — positive = long YES, **negative = a short / naked leg** (read straight from each venue's account every 15s). Empty when flat."
+        "content": "**Contracts is signed** \u2014 positive = long YES, **negative = a short / naked leg** (read straight from each venue's account every 15s). Empty when flat."
       }
     },
     {
@@ -2332,5 +2332,5 @@
   "timezone": "browser",
   "title": "predbot",
   "uid": "predbot",
-  "description": "Signal & monitoring for the Kalshi <-> Polymarket US prediction-market feeds. Execution retired 2026-08-28 (arb not liquid/executable at retail size); this dashboard is the product."
+  "description": "MLB-only cross-venue arb monitor (Kalshi <-> Polymarket US). Narrowed 2026-08-28 to MLB daily games + a 10-contract liquidity floor, after the recorded data showed the fast, real edges are on MLB games and the thin static markets were phantom. Paper mode, no real money \u2014 gathering data on whether an MLB edge actually survives; live execution parked (reversible)."
 }
