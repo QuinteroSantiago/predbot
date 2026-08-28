@@ -16,14 +16,27 @@ Type=simple
 User=predbot
 Group=predbot
 WorkingDirectory=/opt/predbot
+# MINIMUM-RISK MLB run (2026-08-28): smallest possible size + tight guards.
+#   -max-order-contracts=1   one contract per leg — the smallest bet there is.
+#   -max-unhedged-contracts=2  NOT 1: the Kalshi exchange-side order group is
+#     sized to this cap (cmd/live ~L220), and the safety EXIT of a naked Kalshi
+#     leg is itself a Kalshi order. A limit of 1 would let the entry through but
+#     block its own exit. 2 leaves room for entry + exit; with 1-contract orders
+#     the real naked exposure is still ~1 contract (~$1 worst case).
+#   -pnl-floor-usd=-5        halt after $5 of realized loss — a hard backstop.
+#   -min-depth-contracts=10  both legs need 10 contracts of real depth before we
+#     act (10x our order size) — the phantom-edge guard that the 2026-08-24
+#     naked-leg incident was missing.
+# NOTE: this is not a profit run — at 1 contract the dollars are trivial either
+# way. It is a "does the MLB arb actually fire correctly with real money" run.
 ExecStart=/opt/predbot/predbot-live \
   -config /opt/predbot/config/config.yaml \
   -markets /opt/predbot/config/markets.yaml \
   -dry-run=false \
   -i-understand-this-places-real-orders \
-  -max-order-contracts=5 \
-  -max-unhedged-contracts=10 \
-  -pnl-floor-usd=-25 \
+  -max-order-contracts=1 \
+  -max-unhedged-contracts=2 \
+  -pnl-floor-usd=-5 \
   -min-depth-contracts=10 \
   -sports=mlb
 
