@@ -84,14 +84,23 @@ func Venue(v string) metric.MeasurementOption {
 }
 
 // MarketEdge is one market's current cross-venue gross edge, in cents, with the
-// fillable size (contracts) behind it. A wide edge with near-zero size is a
-// phantom against a thin book, so both travel together: consumers gate on size.
+// fillable size (contracts) behind it and the age of the last actual trade. A
+// wide edge is a phantom in two ways that its quotes cannot reveal: near-zero
+// size against a thin book, OR a quote that repriced far on ZERO volume (a lone
+// maker moving/pulling the top of an illiquid book). Both qualifiers travel with
+// the edge so consumers gate on them: a real opportunity has size AND has traded
+// recently. TradeAgeSec is large (NoTradeAgeSec) when the market has not printed.
 type MarketEdge struct {
-	Market   string
-	Category string
-	Cents    float64
-	Size     float64 // fillable contracts at that edge (min of both tops)
+	Market      string
+	Category    string
+	Cents       float64
+	Size        float64 // fillable contracts at that edge (min of both tops)
+	TradeAgeSec float64 // seconds since the last trade on either venue (NoTradeAgeSec if never)
 }
+
+// NoTradeAgeSec is the TradeAgeSec sentinel for a market with no observed trade.
+// It is deliberately huge so any freshness gate (trade_age < window) rejects it.
+const NoTradeAgeSec = 999999
 
 // RegisterCrossEdgeGauge installs async gauges that, on each collection, ask
 // snapshot() for the current cross-venue edge of every fresh market and report
@@ -126,7 +135,20 @@ func RegisterCrossEdgeGauge(snapshot func() []MarketEdge) error {
 			}
 			return nil
 		}))
-	return errors.Join(errC, errS)
+	// Trade-age is the third qualifier: a wide, deep-looking edge whose quotes
+	// last moved with ZERO volume behind them is a phantom (a lone maker repricing
+	// an illiquid book). A real opportunity has edge AND size AND recent volume, so
+	// the dashboard's "real opportunities" panel gates on all three.
+	_, errT := m.Float64ObservableGauge("predbot_cross_edge_trade_age_seconds",
+		metric.WithDescription("seconds since the last actual trade on either venue for this market (large when the quote repriced on zero volume)"),
+		metric.WithUnit("s"),
+		metric.WithFloat64Callback(func(_ context.Context, o metric.Float64Observer) error {
+			for _, e := range snapshot() {
+				o.Observe(e.TradeAgeSec, attrs(e))
+			}
+			return nil
+		}))
+	return errors.Join(errC, errS, errT)
 }
 
 // Position is one venue+market holding, as the venue's own account reports it.

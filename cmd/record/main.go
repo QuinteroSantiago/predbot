@@ -98,6 +98,10 @@ func main() {
 	}
 	var edgeMu sync.Mutex
 	liveEdges := map[string]liveEdge{}
+	// lastTrade[canonical] = TsRecv (nanos) of the most recent actual trade on
+	// either venue. It converts a book edge into a real-opportunity signal: a wide
+	// edge whose market has not printed in a long time repriced on zero volume.
+	lastTrade := map[string]int64{}
 	if err := obs.RegisterCrossEdgeGauge(func() []obs.MarketEdge {
 		edgeMu.Lock()
 		defer edgeMu.Unlock()
@@ -107,7 +111,11 @@ func main() {
 			if now-e.oldest > int64(20*time.Second) {
 				continue // a venue went quiet — drop rather than report a stale edge
 			}
-			out = append(out, obs.MarketEdge{Market: mkt, Category: e.cat, Cents: e.cents, Size: e.size})
+			ageSec := float64(obs.NoTradeAgeSec)
+			if ts, ok := lastTrade[mkt]; ok {
+				ageSec = time.Duration(now - ts).Seconds()
+			}
+			out = append(out, obs.MarketEdge{Market: mkt, Category: e.cat, Cents: e.cents, Size: e.size, TradeAgeSec: ageSec})
 		}
 		return out
 	}); err != nil {
@@ -264,6 +272,13 @@ func main() {
 	// give real traded volume rather than advertised depth.
 	if !*publicMode {
 		writeTrade := func(t venue.Trade) {
+			// Stamp the market's last-trade time so the cross-edge gauge can flag a
+			// wide edge that repriced with no volume behind it (a phantom).
+			if canonical, ok := bm.Canonical(t.Venue, t.VenueID); ok {
+				edgeMu.Lock()
+				lastTrade[canonical] = t.TsRecv
+				edgeMu.Unlock()
+			}
 			line, err := json.Marshal(t)
 			if err != nil {
 				return
