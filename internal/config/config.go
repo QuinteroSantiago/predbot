@@ -33,6 +33,7 @@ type Config struct {
 		LatencyMS     int     `yaml:"latency_ms"`      // §10.2 fill delay, default 150
 		MinEdge       int64   `yaml:"min_edge"`        // §9.1 per-contract net edge, $0.0001, default 100 (1¢)
 		MaxClip       int64   `yaml:"max_clip"`        // Qty units, default 5000 (50 contracts)
+		MinDepth      int64   `yaml:"min_depth"`       // liquidity floor: both legs must have this top-of-book Qty (0 = off, 100 = 1 contract)
 		KalshiFeeMult float64 `yaml:"kalshi_fee_mult"` // §6.1, default 0.07
 		MaxBookAgeMS  int64   `yaml:"max_book_age_ms"` // stale-book guard, default 5000
 		MaxSkewMS     int64   `yaml:"max_skew_ms"`     // max cross-venue capture-time skew to act on, default 1000

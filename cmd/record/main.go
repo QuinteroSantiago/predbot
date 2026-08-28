@@ -311,7 +311,7 @@ func main() {
 			slog.Warn("paper gauges disabled", "err", err)
 		}
 		go pt.Run(rootCtx)
-		scfg := strategy.Config{MinEdge: core.Price(cfg.Backtest.MinEdge), MaxClip: core.Qty(cfg.Backtest.MaxClip)}
+		scfg := strategy.Config{MinEdge: core.Price(cfg.Backtest.MinEdge), MaxClip: core.Qty(cfg.Backtest.MaxClip), MinDepth: core.Qty(cfg.Backtest.MinDepth)}
 		maxAge := cfg.Backtest.MaxBookAgeMS * int64(time.Millisecond)
 		maxSkew := cfg.Backtest.MaxSkewMS * int64(time.Millisecond)
 		go runPaper(rootCtx, bm, fees, scfg, maxAge, maxSkew, pt)
