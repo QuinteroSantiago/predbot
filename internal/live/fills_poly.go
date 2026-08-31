@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"predbot/internal/core"
@@ -54,6 +55,13 @@ type PolyUSFills struct {
 	// poke requests an immediate re-subscribe (coalesced, size 1) so a newly
 	// traded slug is covered without waiting for the periodic ticker.
 	poke chan struct{}
+
+	// everCovered flips true the first time we subscribe to a non-empty slug set.
+	// An empty set BEFORE that is expected — startup and off-hours simply have no
+	// MLB games discovered yet, and with zero tradeable markets there are zero
+	// orders to miss. An empty set AFTER we've had coverage is a real regression
+	// (we lost the markets we were watching), so only that case is loud.
+	everCovered atomic.Bool
 
 	mu sync.Mutex
 	// covered is the slug set the stream has subscribed to on the CURRENT live
@@ -157,9 +165,18 @@ func (p *PolyUSFills) Run(ctx context.Context, h FillHandler) {
 				slugs = p.slugs()
 			}
 			if len(slugs) == 0 {
-				p.log.Error("NO market slugs to subscribe to — fills would be invisible")
+				if p.everCovered.Load() {
+					// We were watching markets and now have none — genuine loss of
+					// coverage while the bot may still hold/trade a leg.
+					p.log.Error("market slug set went EMPTY after coverage — fills would be invisible")
+				} else {
+					// No games discovered yet (startup / off-hours). Nothing to trade,
+					// so nothing to miss; the periodic re-subscribe will pick games up.
+					p.log.Info("no markets to subscribe yet — none discovered", "subscribed_markets", 0)
+				}
 				return 0
 			}
+			p.everCovered.Store(true)
 			// Chunk to stay within the documented 100-market subscription limit.
 			for i := 0; i < len(slugs); i += 100 {
 				end := min(i+100, len(slugs))
