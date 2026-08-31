@@ -30,6 +30,12 @@ type DriftMonitor struct {
 
 	Interval  time.Duration // default 30s
 	Tolerance float64       // contracts of allowed mismatch (fills in flight); default 0.01
+
+	// lastSig holds the previous clean-reconcile signature per venue, so a
+	// matching poll is logged only when it CHANGES. A held hedge otherwise emits
+	// an identical INFO line every Interval forever — the same journal-flooding
+	// anti-pattern the kill path already guards against (see Run).
+	lastSig map[string]string
 }
 
 func NewDriftMonitor(accounts []AccountClient, engine *risk.Engine, expected func() map[string]float64) *DriftMonitor {
@@ -37,6 +43,7 @@ func NewDriftMonitor(accounts []AccountClient, engine *risk.Engine, expected fun
 		accounts: accounts, engine: engine, expected: expected,
 		log:      slog.With("component", "drift-monitor"),
 		Interval: 30 * time.Second, Tolerance: 0.01,
+		lastSig: map[string]string{},
 	}
 }
 
@@ -80,10 +87,10 @@ func (d *DriftMonitor) check(ctx context.Context) {
 			d.log.Warn("position read failed; cannot verify drift", "venue", a.Venue(), "err", err)
 			continue
 		}
-		// Reconciliation log EVERY poll — venue truth vs what the bot believes,
-		// per held position. This makes the hedge state (and any naked/half-filled
-		// leg) continuously visible in the journal, not only at the moment it
-		// trips the kill. INFO when everything matches, WARN when it does not.
+		// Reconcile venue truth vs what the bot believes, per held position, so the
+		// hedge state (and any naked/half-filled leg) is visible in the journal, not
+		// only at the moment it trips the kill. Logged at WARN on a mismatch, INFO
+		// when the clean state CHANGES, DEBUG on an unchanged clean heartbeat.
 		var held, mism int
 		var detail []string
 		for venueID, qty := range actual {
@@ -99,12 +106,23 @@ func (d *DriftMonitor) check(ctx context.Context) {
 			detail = append(detail, fmt.Sprintf("%s venue=%.2f bot=%.2f %s", venueID, qty, exp, tag))
 		}
 		sort.Strings(detail)
-		rec := d.log.Info
-		if mism > 0 {
-			rec = d.log.Warn
+		sig := strings.Join(detail, " | ")
+		// A mismatch is always loud (and trips the kill below). A CLEAN reconcile
+		// is a heartbeat: log it at INFO only when it CHANGES from the last poll
+		// (startup, a new/closed position), and at DEBUG otherwise so a steady
+		// hedge doesn't spam an identical line every Interval.
+		switch {
+		case mism > 0:
+			d.log.Warn("position reconciliation", "venue", a.Venue(), "held", held,
+				"mismatches", mism, "detail", sig)
+		case sig != d.lastSig[a.Venue()]:
+			d.log.Info("position reconciliation", "venue", a.Venue(), "held", held,
+				"mismatches", mism, "detail", sig)
+		default:
+			d.log.Debug("position reconciliation", "venue", a.Venue(), "held", held,
+				"mismatches", mism, "detail", sig)
 		}
-		rec("position reconciliation", "venue", a.Venue(), "held", held,
-			"mismatches", mism, "detail", strings.Join(detail, " | "))
+		d.lastSig[a.Venue()] = sig
 
 		for venueID, qty := range actual {
 			exp := want[venueID]
