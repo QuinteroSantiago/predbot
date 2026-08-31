@@ -63,6 +63,12 @@ type Trader struct {
 	// silent fill when no fill event arrived (fill streams can fail).
 	verify func(ctx context.Context, venue, venueID string) (float64, error)
 
+	// onAck / onOrder are optional metric hooks (kept as callbacks so this package
+	// needn't import obs): onAck gets each venue order round-trip in seconds;
+	// onOrder gets each leg's outcome (filled/partial/faded/error) with its venue.
+	onAck   func(venue string, sec float64)
+	onOrder func(venue, outcome string)
+
 	mu       sync.Mutex
 	stats    Stats
 	awaiting map[string]chan Fill // client_order_id -> fill sink
@@ -135,6 +141,13 @@ func NewTrader(ex Executors, engine *risk.Engine, bm *book.Manager, legWait time
 // SetVerifier installs the venue-position check used to catch silent fills.
 func (t *Trader) SetVerifier(f func(ctx context.Context, venue, venueID string) (float64, error)) {
 	t.verify = f
+}
+
+// SetMetricHooks installs optional execution-metric callbacks: onAck records each
+// venue order round-trip (seconds), onOrder records each leg's outcome. Both may
+// be nil. Set once before trading; the hooks are read without the trader lock.
+func (t *Trader) SetMetricHooks(onAck func(venue string, sec float64), onOrder func(venue, outcome string)) {
+	t.onAck, t.onOrder = onAck, onOrder
 }
 
 // Positions returns what the bot BELIEVES it holds, keyed by venue market id —
@@ -430,9 +443,16 @@ func (t *Trader) place(ctx context.Context, canonical string, i core.Intent) (co
 	wait := t.awaitFills(o.ClientID, i.Qty)
 	defer t.forget(o.ClientID)
 
+	ackStart := time.Now()
 	id, err := ex.Place(ctx, o)
+	if t.onAck != nil {
+		t.onAck(i.Venue, time.Since(ackStart).Seconds())
+	}
 	if err != nil {
 		// Design §11: never resubmit blind — the order may have landed.
+		if t.onOrder != nil {
+			t.onOrder(i.Venue, "error")
+		}
 		return 0, err
 	}
 	// Polymarket has no client_order_id, so its fills arrive keyed by the
@@ -468,6 +488,16 @@ func (t *Trader) place(ctx context.Context, canonical string, i core.Intent) (co
 		rel := i
 		rel.Qty = i.Qty - filled
 		t.engine.OnReject(canonical, rel) // release the unfilled remainder
+	}
+	if t.onOrder != nil {
+		switch {
+		case filled == 0:
+			t.onOrder(i.Venue, "faded") // accepted but no fill within the window (IOC cancelled / lost event)
+		case filled < i.Qty:
+			t.onOrder(i.Venue, "partial")
+		default:
+			t.onOrder(i.Venue, "filled")
+		}
 	}
 	return filled, nil
 }

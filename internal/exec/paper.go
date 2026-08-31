@@ -39,9 +39,23 @@ type PaperTrader struct {
 	bm      *book.Manager
 	log     *os.File // optional JSONL fills log for the divergence report
 
-	mu      sync.Mutex
-	pending []pendingPair
-	stat    Stats
+	mu        sync.Mutex
+	pending   []pendingPair
+	stat      Stats
+	onOutcome func(outcome string) // optional: called once per settled pair (filled/partial/faded)
+}
+
+// OnOutcome registers a callback fired for every settled pair with its outcome
+// ("filled", "partial", or "faded"), so a caller can bump an execution-outcome
+// metric without the exec package depending on the obs package. Not safe to call
+// concurrently with Run; set it once at construction.
+func (p *PaperTrader) OnOutcome(f func(outcome string)) { p.onOutcome = f }
+
+// outcome invokes the callback if one is registered.
+func (p *PaperTrader) outcome(o string) {
+	if p.onOutcome != nil {
+		p.onOutcome(o)
+	}
 }
 
 type pendingPair struct {
@@ -110,6 +124,7 @@ func (p *PaperTrader) settle(pp pendingPair) {
 	books, ok := p.bm.Pair(pp.canonical)
 	if !ok {
 		p.stat.Faded++
+		p.outcome("faded")
 		return
 	}
 	buy, sell := pp.legs[0], pp.legs[1]
@@ -118,6 +133,7 @@ func (p *PaperTrader) settle(pp pendingPair) {
 	sellPx, sellQty := fillSell(sb, sell.Px, sell.Qty)
 	if buyQty == 0 || sellQty == 0 {
 		p.stat.Faded++ // opportunity vanished within Δ (real fade)
+		p.outcome("faded")
 		return
 	}
 	hedged := buyQty
@@ -137,8 +153,10 @@ func (p *PaperTrader) settle(pp pendingPair) {
 	p.stat.OpenPositions++
 	if buyQty == sellQty {
 		p.stat.Completed++
+		p.outcome("filled")
 	} else {
 		p.stat.Legged++
+		p.outcome("partial")
 	}
 	p.writeLog(pp.canonical, buy, sell, buyPx, sellPx, hedged, gross, feeBuy+feeSell)
 }

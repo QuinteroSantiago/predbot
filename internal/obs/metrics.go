@@ -23,12 +23,15 @@ import (
 type Metrics struct {
 	BookAge        metric.Float64Histogram // -> predbot_book_age_seconds_*{venue}
 	FeedLatency    metric.Float64Histogram // -> predbot_feed_latency_seconds_*{venue} (ts_recv - ts_server)
+	TickToDecision metric.Float64Histogram // -> predbot_tick_to_decision_seconds_* (wall time to evaluate the strategy across all markets per tick — strategy-latency SLI, design §13)
+	DecisionToAck  metric.Float64Histogram // -> predbot_decision_to_ack_seconds_*{venue} (intent -> venue order ack; real execution latency, populates when armed)
 	SeqGaps        metric.Int64Counter     // -> predbot_seq_gaps_total{venue}
 	Conflated      metric.Int64Counter     // -> predbot_conflated_snapshots_total{venue}
 	Dropped        metric.Int64Counter     // -> predbot_dropped_snapshots_total{venue}
 	Reconnects     metric.Int64Counter     // -> predbot_reconnects_total{venue}
 	SnapshotsTotal metric.Int64Counter     // -> predbot_snapshots_total{venue} (Phase-1 throughput)
 	ParseErrors    metric.Int64Counter     // -> predbot_parse_errors_total{venue}
+	Orders         metric.Int64Counter     // -> predbot_orders_total{venue,outcome} (filled/partial/faded/rejected/error)
 }
 
 // NewMetrics creates the instruments on the global meter provider. Any creation
@@ -47,7 +50,7 @@ func NewMetrics() (*Metrics, error) {
 	// NOTE: pre-existing series keep the old `le` buckets until they age out of
 	// the query window; new series use these from the next recorder restart.
 	latencyBuckets := []float64{
-		0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5,
+		0.0001, 0.00025, 0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5,
 	}
 	mk := func(name, desc, unit string) metric.Float64Histogram {
 		h, e := m.Float64Histogram(name, metric.WithDescription(desc), metric.WithUnit(unit),
@@ -68,12 +71,15 @@ func NewMetrics() (*Metrics, error) {
 	out := &Metrics{
 		BookAge:        mk("predbot_book_age_seconds", "age of the freshest snapshot per venue", "s"),
 		FeedLatency:    mk("predbot_feed_latency_seconds", "ts_recv - ts_server per venue", "s"),
+		TickToDecision: mk("predbot_tick_to_decision_seconds", "wall time to evaluate the cross-venue strategy across all tracked markets in one tick", "s"),
+		DecisionToAck:  mk("predbot_decision_to_ack_seconds", "intent -> venue order ack round-trip (real execution latency)", "s"),
 		SeqGaps:        ct("predbot_seq_gaps", "Kalshi orderbook sequence gaps"),
 		Conflated:      ct("predbot_conflated_snapshots", "snapshots skipped because the consumer was behind (book still authoritative)"),
 		Dropped:        ct("predbot_dropped_snapshots", "stale full snapshots dropped on backpressure"),
 		Reconnects:     ct("predbot_reconnects", "websocket reconnects per venue"),
 		SnapshotsTotal: ct("predbot_snapshots", "normalized snapshots emitted per venue"),
 		ParseErrors:    ct("predbot_parse_errors", "unparseable frames per venue"),
+		Orders:         ct("predbot_orders", "order legs by venue and outcome (filled/partial/faded/rejected/error)"),
 	}
 	return out, err
 }
@@ -81,6 +87,31 @@ func NewMetrics() (*Metrics, error) {
 // Venue returns a reusable attribute-set option for a venue label.
 func Venue(v string) metric.MeasurementOption {
 	return metric.WithAttributes(attribute.String("venue", v))
+}
+
+// Outcome returns an attribute-set option tagging an order leg's result
+// (filled/partial/faded/rejected/error) alongside its venue — for the
+// predbot_orders_total{venue,outcome} execution-outcome counter.
+func Outcome(venue, outcome string) metric.MeasurementOption {
+	return metric.WithAttributes(
+		attribute.String("venue", venue),
+		attribute.String("outcome", outcome))
+}
+
+// RegisterUptimeGauge publishes predbot_start_time_seconds — the process start
+// as a Unix timestamp — so a dashboard derives uptime as `time() - start`, and a
+// step in the series marks a restart. A single constant gauge is cheaper and more
+// robust than a self-incrementing counter (it can't drift or double-count).
+func RegisterUptimeGauge(startUnix float64) error {
+	m := otel.Meter(serviceName)
+	_, err := m.Float64ObservableGauge("predbot_start_time_seconds",
+		metric.WithDescription("process start time as a Unix timestamp; dashboards derive uptime as time()-this"),
+		metric.WithUnit("s"),
+		metric.WithFloat64Callback(func(_ context.Context, o metric.Float64Observer) error {
+			o.Observe(startUnix)
+			return nil
+		}))
+	return err
 }
 
 // MarketEdge is one market's current cross-venue gross edge, in cents, with the

@@ -58,6 +58,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	// predbot_start_time_seconds: dashboards derive uptime as time()-this, and a
+	// step in the series marks a restart (the reliability SLI for the demo).
+	if err := obs.RegisterUptimeGauge(float64(time.Now().Unix())); err != nil {
+		slog.Warn("uptime gauge disabled", "err", err)
+	}
+
 	cfg, err := config.Load(*cfgPath)
 	if err != nil {
 		slog.Error("config load failed", "err", err)
@@ -303,6 +309,13 @@ func main() {
 	if *paperMode {
 		fees := backtest.Fees{KalshiMult: cfg.Backtest.KalshiFeeMult}
 		pt := exec.NewPaperTrader(fees, cfg.Backtest.LatencyMS, bm, filepath.Join(cfg.DataDir, "paper-fills.jsonl"))
+		// Turn the paper sim into a live order-flow feed: every settled pair bumps
+		// predbot_orders_total{venue="paper",outcome}. Same outcome vocabulary the
+		// real path uses, so the execution panels light up safely from the always-on
+		// recorder with zero real orders.
+		pt.OnOutcome(func(outcome string) {
+			met.Orders.Add(rootCtx, 1, obs.Outcome("paper", outcome))
+		})
 		if err := obs.RegisterPaperGauges(func() obs.PaperStats {
 			s := pt.Snapshot()
 			return obs.PaperStats{NetUSD: s.NetUSD, GrossUSD: s.GrossUSD, FeesUSD: s.FeesUSD,
@@ -314,7 +327,7 @@ func main() {
 		scfg := strategy.Config{MinEdge: core.Price(cfg.Backtest.MinEdge), MaxClip: core.Qty(cfg.Backtest.MaxClip), MinDepth: core.Qty(cfg.Backtest.MinDepth)}
 		maxAge := cfg.Backtest.MaxBookAgeMS * int64(time.Millisecond)
 		maxSkew := cfg.Backtest.MaxSkewMS * int64(time.Millisecond)
-		go runPaper(rootCtx, bm, fees, scfg, maxAge, maxSkew, pt)
+		go runPaper(rootCtx, bm, fees, scfg, maxAge, maxSkew, pt, met)
 		slog.Info("paper trading ON (live SimExecutor, no real orders)")
 	}
 
@@ -375,9 +388,9 @@ func main() {
 		}
 	}()
 
-	wg.Wait()      // ingesters exit on ctx cancel
-	<-drainDone    // drain loop exits on ctx cancel, closing toWrite
-	<-writerDone   // archival writer flushes remaining snapshots, then returns
+	wg.Wait()    // ingesters exit on ctx cancel
+	<-drainDone  // drain loop exits on ctx cancel, closing toWrite
+	<-writerDone // archival writer flushes remaining snapshots, then returns
 	if err := rec.Close(); err != nil {
 		slog.Warn("final flush failed", "err", err)
 	}
@@ -435,7 +448,7 @@ func splitCSV(s string) []string {
 // ticker and submits detected pairs to the paper trader (design §17 Phase 3a).
 // Same gates as the backtest (freshness + cross-venue skew) and the same
 // hold-to-resolution "enter once" suppression per market.
-func runPaper(ctx context.Context, bm *book.Manager, fees strategy.FeeModel, scfg strategy.Config, maxAge, maxSkew int64, pt *exec.PaperTrader) {
+func runPaper(ctx context.Context, bm *book.Manager, fees strategy.FeeModel, scfg strategy.Config, maxAge, maxSkew int64, pt *exec.PaperTrader, met *obs.Metrics) {
 	entered := map[string]bool{}
 	tick := time.NewTicker(250 * time.Millisecond)
 	defer tick.Stop()
@@ -445,6 +458,12 @@ func runPaper(ctx context.Context, bm *book.Manager, fees strategy.FeeModel, scf
 			return
 		case <-tick.C:
 			now := time.Now().UnixNano()
+			// Strategy-latency SLI (design §13 tick_to_decision): wall time to
+			// evaluate the cross-venue strategy across EVERY tracked market this
+			// tick. Recorded once per sweep so the panel is always populated —
+			// the loop runs constantly even when (per the fee-wall finding) it
+			// almost never finds a gate-clearing opportunity.
+			sweepStart := time.Now()
 			for _, canonical := range bm.Canonicals() {
 				books, ok := bm.Pair(canonical)
 				if !ok || staleAny(books, now, maxAge) || skewExceeds(books, maxSkew) {
@@ -460,6 +479,7 @@ func runPaper(ctx context.Context, bm *book.Manager, fees strategy.FeeModel, scf
 					entered[canonical] = true
 				}
 			}
+			met.TickToDecision.Record(ctx, time.Since(sweepStart).Seconds())
 		}
 	}
 }

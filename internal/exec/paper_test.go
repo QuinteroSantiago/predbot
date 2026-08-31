@@ -45,6 +45,35 @@ func TestPaperFillProfit(t *testing.T) {
 	}
 }
 
+func TestPaperOnOutcomeFires(t *testing.T) {
+	bm := testBM()
+	bm.Update(core.BookSnapshot{Venue: "kalshi", VenueID: "K", YesAsks: []core.Level{{Px: 5000, Qty: 10000}}})
+	bm.Update(core.BookSnapshot{Venue: "polymarketus", VenueID: "P", YesBids: []core.Level{{Px: 6000, Qty: 10000}}})
+
+	var got []string
+	pt := NewPaperTrader(flatFee{perContract: 50}, 0, bm, "")
+	pt.OnOutcome(func(o string) { got = append(got, o) })
+
+	// A clean fill emits exactly one "filled".
+	pt.Submit("MKT", []core.Intent{
+		{Venue: "kalshi", VenueID: "K", Side: core.BuyYes, Px: 5000, Qty: 10000},
+		{Venue: "polymarketus", VenueID: "P", Side: core.SellYes, Px: 6000, Qty: 10000},
+	})
+	pt.settleDue()
+
+	// A pair against a vanished book emits exactly one "faded".
+	bm.Update(core.BookSnapshot{Venue: "polymarketus", VenueID: "P"}) // Poly book empties
+	pt.Submit("MKT2", []core.Intent{
+		{Venue: "kalshi", VenueID: "K", Side: core.BuyYes, Px: 5000, Qty: 10000},
+		{Venue: "polymarketus", VenueID: "P", Side: core.SellYes, Px: 6000, Qty: 10000},
+	})
+	pt.settleDue()
+
+	if len(got) != 2 || got[0] != "filled" || got[1] != "faded" {
+		t.Fatalf("outcomes = %v; want [filled faded]", got)
+	}
+}
+
 func TestPaperFadeWhenBookGone(t *testing.T) {
 	bm := testBM()
 	// Only one venue has a book -> the pair can't fill -> fade.

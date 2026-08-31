@@ -239,6 +239,17 @@ func main() {
 
 	bm := book.NewManager(markets)
 	trader := live.NewTrader(live.Executors{"kalshi": kEx, "polymarketus": pEx}, engine, bm, 2*time.Second)
+	// Execution-latency + order-outcome metrics from the REAL order path (populate
+	// once armed): predbot_decision_to_ack_seconds{venue} and
+	// predbot_orders_total{venue,outcome}. Same instruments the recorder feeds from
+	// its paper sim, so the demo panels read live now and are exact when trading.
+	trader.SetMetricHooks(
+		func(v string, sec float64) { met.DecisionToAck.Record(rootCtx, sec, obs.Venue(v)) },
+		func(v, outcome string) { met.Orders.Add(rootCtx, 1, obs.Outcome(v, outcome)) },
+	)
+	if err := obs.RegisterUptimeGauge(float64(time.Now().Unix())); err != nil {
+		slog.Warn("uptime gauge disabled", "err", err)
+	}
 
 	// A fill stream can fail silently, so the venue's own position is the final
 	// authority: the trader checks it when no fill arrives, and the drift monitor
