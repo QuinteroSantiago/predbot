@@ -3,10 +3,11 @@
 // risk.Engine has not approved and reserved.
 //
 // Legging policy (design §8, "sell it"):
-//  1. Place the leg on the venue with the THINNER top-of-book first (higher fade
-//     risk); on fill, immediately IOC the second leg.
-//  2. If leg 2 is unfilled/partial, IOC-exit the unhedged quantity on leg 1's
-//     venue at the best available price and book it as legging cost.
+//  1. Fire both legs SIMULTANEOUSLY (ExecutePair step 3), deep leg as anchor.
+//  2. If one side is unfilled/partial, re-attempt the missing leg for hedgeGrace,
+//     then IOC-exit the unhedged quantity on its own venue. Both the completing
+//     hedge and the exit CROSS the touch by hedgeSlip so a moved or thin top is
+//     cleared instead of rested on (the naked-leg source before 2026-08-31).
 //  3. If the exit also fails, escalate: unhedged stays elevated and the risk
 //     engine's unhedged cap will Kill(). Never auto-retry into a halted market.
 package live
@@ -58,7 +59,15 @@ type Trader struct {
 	// either way, but a hedged pair still pays out); completing at a large one
 	// locks that loss in until resolution.
 	maxCompletionLoss core.Price
-	pending           sync.WaitGroup
+	// hedgeSlip is how far a hedge/exit IOC crosses PAST the touch, so it walks a
+	// level or two and fills instead of resting exactly at a touch that has moved
+	// a tick (the naked-leg source: an IOC priced at the exact touch fills nothing
+	// on any move). IOC fills at the book price up to the limit, so a looser limit
+	// only ever improves the fill — it never overpays beyond available depth. On
+	// the completion path it is additionally capped to maxCompletionLoss so it can
+	// never cross into a worse-than-tolerated hedge.
+	hedgeSlip core.Price
+	pending   sync.WaitGroup
 	// verify asks the VENUE what position it actually holds. Used to detect a
 	// silent fill when no fill event arrived (fill streams can fail).
 	verify func(ctx context.Context, venue, venueID string) (float64, error)
@@ -132,10 +141,13 @@ func NewTrader(ex Executors, engine *risk.Engine, bm *book.Manager, legWait time
 		hedgeRetry: 2 * time.Second,
 		// 2c/contract: wider than normal fee drag, tighter than a real dislocation.
 		maxCompletionLoss: 200,
-		awaiting:          map[string]chan Fill{},
-		parked:            map[string]parkedFills{},
-		posByVenueID:      map[string]float64{},
-		log:               slog.With("component", "live-trader")}
+		// 2c: cross two 1c levels. Enough to clear a touch that repriced a tick or
+		// a thin top level, small enough that walking that far is never costly.
+		hedgeSlip:    200,
+		awaiting:     map[string]chan Fill{},
+		parked:       map[string]parkedFills{},
+		posByVenueID: map[string]float64{},
+		log:          slog.With("component", "live-trader")}
 }
 
 // SetVerifier installs the venue-position check used to catch silent fills.
@@ -404,7 +416,12 @@ func (t *Trader) verifyNoSilentFill(ctx context.Context, canonical string, leg c
 	return nil
 }
 
-// orderLegs returns (first, second) with the thinner-book leg first.
+// orderLegs returns (first, second) with the DEEPER-book leg first. Note the two
+// legs are fired SIMULTANEOUSLY (see ExecutePair step 3), so this ordering does
+// not decide which side ends up naked — the market does. It makes the deep,
+// reliably-fillable leg the anchor: it is risk-reserved first, and it is the
+// `first`/`held` reference the reconciliation reasons from. The substantive
+// naked-leg fix is the crossing hedge/exit IOC (hedgeSlip), not this ordering.
 func (t *Trader) orderLegs(canonical string, legs []core.Intent) (core.Intent, core.Intent) {
 	books, ok := t.bm.Pair(canonical)
 	if !ok {
@@ -421,10 +438,31 @@ func (t *Trader) orderLegs(canonical string, legs []core.Intent) (core.Intent, c
 		}
 		return 0
 	}
-	if depth(legs[1]) < depth(legs[0]) {
+	if depth(legs[1]) > depth(legs[0]) {
 		return legs[1], legs[0]
 	}
 	return legs[0], legs[1]
+}
+
+// crossPrice returns an IOC limit that crosses `touch` by `slip` in the
+// aggressive direction for `side`, so the order walks a level or two and fills
+// rather than resting at an exact touch that may have moved. A BUY is willing to
+// pay up to touch+slip; a SELL to accept down to touch-slip. Because an IOC fills
+// at the book price up to its limit, a looser limit only improves fill
+// probability — it never pays worse than the depth actually there. Clamped to the
+// open (0, OneDollar) quote range so it is always a valid venue price.
+func crossPrice(side core.Side, touch, slip core.Price) core.Price {
+	p := touch + slip
+	if side != core.BuyYes {
+		p = touch - slip
+	}
+	if p < 1 {
+		p = 1
+	}
+	if p > core.OneDollar-1 {
+		p = core.OneDollar - 1
+	}
+	return p
 }
 
 // place sends one order and reports the filled quantity. IOC orders that don't
@@ -708,29 +746,42 @@ func (t *Trader) completeOrExit(ctx context.Context, canonical string, held, mis
 		try.Qty = remaining
 		try.TIF = core.IOC
 		b := books[missing.Venue]
+		var touch core.Price
 		if missing.Side == core.BuyYes {
 			lv, ok := b.BestYesAsk()
 			if !ok {
 				continue
 			}
-			try.Px = lv.Px
+			touch = lv.Px
 		} else {
 			lv, ok := b.BestYesBid()
 			if !ok {
 				continue
 			}
-			try.Px = lv.Px
+			touch = lv.Px
 		}
-		// Refuse to hedge into a guaranteed loss: for a true arb the BUY price
-		// must stay below the SELL price. held.Px is what we actually paid.
-		buyPx, sellPx := try.Px, held.Px
+		// Refuse to hedge into a guaranteed loss, judged at the TOUCH (the real
+		// economics, not the aggressive limit below): for a true arb the BUY price
+		// must stay within tolerance of the SELL. held.Px is what we actually paid.
+		buyPx, sellPx := touch, held.Px
 		if held.Side == core.BuyYes {
-			buyPx, sellPx = held.Px, try.Px
+			buyPx, sellPx = held.Px, touch
 		}
 		if int64(sellPx)-int64(buyPx) < -int64(t.maxCompletionLoss) {
 			t.log.Warn("hedge would lock a loss; dumping instead of completing",
 				"canonical", canonical, "buy_px", buyPx.String(), "sell_px", sellPx.String())
 			break
+		}
+		// Cross the touch so the IOC actually fills a moved/thin top, but never
+		// past the loss tolerance relative to the naked leg — the aggressive limit
+		// can't pay worse than the guard just allowed.
+		try.Px = crossPrice(missing.Side, touch, t.hedgeSlip)
+		if missing.Side == core.BuyYes {
+			if ceil := held.Px + t.maxCompletionLoss; try.Px > ceil {
+				try.Px = ceil
+			}
+		} else if floor := held.Px - t.maxCompletionLoss; try.Px < floor {
+			try.Px = floor
 		}
 		if err := t.engine.CheckAndReserve(canonical, try); err != nil {
 			continue // risk says no right now; try again next tick
@@ -765,20 +816,22 @@ func (t *Trader) exitUnhedged(ctx context.Context, canonical string, leg core.In
 	exit := leg
 	exit.Qty = qty
 	exit.TIF = core.IOC
+	// A dump has no profit target — we just want OUT — so cross the touch by
+	// hedgeSlip so the IOC clears a moved or thin top instead of resting on it.
 	if leg.Side == core.BuyYes { // we're long YES -> sell it
 		lv, ok := b.BestYesBid()
 		if !ok {
 			t.log.Error("no bid to exit into", "canonical", canonical)
 			return
 		}
-		exit.Side, exit.Px = core.SellYes, lv.Px
+		exit.Side, exit.Px = core.SellYes, crossPrice(core.SellYes, lv.Px, t.hedgeSlip)
 	} else { // we're short YES -> buy it back
 		lv, ok := b.BestYesAsk()
 		if !ok {
 			t.log.Error("no ask to exit into", "canonical", canonical)
 			return
 		}
-		exit.Side, exit.Px = core.BuyYes, lv.Px
+		exit.Side, exit.Px = core.BuyYes, crossPrice(core.BuyYes, lv.Px, t.hedgeSlip)
 	}
 	t.bump(func(s *Stats) { s.ExitsPlaced++ })
 	if _, err := t.place(ctx, canonical, exit); err != nil {

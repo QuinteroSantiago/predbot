@@ -116,19 +116,38 @@ func TestExecutePairBothLegsFill(t *testing.T) {
 	}
 }
 
-// The THINNER book must be legged first (design §8): Poly has 500 vs Kalshi 10000.
-func TestThinnerLegGoesFirst(t *testing.T) {
+// The DEEPER book anchors first: Kalshi 10000 vs Poly 500 (design §8, flipped
+// 2026-08-31 — the deep, reliably-fillable leg is the anchor).
+func TestDeeperLegGoesFirst(t *testing.T) {
 	tr, _, _, _ := setup(t)
 	first, second := tr.orderLegs("MKT", pair())
-	if first.Venue != "polymarketus" || second.Venue != "kalshi" {
-		t.Errorf("thin-first ordering wrong: first=%s second=%s", first.Venue, second.Venue)
+	if first.Venue != "kalshi" || second.Venue != "polymarketus" {
+		t.Errorf("deep-first ordering wrong: first=%s second=%s", first.Venue, second.Venue)
+	}
+}
+
+// crossPrice must cross the touch by slip in the aggressive direction and stay
+// inside the open (0, OneDollar) range so it is always a placeable price.
+func TestCrossPriceCrossesTouch(t *testing.T) {
+	if got := crossPrice(core.BuyYes, 6000, 200); got != 6200 {
+		t.Errorf("buy cross: got %d want 6200 (pay up to fill)", got)
+	}
+	if got := crossPrice(core.SellYes, 6000, 200); got != 5800 {
+		t.Errorf("sell cross: got %d want 5800 (accept down to fill)", got)
+	}
+	// Clamp to the valid open range rather than emit 0 or >=OneDollar.
+	if got := crossPrice(core.BuyYes, core.OneDollar-50, 200); got != core.OneDollar-1 {
+		t.Errorf("buy clamp: got %d want %d", got, core.OneDollar-1)
+	}
+	if got := crossPrice(core.SellYes, 100, 200); got != 1 {
+		t.Errorf("sell clamp: got %d want 1", got)
 	}
 }
 
 // Leg 2 fails -> the unhedged leg-1 quantity must be exited on leg 1's venue.
 func TestLeggedExitOnLeg2Failure(t *testing.T) {
 	tr, k, p, _ := setup(t)
-	// Thin leg (poly) goes first and succeeds; kalshi (leg 2) fails.
+	// Kalshi (the deep anchor leg) fails; Poly fills and is the naked leg to exit.
 	k.fail = true
 	_ = tr.ExecutePair(context.Background(), "MKT", pair())
 	tr.pending.Wait() // the naked leg is now resolved in the background
@@ -146,6 +165,11 @@ func TestLeggedExitOnLeg2Failure(t *testing.T) {
 	}
 	if po[0].Side == po[1].Side {
 		t.Error("exit must be the opposite side of the entry")
+	}
+	// The exit must CROSS the touch (buy back a short at bestAsk 6100 + 2c slip),
+	// not rest exactly on it — that resting price is what left legs naked before.
+	if po[1].Side != core.BuyYes || po[1].Px != 6300 {
+		t.Errorf("exit should cross: got %s @ %d; want BuyYes @ 6300 (6100 ask + 200 slip)", po[1].Side, po[1].Px)
 	}
 }
 
