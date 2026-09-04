@@ -144,11 +144,13 @@ func TestCrossPriceCrossesTouch(t *testing.T) {
 	}
 }
 
-// Leg 2 fails -> the unhedged leg-1 quantity must be exited on leg 1's venue.
-func TestLeggedExitOnLeg2Failure(t *testing.T) {
+// The HEDGE fails -> the naked quantity is on the LEAD (kalshi) and must be
+// exited on the lead's own venue. Under the lead/hedge model the lead fills
+// first and the hedge is what can fall short, so the naked leg is always kalshi.
+func TestLeggedExitOnHedgeFailure(t *testing.T) {
 	tr, k, p, _ := setup(t)
-	// Kalshi (the deep anchor leg) fails; Poly fills and is the naked leg to exit.
-	k.fail = true
+	// Poly (the hedge) fails; kalshi (the lead) filled and is the naked leg to exit.
+	p.fail = true
 	_ = tr.ExecutePair(context.Background(), "MKT", pair())
 	tr.pending.Wait() // the naked leg is now resolved in the background
 	s := tr.Stats()
@@ -158,18 +160,22 @@ func TestLeggedExitOnLeg2Failure(t *testing.T) {
 	if s.ExitsPlaced != 1 {
 		t.Errorf("exits = %d; want 1 (must exit the unhedged leg)", s.ExitsPlaced)
 	}
-	// The exit must be on leg 1's venue (poly) and OPPOSITE the original side.
-	po := p.orders()
-	if len(po) != 2 {
-		t.Fatalf("poly orders = %d; want 2 (entry + exit)", len(po))
+	// The exit must be on the LEAD's venue (kalshi) and OPPOSITE the original side.
+	ko := k.orders()
+	if len(ko) != 2 {
+		t.Fatalf("kalshi orders = %d; want 2 (entry + exit)", len(ko))
 	}
-	if po[0].Side == po[1].Side {
+	if ko[0].Side == ko[1].Side {
 		t.Error("exit must be the opposite side of the entry")
 	}
-	// The exit must CROSS the touch (buy back a short at bestAsk 6100 + 2c slip),
-	// not rest exactly on it — that resting price is what left legs naked before.
-	if po[1].Side != core.BuyYes || po[1].Px != 6300 {
-		t.Errorf("exit should cross: got %s @ %d; want BuyYes @ 6300 (6100 ask + 200 slip)", po[1].Side, po[1].Px)
+	// The exit must CROSS the touch (sell a long at bestBid 4900 - 2c slip), not
+	// rest exactly on it — that resting price is what left legs naked before.
+	if ko[1].Side != core.SellYes || ko[1].Px != 4700 {
+		t.Errorf("exit should cross: got %s @ %d; want SellYes @ 4700 (4900 bid - 200 slip)", ko[1].Side, ko[1].Px)
+	}
+	// The hedge failed outright, so poly placed nothing.
+	if n := len(p.orders()); n != 0 {
+		t.Errorf("poly orders = %d; want 0 (the hedge failed to place)", n)
 	}
 }
 
@@ -251,11 +257,11 @@ func TestRealizedPnLAccruesFromFills(t *testing.T) {
 
 // HasUnhedged must be true while a leg is unhedged so the supervisor can kill.
 func TestHasUnhedgedTracksState(t *testing.T) {
-	tr, k, _, _ := setup(t)
+	tr, _, p, _ := setup(t)
 	if tr.HasUnhedged() {
 		t.Fatal("should start hedged")
 	}
-	k.fail = true // leg 2 (kalshi) fails -> unhedged, then exit clears it
+	p.fail = true // the hedge fails -> naked lead, then the exit clears it
 	_ = tr.ExecutePair(context.Background(), "MKT", pair())
 	tr.pending.Wait() // the hedge grace window runs in the background
 	if tr.HasUnhedged() {
@@ -347,15 +353,17 @@ func TestExistingPositionIsNotASilentFill(t *testing.T) {
 	}
 }
 
-// Both legs must go out CONCURRENTLY, not one after the other. Sequential
-// legging left a multi-second window (fillWait) in which we held one side while
-// the other moved away — the backtest blamed 63% of attempts on that fade.
-func TestBothLegsPlacedConcurrently(t *testing.T) {
+// The hedge must be placed ONLY AFTER the lead fills — the lead/hedge sequencing
+// that makes a Polymarket-only naked leg impossible. (This deliberately reverses
+// the earlier simultaneous model, which fired both legs together and let either
+// fill alone.) The lead (kalshi) must be the first order out; the hedge (poly)
+// must follow, never precede it.
+func TestHedgeFollowsLeadSequentially(t *testing.T) {
 	tr, k, p, _ := setup(t)
 	var mu sync.Mutex
-	var starts []time.Time
-	stamp := func() { mu.Lock(); starts = append(starts, time.Now()); mu.Unlock() }
-	k.onPlace, p.onPlace = stamp, stamp
+	var order []string
+	k.onPlace = func() { mu.Lock(); order = append(order, "kalshi"); mu.Unlock() }
+	p.onPlace = func() { mu.Lock(); order = append(order, "polymarketus"); mu.Unlock() }
 
 	if err := tr.ExecutePair(context.Background(), "MKT", pair()); err != nil {
 		t.Fatalf("execute: %v", err)
@@ -363,28 +371,48 @@ func TestBothLegsPlacedConcurrently(t *testing.T) {
 	tr.pending.Wait()
 	mu.Lock()
 	defer mu.Unlock()
-	if len(starts) != 2 {
-		t.Fatalf("want 2 placements, got %d", len(starts))
-	}
-	// Sequential legging would separate them by at least fillWait (200ms here).
-	if gap := starts[1].Sub(starts[0]); gap > 50*time.Millisecond {
-		t.Errorf("legs placed %v apart; they must be concurrent, not sequential", gap)
+	if len(order) != 2 || order[0] != "kalshi" || order[1] != "polymarketus" {
+		t.Fatalf("want the lead (kalshi) placed first then the hedge (poly), got %v", order)
 	}
 }
 
-// A leg that fills alone must NOT be dumped immediately — it gets the grace
-// window to complete first, because a completed pair pays out while a dump just
-// realizes the loss.
-func TestLeggedPairCompletesWithinGraceWindow(t *testing.T) {
+// The whole point of leading with Kalshi: if the LEAD takes nothing, the hedge
+// (Polymarket) must NEVER be placed. This is what makes the recurring
+// "Polymarket only" naked leg structurally impossible.
+func TestLeadMissAbortsWithoutHedging(t *testing.T) {
 	tr, k, p, _ := setup(t)
-	k.fail = true // kalshi rejects at first, so we end up naked on poly
+	k.fail = true // the lead takes nothing
 
 	if err := tr.ExecutePair(context.Background(), "MKT", pair()); err != nil {
 		t.Fatalf("execute: %v", err)
 	}
-	// Kalshi recovers before the grace window expires.
+	tr.pending.Wait()
+
+	if n := len(p.orders()); n != 0 {
+		t.Errorf("poly orders = %d; want 0 — the hedge must not fire when the lead misses", n)
+	}
+	s := tr.Stats()
+	if s.PairsLegged != 0 || s.ExitsPlaced != 0 {
+		t.Errorf("a clean abort must leave nothing naked: legged=%d exits=%d, want 0/0", s.PairsLegged, s.ExitsPlaced)
+	}
+	if tr.HasUnhedged() {
+		t.Error("a lead miss must leave the book flat, not unhedged")
+	}
+}
+
+// A lead that fills against a failing hedge must NOT be dumped immediately — the
+// hedge gets the grace window to complete first, because a completed pair pays
+// out while a dump just realizes the loss.
+func TestLeggedPairCompletesWithinGraceWindow(t *testing.T) {
+	tr, k, p, _ := setup(t)
+	p.fail = true // the hedge (poly) rejects at first, so the lead is naked
+
+	if err := tr.ExecutePair(context.Background(), "MKT", pair()); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	// The hedge venue recovers before the grace window expires.
 	time.Sleep(40 * time.Millisecond)
-	k.setFail(false)
+	p.setFail(false)
 	tr.pending.Wait()
 
 	if s := tr.Stats(); s.PairsCompleted != 1 {
@@ -393,17 +421,20 @@ func TestLeggedPairCompletesWithinGraceWindow(t *testing.T) {
 	if tr.HasUnhedged() {
 		t.Error("must be flat after completing the hedge")
 	}
-	// Completing means hedging on the MISSING venue, not dumping on the held one.
+	// Completing means hedging on the missing venue (poly), not dumping the lead.
 	if len(p.orders()) != 1 {
-		t.Errorf("poly orders = %d; want 1 (entry only — no dump)", len(p.orders()))
+		t.Errorf("poly orders = %d; want 1 (the completing hedge)", len(p.orders()))
+	}
+	if len(k.orders()) != 1 {
+		t.Errorf("kalshi orders = %d; want 1 (lead entry only — the lead must NOT be dumped)", len(k.orders()))
 	}
 }
 
-// When the missing side never comes back, the grace window must expire and the
-// naked leg must be dumped rather than held indefinitely.
+// When the hedge never comes back, the grace window must expire and the naked
+// LEAD must be dumped on its own venue rather than held indefinitely.
 func TestGraceExpiryDumpsNakedLeg(t *testing.T) {
 	tr, k, p, _ := setup(t)
-	k.fail = true // kalshi never recovers
+	p.fail = true // the hedge (poly) never recovers, so the lead stays naked
 
 	if err := tr.ExecutePair(context.Background(), "MKT", pair()); err != nil {
 		t.Fatalf("execute: %v", err)
@@ -416,9 +447,14 @@ func TestGraceExpiryDumpsNakedLeg(t *testing.T) {
 	if tr.HasUnhedged() {
 		t.Error("the unhedged tally must be cleared after the dump")
 	}
-	po := p.orders()
-	if len(po) != 2 || po[0].Side == po[1].Side {
-		t.Errorf("expected an entry plus an OPPOSITE-side exit on poly, got %d orders", len(po))
+	// The dump is on the LEAD's venue (kalshi): entry plus an OPPOSITE-side exit.
+	ko := k.orders()
+	if len(ko) != 2 || ko[0].Side == ko[1].Side {
+		t.Errorf("expected an entry plus an OPPOSITE-side exit on kalshi, got %d orders", len(ko))
+	}
+	// The hedge never placed (it failed every attempt).
+	if n := len(p.orders()); n != 0 {
+		t.Errorf("poly orders = %d; want 0 (the hedge failed every attempt)", n)
 	}
 }
 

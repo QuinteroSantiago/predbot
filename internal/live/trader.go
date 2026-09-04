@@ -3,12 +3,18 @@
 // risk.Engine has not approved and reserved.
 //
 // Legging policy (design §8, "sell it"):
-//  1. Fire both legs SIMULTANEOUSLY (ExecutePair step 3), deep leg as anchor.
-//  2. If one side is unfilled/partial, re-attempt the missing leg for hedgeGrace,
-//     then IOC-exit the unhedged quantity on its own venue. Both the completing
-//     hedge and the exit CROSS the touch by hedgeSlip so a moved or thin top is
-//     cleared instead of rested on (the naked-leg source before 2026-08-31).
-//  3. If the exit also fails, escalate: unhedged stays elevated and the risk
+//  1. Fire the LEAD leg (Kalshi) FIRST and ALONE, as an IOC that cannot rest.
+//     The hedge (Polymarket) is placed ONLY once the lead confirms a fill, so a
+//     lead that takes nothing aborts the pair clean — a Polymarket-only naked
+//     leg (the recurring 2026 failure) becomes structurally impossible. See
+//     leadVenue for why Kalshi leads.
+//  2. Hedge EXACTLY the lead's filled quantity. Because the hedge can never
+//     exceed the lead, any shortfall is naked on the LEAD, not the hedge.
+//  3. If the hedge falls short, re-attempt it for hedgeGrace, then IOC-exit the
+//     unhedged quantity on the lead's own venue. Both the completing hedge and
+//     the exit CROSS the touch by hedgeSlip so a moved or thin top is cleared
+//     instead of rested on (the naked-leg source before 2026-08-31).
+//  4. If the exit also fails, escalate: unhedged stays elevated and the risk
 //     engine's unhedged cap will Kill(). Never auto-retry into a halted market.
 package live
 
@@ -36,6 +42,16 @@ const silentFillTolerance = 0.01
 // is held waiting to be claimed. Long enough to cover any Place() round trip,
 // short enough that a genuinely unattributable fill is surfaced promptly.
 const parkRetention = 30 * time.Second
+
+// leadVenue is the leg fired FIRST and ALONE; the hedge on the other venue is
+// placed only after this leg confirms a fill. Kalshi leads for two reasons:
+//  1. It is the leg that historically MISSES (thin/fast book, the recurring
+//     "Polymarket only" naked leg). Leading with it discovers an unfillable
+//     book at zero cost, before any Polymarket order exists.
+//  2. If the follow hedge then falls short, the naked exposure sits on Kalshi,
+//     which has the exchange-side order-group backstop and is the faster venue
+//     to IOC-exit — a better place to be stranded than Polymarket.
+const leadVenue = "kalshi"
 
 // Executors holds the per-venue order clients.
 type Executors map[string]exec.Executor
@@ -207,121 +223,109 @@ func (t *Trader) ExecutePair(ctx context.Context, canonical string, legs []core.
 	}
 	t.bump(func(s *Stats) { s.PairsAttempted++ })
 
-	// 1. Order the legs: thinner top-of-book first (higher fade risk).
-	first, second := t.orderLegs(canonical, legs)
+	// 1. Split into the LEAD leg (fired first, alone) and the HEDGE leg (fired
+	//    only after the lead confirms a fill). See leadVenue for why Kalshi leads.
+	lead, hedge := t.splitLeadHedge(canonical, legs)
 
-	// 2. Risk-gate BOTH legs before placing anything — if the pair can't clear
-	//    risk in full, we never want a half-position.
-	if err := t.engine.CheckAndReserve(canonical, first); err != nil {
+	// 2. Risk-gate BOTH legs before placing anything, so we never take the lead
+	//    when the hedge could not have cleared risk in full.
+	if err := t.engine.CheckAndReserve(canonical, lead); err != nil {
 		t.bump(func(s *Stats) { s.Rejected++ })
-		return fmt.Errorf("live: leg1 risk: %w", err)
+		return fmt.Errorf("live: lead risk: %w", err)
 	}
-	if err := t.engine.CheckAndReserve(canonical, second); err != nil {
-		t.engine.OnReject(canonical, first) // release leg1's reservation
+	if err := t.engine.CheckAndReserve(canonical, hedge); err != nil {
+		t.engine.OnReject(canonical, lead) // release the lead's reservation
 		t.bump(func(s *Stats) { s.Rejected++ })
-		return fmt.Errorf("live: leg2 risk: %w", err)
+		return fmt.Errorf("live: hedge risk: %w", err)
 	}
 
-	// 3. Place BOTH legs SIMULTANEOUSLY.
+	// 3. Fire the LEAD ALONE and wait for its fill. Force IOC so it can never
+	//    rest: an order left resting could fill AFTER we abort below and strand a
+	//    naked leg — the exact failure this sequencing exists to prevent.
 	//
-	// This replaced sequential legging on 2026-08-25. Legging sent leg 2 only
-	// after leg 1's fill event came back, so every pair carried a multi-second
-	// window (fillWait alone was 3s) in which we held one side and the other
-	// could move away. The backtest attributed 12 of 19 attempts — 63% — to that
-	// fade.
-	//
-	// Firing together does NOT remove naked-leg risk; it MOVES it. Under legging
-	// only leg 1 could strand us. Now either side can fill alone, including the
-	// side we meant to be short. What it buys is duration: the two legs resolve
-	// within one round trip of each other instead of seconds apart, and the
-	// losses came from the window, not from the frequency.
-	type legResult struct {
-		filled core.Qty
-		err    error
-	}
-	fire := func(i core.Intent) <-chan legResult {
-		ch := make(chan legResult, 1)
-		go func() {
-			f, err := t.place(ctx, canonical, i)
-			ch <- legResult{filled: f, err: err}
-		}()
-		return ch
-	}
-	c1, c2 := fire(first), fire(second)
-	r1, r2 := <-c1, <-c2
-
-	if r1.err != nil {
-		t.log.Warn("leg placement failed", "canonical", canonical, "venue", first.Venue, "err", r1.err)
-	}
-	if r2.err != nil {
-		t.log.Warn("leg placement failed", "canonical", canonical, "venue", second.Venue, "err", r2.err)
+	// Replaced the 2026-08-25 simultaneous model, which fired both legs together
+	// and MOVED naked-leg risk rather than removing it: either side could fill
+	// alone, so a Polymarket fill against a Kalshi miss left a naked Poly short
+	// (the recurring 2026 incident). Leading with the leg that misses turns that
+	// same miss into a clean, zero-cost abort. The cost is a small window between
+	// the lead fill and the hedge in which the hedge price can slip — but that
+	// completes market-neutral at a slightly worse spread (bounded by
+	// maxCompletionLoss), never a naked directional bet.
+	lead.TIF = core.IOC
+	leadFilled, err := t.place(ctx, canonical, lead)
+	if err != nil {
+		t.log.Warn("lead placement failed", "canonical", canonical, "venue", lead.Venue, "err", err)
 	}
 
-	// 3b. Emit ONE structured summary of the whole placement — both legs and the
-	//     resulting hedge verdict — so a naked or half-filled pair is legible from
-	//     a single log line instead of stitched together from several. Pure
-	//     observability; it changes nothing about what follows.
-	t.logPairOutcome(canonical, first, second, r1.filled, r2.filled)
-
-	// 4. Neither side filled: nothing to hedge, but "no fill reported" is not
-	//    proof of no position. Both legs were live, so BOTH must be verified.
-	if r1.filled == 0 && r2.filled == 0 {
-		if err := t.verifyNoSilentFill(ctx, canonical, first); err != nil {
-			return err
+	// 4. Lead took nothing: release the unused hedge reservation and abort. There
+	//    is no naked leg — this is the clean outcome that makes "Polymarket only"
+	//    impossible. "No fill event" is still not proof of no position, so verify
+	//    the lead before walking away.
+	if leadFilled == 0 {
+		t.engine.OnReject(canonical, hedge)
+		if verr := t.verifyNoSilentFill(ctx, canonical, lead); verr != nil {
+			return verr
 		}
-		if err := t.verifyNoSilentFill(ctx, canonical, second); err != nil {
-			return err
-		}
-		t.log.Warn("neither leg filled; pair abandoned (both venues match expectation)",
-			"canonical", canonical)
+		t.logPairOutcome(canonical, lead, hedge, 0, 0)
+		t.log.Info("lead leg took nothing; pair abandoned before hedging",
+			"canonical", canonical, "lead", lead.Venue)
 		return nil
 	}
 
-	// 5. Reconcile. The pair is hedged only where the two fills match; whatever
-	//    is left over on one side is naked.
-	naked := r1.filled - r2.filled
-	if naked == 0 {
+	// 5. Hedge EXACTLY what the lead filled — never more than we actually hold,
+	//    or we'd strand a naked hedge the other way. Release the surplus
+	//    reservation (the lead may have partially filled) and place the rest; the
+	//    hedge is IOC too, so it takes available depth now and any shortfall falls
+	//    to the grace window below.
+	if surplus := hedge.Qty - leadFilled; surplus > 0 {
+		rel := hedge
+		rel.Qty = surplus
+		t.engine.OnReject(canonical, rel)
+	}
+	hedge.Qty = leadFilled
+	hedge.TIF = core.IOC
+	hedgeFilled, herr := t.place(ctx, canonical, hedge)
+	if herr != nil {
+		t.log.Warn("hedge placement failed", "canonical", canonical, "venue", hedge.Venue, "err", herr)
+	}
+
+	// 5b. One structured summary of the whole placement — lead, hedge, and the
+	//     resulting verdict — so a naked or half-filled pair is legible from a
+	//     single log line. Pure observability; changes nothing about what follows.
+	t.logPairOutcome(canonical, lead, hedge, leadFilled, hedgeFilled)
+
+	// 6. Reconcile. The hedge is capped at the lead's fill, so any shortfall is
+	//    naked on the LEAD (never the hedge).
+	naked := leadFilled - hedgeFilled
+	if naked <= 0 {
 		t.bump(func(s *Stats) { s.PairsCompleted++ })
 		return nil
 	}
+	t.engine.SetUnhedged(canonical, naked)
+	t.bump(func(s *Stats) { s.PairsLegged++; s.UnhedgedQty += naked })
 
-	// held is the side we over-filled (what we'd have to sell to get flat);
-	// missing is the side still needed to complete the hedge.
-	held, missing := first, second
-	qty := naked
-	if naked < 0 {
-		held, missing = second, first
-		qty = -naked
-	}
-	t.engine.SetUnhedged(canonical, qty)
-	t.bump(func(s *Stats) { s.PairsLegged++; s.UnhedgedQty += qty })
-
-	// Before re-placing ANYTHING, ask the venue whether the leg we think is
-	// missing actually filled. "No fill event arrived" is not "no fill": the
-	// stream can be dead (Polymarket's was, dialed on the wrong endpoint) or the
-	// event can simply land after fillWait closed. Re-placing on that assumption
-	// is what sold 10 against 5 on 2026-08-25.
-	//
-	// This check used to run ONLY when both legs reported zero, which is the one
-	// case where nothing is at stake. The asymmetric case — one leg filled, one
-	// silent — is precisely when a wrong answer costs money.
-	if err := t.verifyNoSilentFill(ctx, canonical, missing); err != nil {
-		t.log.Error("naked leg is OUTSTANDING and unresolved — human reconciliation required",
-			"canonical", canonical, "venue", held.Venue, "qty", qty.String())
-		return err
+	// Before re-placing ANYTHING, ask the venue whether the hedge actually
+	// filled. "No fill event arrived" is not "no fill": the stream can be dead
+	// (Polymarket's was, dialed on the wrong endpoint) or the event can land
+	// after fillWait closed. Re-placing on that assumption is what sold 10
+	// against 5 on 2026-08-25.
+	if verr := t.verifyNoSilentFill(ctx, canonical, hedge); verr != nil {
+		t.log.Error("naked lead is OUTSTANDING and unresolved — human reconciliation required",
+			"canonical", canonical, "venue", lead.Venue, "qty", naked.String())
+		return verr
 	}
 
 	t.log.Warn("pair is legged — entering hedge grace window",
-		"canonical", canonical, "naked_venue", held.Venue, "naked_qty", qty.String(),
-		"need", missing.Venue, "grace", t.hedgeGrace.String())
+		"canonical", canonical, "naked_venue", lead.Venue, "naked_qty", naked.String(),
+		"need", hedge.Venue, "grace", t.hedgeGrace.String())
 
-	// 6. Resolve the naked leg in the BACKGROUND. The live loop is single
+	// 7. Resolve the naked lead in the BACKGROUND. The live loop is single
 	//    threaded across all markets, so blocking it here for the whole grace
 	//    window would freeze every other market and stall the kill checks.
 	t.pending.Add(1)
 	go func() {
 		defer t.pending.Done()
-		t.completeOrExit(ctx, canonical, held, missing, qty)
+		t.completeOrExit(ctx, canonical, lead, hedge, naked)
 	}()
 	return nil
 }
@@ -416,12 +420,27 @@ func (t *Trader) verifyNoSilentFill(ctx context.Context, canonical string, leg c
 	return nil
 }
 
-// orderLegs returns (first, second) with the DEEPER-book leg first. Note the two
-// legs are fired SIMULTANEOUSLY (see ExecutePair step 3), so this ordering does
-// not decide which side ends up naked — the market does. It makes the deep,
-// reliably-fillable leg the anchor: it is risk-reserved first, and it is the
-// `first`/`held` reference the reconciliation reasons from. The substantive
-// naked-leg fix is the crossing hedge/exit IOC (hedgeSlip), not this ordering.
+// splitLeadHedge returns (lead, hedge): the lead is the leg on leadVenue — fired
+// first and alone — and the hedge is the other leg, placed only after the lead
+// fills. For a normal Kalshi/Polymarket pair exactly one leg is on leadVenue. If
+// NEITHER is (e.g. a same-venue intra-market pair), fall back to leading with the
+// deeper book, so the more reliably fillable side still goes first.
+func (t *Trader) splitLeadHedge(canonical string, legs []core.Intent) (lead, hedge core.Intent) {
+	switch {
+	case legs[0].Venue == leadVenue:
+		return legs[0], legs[1]
+	case legs[1].Venue == leadVenue:
+		return legs[1], legs[0]
+	default:
+		return t.orderLegs(canonical, legs)
+	}
+}
+
+// orderLegs returns (deeper, thinner): the DEEPER-book leg first. It is the
+// fallback lead-ordering used by splitLeadHedge when neither leg is on leadVenue
+// (a same-venue pair) — the deep, reliably-fillable leg leads. The substantive
+// naked-leg fix is the sequential lead/hedge sequencing plus the crossing
+// hedge/exit IOC (hedgeSlip), not this ordering.
 func (t *Trader) orderLegs(canonical string, legs []core.Intent) (core.Intent, core.Intent) {
 	books, ok := t.bm.Pair(canonical)
 	if !ok {
