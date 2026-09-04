@@ -185,9 +185,17 @@ func (p *PolyUSAccount) Positions(ctx context.Context) (map[string]float64, erro
 	// silent-fill verifier saw no position — and on 2026-08-25 the bot sat on
 	// two unhedged Poly shorts without noticing. Do not "simplify" this to an
 	// unverified field name again.
+	//
+	// Two quantity fields are returned: netPositionDecimal ("-0.6000") is the
+	// FRACTIONAL truth; netPosition ("-1") is the same value ROUNDED to a whole
+	// contract. Both are POINTERS so an absent key is distinguishable from a
+	// genuine zero (see the Kalshi position_fp/position parser above for the same
+	// pattern). Prefer the decimal — see the read loop for why the rounded field
+	// is dangerous.
 	var out struct {
 		Positions map[string]struct {
-			NetPosition json.Number `json:"netPosition"`
+			NetPositionDecimal *json.Number `json:"netPositionDecimal"`
+			NetPosition        *json.Number `json:"netPosition"`
 		} `json:"positions"`
 		NextCursor string `json:"nextCursor"`
 		EOF        bool   `json:"eof"`
@@ -203,7 +211,25 @@ func (p *PolyUSAccount) Positions(ctx context.Context) (map[string]float64, erro
 	}
 	pos := map[string]float64{}
 	for slug, v := range out.Positions {
-		f, _ := v.NetPosition.Float64()
+		// Polymarket fills in FRACTIONAL shares and the bot books those fractions,
+		// so reading the rounded netPosition manufactures phantom drift. On
+		// 2026-09-01 a partial 0.4-contract dump left the venue at -0.6: netPosition
+		// reported -1, the bot correctly believed -0.6, and the drift monitor killed
+		// on the 0.4 rounding gap — halting the bot for two days over a position that
+		// actually matched. Prefer netPositionDecimal; fall back to the integer only
+		// when the venue omits it.
+		n := v.NetPositionDecimal
+		if n == nil {
+			n = v.NetPosition
+		}
+		if n == nil {
+			// Never silently downgrade "I could not read this" to "flat".
+			return nil, fmt.Errorf("polymarketus: position %q has neither netPositionDecimal nor netPosition; refusing to report it as flat", slug)
+		}
+		f, err := n.Float64()
+		if err != nil {
+			return nil, fmt.Errorf("polymarketus: position %q: %w", slug, err)
+		}
 		if f != 0 {
 			pos[slug] = f
 		}

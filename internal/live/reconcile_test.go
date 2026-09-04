@@ -51,6 +51,46 @@ func TestPolyUSPositionsParsesLiveShape(t *testing.T) {
 	}
 }
 
+// The fractional case that killed the bot on 2026-09-01: a partial 0.4-contract
+// dump left the venue at -0.6. Polymarket reports netPosition ROUNDED to "-1"
+// but the true netPositionDecimal is "-0.6000". The bot books fractional fills,
+// so it correctly believed -0.6; reading the rounded field made the drift
+// monitor see -1 vs -0.6 and self-kill over a position that actually matched.
+// Positions() must report the fractional truth.
+func TestPolyUSPositionsPrefersFractionalDecimal(t *testing.T) {
+	body := `{"positions":{"aec-mlb-ath-sea-2026-09-03":{"netPosition":"-1",` +
+		`"netPositionDecimal":"-0.6000"}},"nextCursor":"","eof":true}`
+	pos, err := polyAcctServing(t, body).Positions(context.Background())
+	if err != nil {
+		t.Fatalf("Positions: %v", err)
+	}
+	if got := pos["aec-mlb-ath-sea-2026-09-03"]; got != -0.6 {
+		t.Errorf("want -0.6 (the fractional truth), got %v (rounded netPosition would be -1)", got)
+	}
+}
+
+// When the venue omits the decimal field entirely, fall back to the integer
+// netPosition rather than dropping the row (which would read as flat).
+func TestPolyUSPositionsFallsBackToInteger(t *testing.T) {
+	body := `{"positions":{"a":{"netPosition":"-3"}},"nextCursor":"","eof":true}`
+	pos, err := polyAcctServing(t, body).Positions(context.Background())
+	if err != nil {
+		t.Fatalf("Positions: %v", err)
+	}
+	if got := pos["a"]; got != -3 {
+		t.Errorf("want -3 from the fallback, got %v", got)
+	}
+}
+
+// A row with NEITHER quantity field must ERROR, never report flat — the same
+// "don't downgrade unreadable to zero" rule the Kalshi parser enforces.
+func TestPolyUSPositionsRefusesRowWithNoQuantity(t *testing.T) {
+	body := `{"positions":{"a":{"avgPx":{"value":"0.5"}}},"nextCursor":"","eof":true}`
+	if _, err := polyAcctServing(t, body).Positions(context.Background()); err == nil {
+		t.Fatal("want an error for a row with no quantity field, got nil")
+	}
+}
+
 // A paginated response must be an ERROR, never a partial map: a short read is
 // indistinguishable from "flat" to every caller, which is the exact failure
 // mode this whole file exists to prevent.
