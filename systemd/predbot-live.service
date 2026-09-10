@@ -38,7 +38,7 @@ ExecStart=/opt/predbot/predbot-live \
   -max-unhedged-contracts=2 \
   -pnl-floor-usd=-5 \
   -min-depth-contracts=10 \
-  -sports=mlb \
+  -sports=mlb,nfl \
   -maker
 # -maker (2026-09-10): MAKER mode — rest one leg (earns the Poly rebate), hedge
 # the other on fill. This INVERTS the taker path's naked-leg-impossible

@@ -46,8 +46,50 @@ var mlbCanon = map[string]string{
 	"wsh": "WSH", "was": "WSH", "washington": "WSH", "nationals": "WSH",
 }
 
+// nflCanon maps NFL team forms (Kalshi codes/subtitles, Poly slug codes, city
+// names, nicknames) to a canonical abbreviation. Covers the abbreviation
+// variants the two venues are known to disagree on (WAS/WSH, LV/LVR, JAX/JAC,
+// GB/GNB, KC/KAN, NE/NWE, NO/NOR, SF/SFO, TB/TAM). Verify against live tickers
+// when NFL games first post — Kalshi has used oddball codes before (CWS/ATH in
+// MLB), so a first-night check is warranted.
+var nflCanon = map[string]string{
+	"ari": "ARI", "arz": "ARI", "arizona": "ARI", "cardinals": "ARI",
+	"atl": "ATL", "atlanta": "ATL", "falcons": "ATL",
+	"bal": "BAL", "baltimore": "BAL", "ravens": "BAL",
+	"buf": "BUF", "buffalo": "BUF", "bills": "BUF",
+	"car": "CAR", "carolina": "CAR", "panthers": "CAR",
+	"chi": "CHI", "chicago": "CHI", "bears": "CHI",
+	"cin": "CIN", "cincinnati": "CIN", "bengals": "CIN",
+	"cle": "CLE", "cleveland": "CLE", "browns": "CLE",
+	"dal": "DAL", "dallas": "DAL", "cowboys": "DAL",
+	"den": "DEN", "denver": "DEN", "broncos": "DEN",
+	"det": "DET", "detroit": "DET", "lions": "DET",
+	"gb": "GB", "gnb": "GB", "green bay": "GB", "packers": "GB",
+	"hou": "HOU", "houston": "HOU", "texans": "HOU",
+	"ind": "IND", "indianapolis": "IND", "colts": "IND",
+	"jax": "JAX", "jac": "JAX", "jacksonville": "JAX", "jaguars": "JAX",
+	"kc": "KC", "kan": "KC", "kansas city": "KC", "chiefs": "KC",
+	"lv": "LV", "lvr": "LV", "las": "LV", "las vegas": "LV", "raiders": "LV", "oak": "LV", "oakland": "LV",
+	"lac": "LAC", "chargers": "LAC", "los angeles c": "LAC", "la chargers": "LAC",
+	"lar": "LAR", "rams": "LAR", "los angeles r": "LAR", "la rams": "LAR",
+	"mia": "MIA", "miami": "MIA", "dolphins": "MIA",
+	"min": "MIN", "minnesota": "MIN", "vikings": "MIN",
+	"ne": "NE", "nwe": "NE", "new england": "NE", "patriots": "NE", "pats": "NE",
+	"no": "NO", "nor": "NO", "new orleans": "NO", "saints": "NO",
+	"nyg": "NYG", "giants": "NYG", "new york g": "NYG", "ny giants": "NYG",
+	"nyj": "NYJ", "jets": "NYJ", "new york j": "NYJ", "ny jets": "NYJ",
+	"phi": "PHI", "philadelphia": "PHI", "eagles": "PHI",
+	"pit": "PIT", "pittsburgh": "PIT", "steelers": "PIT",
+	"sf": "SF", "sfo": "SF", "san francisco": "SF", "49ers": "SF", "niners": "SF",
+	"sea": "SEA", "seattle": "SEA", "seahawks": "SEA",
+	"tb": "TB", "tam": "TB", "tampa bay": "TB", "buccaneers": "TB", "bucs": "TB",
+	"ten": "TEN", "tennessee": "TEN", "titans": "TEN",
+	"was": "WAS", "wsh": "WAS", "washington": "WAS", "commanders": "WAS",
+}
+
 var canonByLeague = map[string]map[string]string{
 	"mlb": mlbCanon,
+	"nfl": nflCanon,
 }
 
 // canonTeam normalizes a raw team code or name to its canonical abbreviation for

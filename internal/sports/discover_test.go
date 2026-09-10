@@ -21,6 +21,35 @@ func TestCanonTeam(t *testing.T) {
 	}
 }
 
+func TestCanonTeamNFL(t *testing.T) {
+	cases := map[string]string{
+		"KC": "KC", "kan": "KC", "Kansas City Chiefs": "KC", "chiefs": "KC",
+		"WAS": "WAS", "WSH": "WAS", "Washington Commanders": "WAS",
+		"LV": "LV", "LVR": "LV", "Raiders": "LV", "OAK": "LV",
+		"JAX": "JAX", "JAC": "JAX", "GB": "GB", "GNB": "GB",
+		"Los Angeles Rams": "LAR", "Los Angeles Chargers": "LAC",
+		"New York G": "NYG", "New York J": "NYJ",
+		"49ers": "SF", "SFO": "SF", "Cricket United": "",
+	}
+	for in, want := range cases {
+		if got := canonTeam("nfl", in); got != want {
+			t.Errorf("canonTeam(nfl, %q) = %q; want %q", in, got, want)
+		}
+	}
+}
+
+// An NFL game cross-lists once both venues' team forms canonicalize equally.
+func TestMatchGamesNFL(t *testing.T) {
+	kalshi := []venueGame{{league: "nfl", date: "2026-09-11", outcomes: map[string]string{
+		"KC": "KXNFLGAME-...-KC", "PHI": "KXNFLGAME-...-PHI"}}}
+	poly := []venueGame{{league: "nfl", date: "2026-09-11", outcomes: map[string]string{
+		"KC": "aec-nfl-kc-phi-2026-09-11"}}}
+	m := MatchGames(kalshi, poly)
+	if len(m) != 1 || m[0].Canonical != "NFL-20260911-KC" {
+		t.Fatalf("nfl match = %+v; want 1 match NFL-20260911-KC", m)
+	}
+}
+
 func TestKalshiEventDate(t *testing.T) {
 	if got := kalshiEventDate("KXMLBGAME", "KXMLBGAME-26AUG231335STLPHI"); got != "2026-08-23" {
 		t.Errorf("date = %q; want 2026-08-23", got)
