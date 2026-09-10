@@ -508,6 +508,16 @@ func main() {
 				if len(legs) == 0 {
 					continue
 				}
+				// Maker validation: only ever REST the Polymarket leg. The edge is
+				// the Poly maker rebate (adverse drift 0.287c < rebate 0.31c); a
+				// Kalshi rest earns no rebate AND fails to attach to the Kalshi
+				// exchange-side order group (order_group_not_found). Skip cleanly
+				// (no entry mark, no error) when the strategy's cheaper rest is Kalshi.
+				if *maker {
+					if ri := strategy.RestingLeg(legs); ri < 0 || legs[ri].Venue != "polymarketus" {
+						continue
+					}
+				}
 				// Silent-fill guard (2026-08-25/-26 naked-leg incidents): never
 				// act on a Polymarket slug the private fill stream is not yet
 				// subscribed to — the order would fill with no execution event and

@@ -60,6 +60,15 @@ func (t *Trader) ExecuteMakerPair(ctx context.Context, canonical string, legs []
 	rest := legs[restIdx]
 	take := legs[1-restIdx]
 
+	// Safety net (the live loop already filters these out): only rest on
+	// Polymarket. A Kalshi rest earns no Poly rebate and cannot attach to the
+	// Kalshi exchange-side order group (order_group_not_found). Refuse cleanly —
+	// no order, no error, nothing at risk — rather than spam failed placements.
+	if rest.Venue != "polymarketus" {
+		t.log.Debug("maker: skipping non-Poly resting leg", "canonical", canonical, "rest_venue", rest.Venue)
+		return nil
+	}
+
 	t.bump(func(s *Stats) { s.PairsAttempted++ })
 
 	// Risk-gate BOTH legs before resting anything, so a rest that fills can always

@@ -84,6 +84,26 @@ func TestMakerKilledPlacesNothing(t *testing.T) {
 	}
 }
 
+// A pair whose resting leg is on Kalshi is refused cleanly — no order, no
+// attempt (only the Poly leg may rest: rebate + order-group reasons).
+func TestMakerRefusesKalshiRest(t *testing.T) {
+	tr, k, p, _ := setup(t)
+	legs := []core.Intent{
+		{Venue: "kalshi", VenueID: "K", Side: core.BuyYes, Px: 5000, Qty: 500, TIF: core.GTC},
+		{Venue: "polymarketus", VenueID: "P", Side: core.SellYes, Px: 6000, Qty: 500, TIF: core.IOC},
+	}
+	if err := tr.ExecuteMakerPair(context.Background(), "MKT", legs); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	tr.pending.Wait()
+	if len(k.orders()) != 0 || len(p.orders()) != 0 {
+		t.Fatalf("a Kalshi-rest pair must place nothing, got kalshi=%d poly=%d", len(k.orders()), len(p.orders()))
+	}
+	if s := tr.Stats(); s.PairsAttempted != 0 {
+		t.Errorf("attempted=%d; want 0 (skipped before any attempt)", s.PairsAttempted)
+	}
+}
+
 // A pair with no resting leg (both IOC) falls back to the taker path.
 func TestMakerNoRestingLegFallsBackToTaker(t *testing.T) {
 	tr, k, p, _ := setup(t)
