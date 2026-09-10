@@ -65,6 +65,10 @@ type Trader struct {
 	legWait time.Duration // how long to wait for leg 2 before exiting (design §8)
 
 	fillWait time.Duration // how long to wait for venue fill events per order
+	// restWait is how long a MAKER resting leg is left on the book before it is
+	// cancelled (maker path only). It bounds how long the bot sits waiting to be
+	// filled; on a fill the taking leg is hedged immediately via completeOrExit.
+	restWait time.Duration
 	// hedgeGrace is how long a legged pair gets to complete its missing side
 	// before the naked leg is dumped. It MUST stay below the supervisor's
 	// MaxUnhedgedFor (60s) or the bot kills itself mid-recovery.
@@ -153,6 +157,7 @@ func NewTrader(ex Executors, engine *risk.Engine, bm *book.Manager, legWait time
 		// is a lost event, and the venue position query resolves that far better
 		// than waiting longer for a message that may never come.
 		fillWait:   1 * time.Second,
+		restWait:   30 * time.Second, // maker: how long a rest sits before cancel
 		hedgeGrace: 30 * time.Second, // < supervisor MaxUnhedgedFor (60s)
 		hedgeRetry: 2 * time.Second,
 		// 2c/contract: wider than normal fee drag, tighter than a real dislocation.
@@ -164,6 +169,13 @@ func NewTrader(ex Executors, engine *risk.Engine, bm *book.Manager, legWait time
 		parked:       map[string]parkedFills{},
 		posByVenueID: map[string]float64{},
 		log:          slog.With("component", "live-trader")}
+}
+
+// SetRestWait sets how long a maker resting leg sits before it is cancelled.
+func (t *Trader) SetRestWait(d time.Duration) {
+	if d > 0 {
+		t.restWait = d
+	}
 }
 
 // SetVerifier installs the venue-position check used to catch silent fills.

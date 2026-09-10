@@ -66,6 +66,8 @@ func main() {
 	pnlFloor := flag.Float64("pnl-floor-usd", -25, "kill if realized P&L drops below this")
 	minDepthContracts := flag.Float64("min-depth-contracts", 10, "require this much top-of-book depth on BOTH legs (prevents phantom edges against empty books)")
 	sportsLeagues := flag.String("sports", "", "also trade cross-listed daily games, e.g. \"mlb\" (fast + liquid; more chances to fire)")
+	maker := flag.Bool("maker", false, "MAKER mode: rest one leg (earn the Poly rebate) and hedge the other on fill, instead of taker/taker (design §9.2)")
+	restWait := flag.Duration("rest-wait", 30*time.Second, "maker: how long a resting leg sits on the book before it is cancelled")
 	flag.Parse()
 
 	if !*dryRun && !*arm {
@@ -239,6 +241,7 @@ func main() {
 
 	bm := book.NewManager(markets)
 	trader := live.NewTrader(live.Executors{"kalshi": kEx, "polymarketus": pEx}, engine, bm, 2*time.Second)
+	trader.SetRestWait(*restWait)
 	// Execution-latency + order-outcome metrics from the REAL order path (populate
 	// once armed): predbot_decision_to_ack_seconds{venue} and
 	// predbot_orders_total{venue,outcome}. Same instruments the recorder feeds from
@@ -464,7 +467,8 @@ func main() {
 	entered := map[string]time.Time{}
 	const sportsEntryTTL = 12 * time.Hour
 
-	slog.Info("live loop starting", "markets", len(markets), "dry_run", *dryRun)
+	slog.Info("live loop starting", "markets", len(markets), "dry_run", *dryRun,
+		"mode", modeName(*maker), "rest_wait", restWait.String())
 	tick := time.NewTicker(500 * time.Millisecond)
 	defer tick.Stop()
 	for {
@@ -495,7 +499,12 @@ func main() {
 				for c := range entered {
 					inFlight[c] = true
 				}
-				legs := strategy.CrossVenue(canonical, books, strategy.Exposure{InFlight: inFlight}, fees, scfg)
+				var legs []core.Intent
+				if *maker {
+					legs = strategy.MakerCrossVenue(canonical, books, strategy.Exposure{InFlight: inFlight}, fees, scfg)
+				} else {
+					legs = strategy.CrossVenue(canonical, books, strategy.Exposure{InFlight: inFlight}, fees, scfg)
+				}
 				if len(legs) == 0 {
 					continue
 				}
@@ -513,13 +522,23 @@ func main() {
 					continue
 				}
 				if *dryRun {
-					slog.Info("DRY RUN would place pair", "canonical", canonical,
-						"buy", fmt.Sprintf("%s %s@%s", legs[0].Venue, legs[0].Qty.String(), legs[0].Px.String()),
-						"sell", fmt.Sprintf("%s %s@%s", legs[1].Venue, legs[1].Qty.String(), legs[1].Px.String()))
+					legFmt := func(l core.Intent) string {
+						tif := "IOC"
+						if l.TIF == core.GTC || l.TIF == core.GTD {
+							tif = "REST"
+						}
+						return fmt.Sprintf("%s %s %s@%s [%s]", l.Venue, l.Side.String(), l.Qty.String(), l.Px.String(), tif)
+					}
+					slog.Info("DRY RUN would place pair", "canonical", canonical, "mode", modeName(*maker),
+						"leg1", legFmt(legs[0]), "leg2", legFmt(legs[1]))
 					entered[canonical] = time.Now()
 					continue
 				}
-				if err := trader.ExecutePair(rootCtx, canonical, legs); err != nil {
+				exec := trader.ExecutePair
+				if *maker {
+					exec = trader.ExecuteMakerPair
+				}
+				if err := exec(rootCtx, canonical, legs); err != nil {
 					slog.Warn("pair failed", "canonical", canonical, "err", err)
 					sup.NoteError()
 					continue
@@ -528,6 +547,13 @@ func main() {
 			}
 		}
 	}
+}
+
+func modeName(maker bool) string {
+	if maker {
+		return "maker"
+	}
+	return "taker"
 }
 
 func staleAny(books map[string]core.BookSnapshot, now, maxAge int64) bool {
