@@ -38,7 +38,13 @@ ExecStart=/opt/predbot/predbot-live \
   -max-unhedged-contracts=2 \
   -pnl-floor-usd=-5 \
   -min-depth-contracts=10 \
-  -sports=mlb
+  -sports=mlb \
+  -maker
+# -maker (2026-09-10): MAKER mode — rest one leg (earns the Poly rebate), hedge
+# the other on fill. This INVERTS the taker path's naked-leg-impossible
+# sequencing: a filled rest is naked on the resting venue until the hedge lands,
+# so the 1-contract / 2-unhedged / -$5 caps above are doing real work here. This
+# is the live fill-through validation the backtest cannot prove (design §9.2).
 
 # SIGUSR1 = engage the kill switch without stopping (writes the KILLED marker,
 # which then blocks any restart until a human removes it).
