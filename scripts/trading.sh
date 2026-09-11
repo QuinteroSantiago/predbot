@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Control predbot LIVE TRADING (real money) on the sandbox VM.
+# Control predbot LIVE TRADING (real money) on the predbot VM (192.168.3.173).
+# Operator manual: https://rpi5/predbot-manual.html
 #
 #   trading.sh start    arm and run continuously (extra args go to preflight)
 #   trading.sh stop     stop trading (graceful; cancels nothing — see note)
@@ -19,14 +20,17 @@ SSH=(ssh -o BatchMode=yes "$REMOTE")
 
 case "${1:-status}" in
   start)
-    # Extra args are passed to preflight, e.g. `start -adopt-positions`. NOTE:
-    # preflight and the SERVICE must agree — adopting also needs the flag in
-    # predbot-live.service's ExecStart, which is a deliberate edit, on purpose.
+    # Extra args are passed to preflight. To arm while holding reviewed
+    # positions, use the one-shot ADOPT marker (adopt-once): preflight READS it
+    # and the service CONSUMES it, so both reach the same verdict and adoption
+    # never outlives the review. Never put -adopt-positions in the unit — that
+    # would adopt whatever is on the venues on every future restart.
     echo "Pre-flight reconciliation…"
     "${SSH[@]}" "set -a; . /etc/predbot/env; set +a; /opt/predbot/preflight ${*:2}" || {
       echo "PRE-FLIGHT FAILED — not starting."
       echo "If it refused over pre-existing positions: flatten them, or (having"
-      echo "reviewed them) add -adopt-positions to BOTH this command and the unit."
+      echo "reviewed them) authorize a one-shot adoption and start again:"
+      echo "  ssh $REMOTE 'sudo -u predbot touch /var/lib/predbot/ADOPT'   (or: $0 adopt-once)"
       exit 1; }
     "${SSH[@]}" "sudo systemctl start $SVC && sleep 3 && systemctl is-active $SVC"
     echo "LIVE TRADING STARTED. Stop with: $0 stop   |  Emergency: $0 kill"

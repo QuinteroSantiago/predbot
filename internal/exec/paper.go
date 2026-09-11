@@ -37,7 +37,7 @@ type PaperTrader struct {
 	fees    strategy.FeeModel
 	latency time.Duration
 	bm      *book.Manager
-	log     *os.File // optional JSONL fills log for the divergence report
+	log     *os.File // optional JSONL fills log (paper-fills.jsonl), for comparing against the backtest
 
 	mu        sync.Mutex
 	pending   []pendingPair
@@ -65,7 +65,7 @@ type pendingPair struct {
 }
 
 // NewPaperTrader builds a paper executor. latencyMS is the design-§10.2 Δ; logPath
-// (if non-empty) receives a JSONL line per settled pair for divergence analysis.
+// (if non-empty) receives a JSONL line per settled pair, for paper-vs-backtest comparison.
 func NewPaperTrader(fees strategy.FeeModel, latencyMS int, bm *book.Manager, logPath string) *PaperTrader {
 	p := &PaperTrader{fees: fees, latency: time.Duration(latencyMS) * time.Millisecond, bm: bm}
 	if logPath != "" {
