@@ -1,6 +1,11 @@
 # Phase 1 recorder, authenticated WebSocket mode (design §6.1/§6.2, §7).
-# Deployed on the amd64 k3s-sandbox VM (192.168.3.172); credentials in
+# Runs on the dedicated predbot VM (192.168.3.173); credentials in
 # /etc/predbot/env (0600). Full-depth Kalshi deltas + Poly snapshot pushes.
+# Deployed by scripts/redeploy.sh (which installs this file).
+#
+# -sports must cover every league predbot-live trades (its unit has
+# -sports=mlb,nfl): a league the live bot trades but the recorder skips has no
+# recorded books/trades, no backup, and no arb-surface or Fee Wall coverage.
 [Unit]
 Description=predbot Phase 1 feed recorder (WebSocket: Kalshi + Polymarket US)
 After=network-online.target chronyd.service
@@ -11,7 +16,7 @@ Type=simple
 User=predbot
 Group=predbot
 WorkingDirectory=/opt/predbot
-ExecStart=/opt/predbot/predbot-record -config /opt/predbot/config/config.yaml -markets /opt/predbot/config/markets.yaml -sports mlb -paper
+ExecStart=/opt/predbot/predbot-record -config /opt/predbot/config/config.yaml -markets /opt/predbot/config/markets.yaml -sports mlb,nfl -paper
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 RestartSec=5

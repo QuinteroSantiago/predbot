@@ -1,7 +1,9 @@
 # predbot LIVE TRADING — REAL ORDERS, REAL MONEY (design §8, §11, §17 Phase 4).
 #
 # Deliberately NOT enabled at boot: a reboot must never silently resume trading.
-# Start it explicitly; stop it with `systemctl stop predbot-live`.
+# Operate it ONLY via scripts/trading.sh (start runs preflight first; stop/kill/
+# clear/deploy-live) — see the operator manual, https://rpi5/predbot-manual.html.
+# deploy-live installs this file; editing it on the VM is overwritten next deploy.
 #
 # Restart=no is also deliberate. If the process dies mid-pair it may hold an
 # unhedged position; an automatic restart could compound that before a human
@@ -16,7 +18,7 @@ Type=simple
 User=predbot
 Group=predbot
 WorkingDirectory=/opt/predbot
-# MINIMUM-RISK MLB run (2026-08-28): smallest possible size + tight guards.
+# MINIMUM-RISK caps (since 2026-08-28): smallest possible size + tight guards.
 #   -max-order-contracts=1   one contract per leg — the smallest bet there is.
 #   -max-unhedged-contracts=2  NOT 1: the Kalshi exchange-side order group is
 #     sized to this cap (cmd/live ~L220), and the safety EXIT of a naked Kalshi
@@ -27,8 +29,11 @@ WorkingDirectory=/opt/predbot
 #   -min-depth-contracts=10  both legs need 10 contracts of real depth before we
 #     act (10x our order size) — the phantom-edge guard that the 2026-08-24
 #     naked-leg incident was missing.
+#   -sports=mlb,nfl          the universe: daily games discovered at runtime
+#     (markets.yaml is empty). Keep predbot-record.service's -sports in step.
 # NOTE: this is not a profit run — at 1 contract the dollars are trivial either
-# way. It is a "does the MLB arb actually fire correctly with real money" run.
+# way. It is a live validation run: does the maker path (below) actually fill,
+# hedge and earn the rebate with real money.
 ExecStart=/opt/predbot/predbot-live \
   -config /opt/predbot/config/config.yaml \
   -markets /opt/predbot/config/markets.yaml \

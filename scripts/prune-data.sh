@@ -18,10 +18,14 @@ cutoff=$(date -u -d "$KEEP_DAYS days ago" +%s)
 kept=0; deleted=0; freed=0
 
 shopt -s nullglob
-for f in "$DATA"/raw/*.jsonl.gz "$DATA"/normalized/*.jsonl.gz; do
+for f in "$DATA"/raw/*.jsonl.gz "$DATA"/normalized/*.jsonl.gz "$DATA"/trades/*.jsonl.gz; do
   base=$(basename "$f")
-  # <venue>-<YYYY-MM-DDTHH>.jsonl.gz
-  hour=${base##*-2}; hour="2${hour%%.jsonl.gz}"
+  # <venue>-<YYYY-MM-DDTHH>.jsonl.gz or <venue>-trades-<YYYY-MM-DDTHH>.jsonl.gz.
+  # Match the timestamp itself: stripping up to the last "-2" (the old approach)
+  # also matched the day on the 20th-29th, so those files never parsed and were
+  # silently never pruned.
+  [[ "$base" =~ ([0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2})\.jsonl\.gz$ ]] || continue
+  hour="${BASH_REMATCH[1]}"
   # file's hour as epoch (treat as UTC)
   ts=$(date -u -d "${hour//T/ }:00:00" +%s 2>/dev/null || echo 0)
   [ "$ts" = 0 ] && continue

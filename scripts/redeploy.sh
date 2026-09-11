@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Redeploy the Phase 1 recorder to the amd64 k3s-sandbox VM (public-REST mode).
+# Redeploy the recorder (predbot-record, authenticated WS) to the predbot VM (192.168.3.173).
 #
 # Runs tests, cross-compiles a static amd64 binary, syncs binary + config +
 # markets + unit to the VM, and restarts the service, then verifies it came back
@@ -81,4 +81,4 @@ ssh "${SSH_OPTS[@]}" "$REMOTE" '
   journalctl -u '"$SERVICE"' --no-pager -n 4 -o cat
 '
 step "Done"
-echo "Dashboard: http://<pi>/observability/d/predbot-phase1/"
+echo "Dashboard: https://rpi5/predbot  (recorder metrics; live bot: https://rpi5/predbot-live)"

@@ -1,7 +1,23 @@
+# Records how markets RESOLVED -> data/outcomes.jsonl (append-only, dedups on
+# re-run). Needed for any directional backtest (cmd/backtest -longshot); arb
+# P&L never needs it. Runs on the predbot VM, hourly via predbot-outcomes.timer.
+# Public venue APIs only — no credentials. -sports must match the leagues
+# predbot-live trades. Deploy: cross-compile ./cmd/outcomes (amd64) to
+# /opt/predbot/outcomes; copy this unit + the timer to /etc/systemd/system.
 [Unit]
 Description=Record how predbot markets resolved (needed for directional backtests)
 After=network-online.target
+Wants=network-online.target
+
 [Service]
 Type=oneshot
 User=predbot
-ExecStart=/opt/predbot/outcomes -markets /opt/predbot/config/markets.yaml -sports mlb -out /var/lib/predbot/data/outcomes.jsonl
+Group=predbot
+ExecStart=/opt/predbot/outcomes -markets /opt/predbot/config/markets.yaml -sports mlb,nfl -data /var/lib/predbot/data -out /var/lib/predbot/data/outcomes.jsonl
+TimeoutStartSec=10min
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/predbot/data

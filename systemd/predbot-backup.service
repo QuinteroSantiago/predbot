@@ -1,5 +1,5 @@
 [Unit]
-Description=Pull predbot recorder data from the sandbox VM to the Pi
+Description=Pull predbot recorder data from the predbot VM to the Pi
 After=network-online.target
 Wants=network-online.target
 

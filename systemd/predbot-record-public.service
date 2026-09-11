@@ -1,7 +1,11 @@
-# Phase 1 recorder, PUBLIC-REST mode (no credentials; design §16 open item #5).
-# Deployed on the amd64 k3s-sandbox VM (192.168.3.172); ships telemetry to the
-# Pi's LGTM stack over the LAN. Hardened: dedicated user, no secrets, writable
-# path scoped to the data dir.
+# FALLBACK recorder, PUBLIC-REST mode (no credentials; design §16 open item #5).
+# NOT installed anywhere: predbot-record.service (authenticated WS) replaced it
+# on 2026-08-23. Kept for a credential-free recording if the venue keys are ever
+# unavailable — install it IN PLACE of predbot-record (both bind :9487 and write
+# the same data dir; never run the two together). No sports discovery (-sports
+# is WS-only), no paper trader, no trade prints. Ships telemetry to the Pi's
+# LGTM over the LAN. Hardened: dedicated user, no secrets, writable path scoped
+# to the data dir.
 [Unit]
 Description=predbot Phase 1 feed recorder (public REST: Kalshi + Polymarket US)
 After=network-online.target

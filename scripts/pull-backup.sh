@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pull the predbot recorder's data from the sandbox VM to the Pi.
+# Pull the predbot recorder's data from the predbot VM (192.168.3.173) to the Pi.
 # Flushes the VM's current-hour gzip files first (SIGHUP) so the latest data is
 # complete, then rsyncs incrementally. No --delete: the Pi keeps history even if
 # something is ever removed on the VM (safe backup direction).
@@ -7,7 +7,7 @@
 # Run daily by predbot-backup.timer. Override target/dest via env.
 set -euo pipefail
 
-# Use the ~/.ssh/config 'k3s-vm' alias, which pins IdentityFile id_ed25519_gitea
+# Use the ~/.ssh/config 'predbot-vm' alias, which pins an IdentityFile
 # so this works under systemd with no ssh-agent (raw root@IP relies on the agent).
 REMOTE="${REMOTE:-predbot-vm}"
 SRC="/var/lib/predbot/data/"
