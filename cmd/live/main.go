@@ -14,6 +14,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -254,15 +255,27 @@ func main() {
 		slog.Warn("uptime gauge disabled", "err", err)
 	}
 
+	// Maintenance breakers (Polymarket: weekly Thu 2–6 AM ET + unannounced
+	// emergency windows; both venues answer 5xx while down). After 3 consecutive
+	// 5xx a venue is DOWN: the periodic pollers below go through a GuardedAccount
+	// and drop to one probe per 15 min instead of warning every tick, and the
+	// trading loop opens no new pair while either venue is down.
+	kOut, pOut := live.NewOutage("kalshi"), live.NewOutage("polymarketus")
+	kGuard, pGuard := live.Guard(kAcct, kOut), live.Guard(pAcct, pOut)
+
 	// A fill stream can fail silently, so the venue's own position is the final
 	// authority: the trader checks it when no fill arrives, and the drift monitor
-	// polls it continuously and kills on anything unexplained.
+	// polls it continuously and kills on anything unexplained. The verifier is
+	// NEVER skipped by the outage breaker (an unverifiable no-fill must still
+	// kill); it only reports into it, so a successful read ends an outage early.
 	verify := func(vctx context.Context, venueName, venueID string) (float64, error) {
 		var a live.AccountClient = kAcct
+		out := kOut
 		if venueName == "polymarketus" {
-			a = pAcct
+			a, out = pAcct, pOut
 		}
 		pos, err := a.Positions(vctx)
+		out.Observe(err)
 		if err != nil {
 			return 0, err
 		}
@@ -298,7 +311,7 @@ func main() {
 				"canonical", canonical, "net_yes_contracts", net.String())
 		}
 	}
-	go live.NewDriftMonitor([]live.AccountClient{kAcct, pAcct}, engine, trader.Positions).Run(rootCtx)
+	go live.NewDriftMonitor([]live.AccountClient{kGuard, pGuard}, engine, trader.Positions).Run(rootCtx)
 
 	// Publish live unhedged (naked-leg) exposure per market to the dashboard.
 	if err := obs.RegisterUnhedgedGauge(engine.UnhedgedSnapshot); err != nil {
@@ -312,7 +325,7 @@ func main() {
 	// values rather than blanking what is a safety view of real exposure.
 	{
 		canonicalOf := config.CanonicalByVenueID(markets)
-		accts := map[string]live.AccountClient{"kalshi": kAcct, "polymarketus": pAcct}
+		accts := map[string]live.AccountClient{"kalshi": kGuard, "polymarketus": pGuard}
 		var posMu sync.Mutex
 		posByVenue := map[string]map[string]float64{} // venue -> venueID -> contracts
 		if err := obs.RegisterPositionsGauge(func() []obs.Position {
@@ -341,6 +354,9 @@ func main() {
 					cctx, cancel := context.WithTimeout(rootCtx, 15*time.Second)
 					pos, err := a.Positions(cctx)
 					cancel()
+					if errors.Is(err, live.ErrVenueUnavailable) {
+						continue // down for maintenance; keep last-known, the breaker logged it
+					}
 					if err != nil {
 						slog.Warn("positions poll failed", "venue", venueName, "err", err)
 						continue // keep last-known rather than blanking the safety view
@@ -486,6 +502,11 @@ func main() {
 				if sports.Live(c) && time.Since(at) > sportsEntryTTL {
 					delete(entered, c)
 				}
+			}
+			// A venue in maintenance can't place, fill-report or reconcile an
+			// order, so open nothing until its outage breaker sees it back up.
+			if kOut.Down() || pOut.Down() {
+				continue
 			}
 			for _, canonical := range bm.Canonicals() {
 				if _, in := entered[canonical]; in {

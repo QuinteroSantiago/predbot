@@ -7,6 +7,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
@@ -179,9 +180,11 @@ func main() {
 	if !*publicMode {
 		kSign := func(m, p string) (http.Header, error) { return kalshi.AuthHeaders(m, "/trade-api/v2"+p) }
 		pSign := func(m, p string) (http.Header, error) { return polymarketus.AuthHeaders(m, p) }
+		// Guarded: during venue maintenance (5xx) the poll drops to one probe per
+		// 15 min instead of warning every minute, keeping the last-known values.
 		accts := []live.AccountClient{
-			live.NewKalshiAccount("https://api.elections.kalshi.com/trade-api/v2", kSign),
-			live.NewPolyUSAccount("https://api.polymarket.us", pSign),
+			live.Guard(live.NewKalshiAccount("https://api.elections.kalshi.com/trade-api/v2", kSign), live.NewOutage("kalshi")),
+			live.Guard(live.NewPolyUSAccount("https://api.polymarket.us", pSign), live.NewOutage("polymarketus")),
 		}
 		var balMu sync.Mutex
 		balances := map[string]float64{}
@@ -202,6 +205,9 @@ func main() {
 					bctx, bcancel := context.WithTimeout(rootCtx, 15*time.Second)
 					usd, err := a.BalanceUSD(bctx)
 					bcancel()
+					if errors.Is(err, live.ErrVenueUnavailable) {
+						continue // down for maintenance; the breaker logged it
+					}
 					if err != nil {
 						slog.Warn("balance poll failed", "venue", a.Venue(), "err", err)
 						continue // keep last-known rather than reporting a false zero

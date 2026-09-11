@@ -61,9 +61,22 @@ func (h *httpAccount) get(ctx context.Context, path string) ([]byte, error) {
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("%s GET %s: %d: %s", h.venue, path, resp.StatusCode, b)
+		return nil, &HTTPError{Venue: h.venue, Path: path, Status: resp.StatusCode, Body: string(b)}
 	}
 	return b, nil
+}
+
+// HTTPError is a venue's non-2xx response. It is typed so the outage breaker can
+// tell a venue that is DOWN (5xx — e.g. Polymarket maintenance answers 503 with
+// gRPC code 14 UNAVAILABLE) from a request that is wrong (4xx).
+type HTTPError struct {
+	Venue, Path string
+	Status      int
+	Body        string
+}
+
+func (e *HTTPError) Error() string {
+	return fmt.Sprintf("%s GET %s: %d: %s", e.Venue, e.Path, e.Status, e.Body)
 }
 
 // --- Kalshi ---

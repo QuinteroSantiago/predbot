@@ -2,6 +2,7 @@ package live
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -83,6 +84,9 @@ func (d *DriftMonitor) check(ctx context.Context) {
 		cctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 		actual, err := a.Positions(cctx)
 		cancel()
+		if errors.Is(err, ErrVenueUnavailable) {
+			continue // venue down for maintenance; the outage breaker already logged it
+		}
 		if err != nil {
 			d.log.Warn("position read failed; cannot verify drift", "venue", a.Venue(), "err", err)
 			continue
