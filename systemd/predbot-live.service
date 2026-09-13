@@ -18,29 +18,31 @@ Type=simple
 User=predbot
 Group=predbot
 WorkingDirectory=/opt/predbot
-# MINIMUM-RISK caps (since 2026-08-28): smallest possible size + tight guards.
-#   -max-order-contracts=1   one contract per leg — the smallest bet there is.
-#   -max-unhedged-contracts=2  NOT 1: the Kalshi exchange-side order group is
-#     sized to this cap (cmd/live ~L220), and the safety EXIT of a naked Kalshi
-#     leg is itself a Kalshi order. A limit of 1 would let the entry through but
-#     block its own exit. 2 leaves room for entry + exit; with 1-contract orders
-#     the real naked exposure is still ~1 contract (~$1 worst case).
+# Caps (1 contract since 2026-08-28; raised to 10 on 2026-09-13, santiago's call):
+#   -max-order-contracts=10  up to 10 contracts per leg. Orders are sized
+#     min(top-of-book depth on both legs, this cap), so thin books still clip.
+#   -max-unhedged-contracts=20  2x the order cap: the Kalshi exchange-side order
+#     group is sized to this cap (cmd/live ~L220), and the safety EXIT of a naked
+#     Kalshi leg is itself a Kalshi order. Equal to the order cap would let the
+#     entry through but block its own exit; 2x leaves room for entry + exit.
+#     Real naked exposure is still one order (~$10 worst case).
 #   -pnl-floor-usd=-5        halt after $5 of realized loss — a hard backstop.
+#     At 10 contracts one badly legged pair can trip it; that is intended.
 #   -min-depth-contracts=10  both legs need 10 contracts of real depth before we
-#     act (10x our order size) — the phantom-edge guard that the 2026-08-24
-#     naked-leg incident was missing.
+#     act — the phantom-edge guard that the 2026-08-24 naked-leg incident was
+#     missing. Now equal to the order cap, so a full-size order can take the
+#     whole top of book.
 #   -sports=mlb,nfl          the universe: daily games discovered at runtime
 #     (markets.yaml is empty). Keep predbot-record.service's -sports in step.
-# NOTE: this is not a profit run — at 1 contract the dollars are trivial either
-# way. It is a live validation run: does the maker path (below) actually fill,
-# hedge and earn the rebate with real money.
+# NOTE: still a live validation run of the maker path (below) — does it fill,
+# hedge and earn the rebate with real money — now at a size where it shows.
 ExecStart=/opt/predbot/predbot-live \
   -config /opt/predbot/config/config.yaml \
   -markets /opt/predbot/config/markets.yaml \
   -dry-run=false \
   -i-understand-this-places-real-orders \
-  -max-order-contracts=1 \
-  -max-unhedged-contracts=2 \
+  -max-order-contracts=10 \
+  -max-unhedged-contracts=20 \
   -pnl-floor-usd=-5 \
   -min-depth-contracts=10 \
   -sports=mlb,nfl \
@@ -48,7 +50,7 @@ ExecStart=/opt/predbot/predbot-live \
 # -maker (2026-09-10): MAKER mode — rest one leg (earns the Poly rebate), hedge
 # the other on fill. This INVERTS the taker path's naked-leg-impossible
 # sequencing: a filled rest is naked on the resting venue until the hedge lands,
-# so the 1-contract / 2-unhedged / -$5 caps above are doing real work here. This
+# so the 10-contract / 20-unhedged / -$5 caps above are doing real work here. This
 # is the live fill-through validation the backtest cannot prove (design §9.2).
 
 # SIGUSR1 = engage the kill switch without stopping (writes the KILLED marker,
