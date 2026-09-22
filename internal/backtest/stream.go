@@ -5,9 +5,12 @@ import (
 	"compress/gzip"
 	"container/heap"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -30,17 +33,145 @@ import (
 // ONE snapshot per file. Peak memory is O(open files), not O(archive).
 //
 // hours <= 0 walks the entire archive — which is now safe.
+//
+// Decoding runs in parallel. Gunzip + JSON parse is essentially all of the
+// replay's CPU time (a 14 GB window is ~85 min per pass single-threaded), and
+// each hour is self-contained: readers hold per-file Kalshi delta state, so no
+// hour depends on another. So hours are decoded on GOMAXPROCS goroutines while
+// the consumer hands snapshots to fn from ONE goroutine, in the original order.
+// fn therefore needs no locking and sees byte-identical output to the serial
+// walk. Override the worker count with PREDBOT_REPLAY_WORKERS (1 = serial).
 func StreamReplay(dir string, hours int, fn func(core.BookSnapshot) error) error {
 	byHour, err := hourlyFiles(dir, hours)
 	if err != nil {
 		return err
 	}
-	for _, hour := range sortedHours(byHour) {
-		if err := streamHour(byHour[hour], fn); err != nil {
-			return err
+	return streamHours(byHour, sortedHours(byHour), replayWorkers(), fn)
+}
+
+// errCanceled unwinds a decode goroutine whose output is no longer wanted. It
+// never escapes streamHours.
+var errCanceled = errors.New("replay canceled")
+
+const (
+	// batchSize is how many snapshots cross a channel at once. Per-snapshot
+	// channel sends cost more than the decode they overlap with.
+	batchSize = 1024
+	// batchesAhead is the per-hour send buffer, and maxWorkers caps the total.
+	// In-flight memory is bounded by workers · (reorderWindow + batchesAhead ·
+	// batchSize) snapshots — the point of streaming is that it stays O(1) in
+	// archive size, and that must survive going parallel.
+	batchesAhead = 2
+	maxWorkers   = 16
+)
+
+// replayWorkers is the decode concurrency: GOMAXPROCS, capped, env-overridable.
+func replayWorkers() int {
+	n := runtime.GOMAXPROCS(0)
+	if v, err := strconv.Atoi(os.Getenv("PREDBOT_REPLAY_WORKERS")); err == nil && v > 0 {
+		n = v
+	}
+	if n > maxWorkers {
+		n = maxWorkers
+	}
+	if n < 1 {
+		n = 1
+	}
+	return n
+}
+
+// hourBatch is one hour's decoded snapshots, or the error that stopped it.
+type hourBatch struct {
+	snaps []core.BookSnapshot
+	err   error
+}
+
+// streamHours walks hours in order, decoding up to workers of them ahead of the
+// consumer. With workers == 1 it is the plain serial walk.
+func streamHours(byHour map[string][]string, hours []string, workers int, fn func(core.BookSnapshot) error) error {
+	if workers > len(hours) {
+		workers = len(hours)
+	}
+	if workers <= 1 {
+		for _, hour := range hours {
+			if err := streamHour(byHour[hour], fn); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	// done stops the launcher and every in-flight decoder on early return, so
+	// an fn error (or a decode error) leaks neither goroutines nor open files.
+	done := make(chan struct{})
+	defer close(done)
+
+	// queue carries one channel per hour, in order. Its capacity is what keeps
+	// the launcher — and therefore the number of live decoders — bounded.
+	queue := make(chan chan hourBatch, workers)
+	go func() {
+		defer close(queue)
+		for _, hour := range hours {
+			out := make(chan hourBatch, batchesAhead)
+			select {
+			case queue <- out:
+			case <-done:
+				return
+			}
+			go decodeHour(byHour[hour], out, done)
+		}
+	}()
+
+	for out := range queue {
+		for b := range out {
+			if b.err != nil {
+				return b.err
+			}
+			for _, s := range b.snaps {
+				if err := fn(s); err != nil {
+					return err
+				}
+			}
 		}
 	}
 	return nil
+}
+
+// decodeHour merges one hour and ships it in batches. It owns out and closes it.
+func decodeHour(files []string, out chan<- hourBatch, done <-chan struct{}) {
+	defer close(out)
+	batch := make([]core.BookSnapshot, 0, batchSize)
+	// A fresh slice per send: the consumer owns what it receives.
+	flush := func() bool {
+		if len(batch) == 0 {
+			return true
+		}
+		select {
+		case out <- hourBatch{snaps: batch}:
+			batch = make([]core.BookSnapshot, 0, batchSize)
+			return true
+		case <-done:
+			return false
+		}
+	}
+	err := streamHour(files, func(s core.BookSnapshot) error {
+		batch = append(batch, s)
+		if len(batch) >= batchSize && !flush() {
+			return errCanceled
+		}
+		return nil
+	})
+	switch {
+	case errors.Is(err, errCanceled):
+		return
+	case err != nil:
+		select {
+		case out <- hourBatch{err: err}:
+		case <-done:
+		}
+	default:
+		flush()
+	}
 }
 
 // hourlyFiles returns files grouped by their hour stamp, preferring the
