@@ -1,0 +1,586 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Backtest runs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="predbot backtest results: run history, maker vs taker, and per-run detail.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Tokens follow the Fee Wall page (dashboard/template.html). Chart colors were
+   checked with the dataviz palette validator against each mode's surface:
+   gain/loss = blue/red (diverging), maker = accent, taker = gray (emphasis). */
+:root{
+  color-scheme: light;
+  --ground:#f4f1ea; --surface:#ffffff; --surface-2:#faf8f2; --border:#e5e0d4;
+  --ink:#181c20; --ink-2:#4c5660; --muted:#8a94a0;
+  --accent:#9a6a12; --mark-accent:#9a6a12; --mark-muted:#8a94a0;
+  --gain:#2a78d6; --loss:#c0463f; --grid:#ece7db;
+  --shadow: 0 1px 2px rgba(20,24,28,.05), 0 8px 24px rgba(20,24,28,.06);
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  color-scheme: dark;
+  --ground:#0d1116; --surface:#151b21; --surface-2:#1b232b; --border:#28313b;
+  --ink:#eef1f4; --ink-2:#aeb8c2; --muted:#78828e;
+  --accent:#e0a95e; --mark-accent:#c08433; --mark-muted:#78828e;
+  --gain:#3987e5; --loss:#e0685f; --grid:#1f2831;
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+}}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --ground:#0d1116; --surface:#151b21; --surface-2:#1b232b; --border:#28313b;
+  --ink:#eef1f4; --ink-2:#aeb8c2; --muted:#78828e;
+  --accent:#e0a95e; --mark-accent:#c08433; --mark-muted:#78828e;
+  --gain:#3987e5; --loss:#e0685f; --grid:#1f2831;
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box}
+html,body{overflow-x:hidden}
+body{margin:0; background:var(--ground); color:var(--ink);
+  font-family:"IBM Plex Sans", ui-sans-serif, system-ui, sans-serif; line-height:1.55; -webkit-font-smoothing:antialiased}
+a{color:inherit}
+.mono{font-family:"IBM Plex Mono", ui-monospace, monospace}
+.num{font-family:"IBM Plex Mono", ui-monospace, monospace; font-variant-numeric:tabular-nums}
+.wrap{max-width:1060px; margin:0 auto; padding:clamp(20px,4vw,52px) 16px 80px}
+@media (min-width:700px){ .wrap{padding-left:clamp(16px,4vw,40px); padding-right:clamp(16px,4vw,40px)} }
+.eyebrow{font-family:"IBM Plex Mono",monospace; font-size:12px; letter-spacing:.18em; text-transform:uppercase; color:var(--accent); font-weight:600}
+h1{font-family:"IBM Plex Mono",monospace; font-weight:700; font-size:clamp(30px,5.5vw,52px); line-height:1.04; letter-spacing:-.02em; margin:.35em 0 .1em; text-wrap:balance; overflow-wrap:anywhere}
+.lede{font-size:clamp(15px,2vw,18px); color:var(--ink-2); max-width:62ch; margin:.6em 0 0}
+h2{font-family:"IBM Plex Mono",monospace; font-size:13px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-2); font-weight:600; margin:44px 0 4px}
+.h2note{font-size:14px; color:var(--muted); margin:0 0 16px; max-width:66ch}
+.card{background:var(--surface); border:1px solid var(--border); border-radius:14px; box-shadow:var(--shadow); padding:18px 20px}
+.back{display:inline-block; font-family:"IBM Plex Mono",monospace; font-size:13px; color:var(--ink-2); text-decoration:none; margin-bottom:6px}
+.back:hover{color:var(--ink)}
+.badge{display:inline-flex; align-items:center; gap:6px; font-family:"IBM Plex Mono",monospace; font-size:12px; letter-spacing:.06em; text-transform:uppercase;
+  border:1px solid var(--border); border-radius:999px; padding:2px 10px; color:var(--ink-2); background:var(--surface-2); vertical-align:middle}
+.key{display:inline-block; width:10px; height:10px; flex:none}
+.key.maker{background:var(--mark-accent); border-radius:50%}
+.key.taker{background:var(--mark-muted); border-radius:2px}
+.meta{display:flex; flex-wrap:wrap; gap:6px 18px; color:var(--ink-2); font-size:14px; margin-top:12px}
+.meta b{color:var(--ink); font-weight:600}
+.dirty{color:var(--loss)}
+
+/* filters: one row above everything they scope */
+.filters{display:flex; flex-wrap:wrap; gap:10px 16px; align-items:center; margin:28px 0 0}
+.filters label{font-size:13px; color:var(--ink-2); display:flex; gap:8px; align-items:center}
+select{font:inherit; font-size:14px; color:var(--ink); background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:6px 10px; max-width:100%}
+
+/* stat tiles */
+.stats{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:1px; background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:hidden; margin-top:18px}
+/* Each tile outlines itself, so a part-filled last row stays surface, not a gray block. */
+.stat{background:var(--surface); padding:16px 18px; min-width:0; outline:1px solid var(--border)}
+.stat .v{font-family:"IBM Plex Sans",sans-serif; font-size:26px; font-weight:600; letter-spacing:-.01em; white-space:nowrap}
+.stat .l{font-size:12px; color:var(--muted); margin-top:3px; letter-spacing:.02em}
+.stat .s{font-size:12px; color:var(--ink-2); margin-top:2px}
+/* KPI row: a wide hero column, then as many standard tiles per row as fit. */
+.stats.kpis{grid-template-columns:minmax(230px,1.7fr) repeat(auto-fit,minmax(135px,1fr))}
+@media (max-width:640px){ .stats.kpis{grid-template-columns:repeat(2,minmax(0,1fr))} .stat.hero{grid-column:1/-1} }
+.stat.hero .v{font-size:clamp(40px,7vw,52px); line-height:1.05}
+
+/* tables */
+.tablewrap{overflow-x:auto; border:1px solid var(--border); border-radius:12px; background:var(--surface)}
+table{border-collapse:collapse; width:100%; font-size:13.5px}
+th,td{padding:9px 10px; text-align:left; border-bottom:1px solid var(--border); white-space:nowrap}
+th{font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); font-weight:600; background:var(--surface-2)}
+td.r, th.r{text-align:right}
+tr:last-child td{border-bottom:0}
+tbody tr.link{cursor:pointer}
+tbody tr.link:hover, tbody tr.link:focus-visible{background:var(--surface-2); outline:none}
+tbody tr.link:focus-visible td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+.better{font-weight:600}
+.better::after{content:" ▲"; font-size:10px; color:var(--ink-2)}
+.gainT{color:var(--ink)} .lossT{color:var(--ink)}
+
+/* charts */
+.chart{position:relative; width:100%}
+.chart svg{display:block; width:100%; overflow:visible}
+.chart svg:focus-visible{outline:2px solid var(--accent); outline-offset:4px; border-radius:6px}
+text.tick{fill:var(--muted); font-family:"IBM Plex Mono",monospace; font-size:11px}
+.gridline{stroke:var(--grid); stroke-width:1}
+.zero{stroke:var(--muted); stroke-width:1}
+.legend{display:flex; flex-wrap:wrap; gap:6px 18px; font-size:13px; color:var(--ink-2); margin:0 0 10px}
+.legend span{display:inline-flex; align-items:center; gap:7px}
+.tip{position:absolute; pointer-events:none; background:var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:var(--shadow);
+  padding:8px 11px; font-size:12px; color:var(--ink-2); white-space:nowrap; z-index:5; opacity:0; transition:opacity .08s}
+.tip.on{opacity:1}
+.tip strong{display:block; font-family:"IBM Plex Mono",monospace; font-size:15px; color:var(--ink); font-weight:600}
+.tip .row{display:flex; align-items:center; gap:7px}
+.tip .lk{display:inline-block; width:12px; height:2px}
+details{margin-top:12px}
+summary{cursor:pointer; font-size:13px; color:var(--ink-2); font-family:"IBM Plex Mono",monospace}
+.empty{color:var(--ink-2); font-size:15px}
+.empty code, .note code{font-family:"IBM Plex Mono",monospace; font-size:13px; background:var(--surface-2); border:1px solid var(--border); border-radius:6px; padding:1px 6px; overflow-wrap:anywhere}
+.two{display:grid; grid-template-columns:1fr; gap:16px}
+@media (min-width:860px){ .two{grid-template-columns:1fr 1fr} }
+.note{font-size:13px; color:var(--muted); margin-top:10px}
+.args{font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--ink-2); background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:10px 12px; overflow-wrap:anywhere; white-space:pre-wrap}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><p class="empty">Loading…</p></div>
+<script>
+"use strict";
+const RUNS = "runs/";
+
+// ---------- small DOM helpers (all data goes in as text, never HTML) ----------
+const SVGNS = "http://www.w3.org/2000/svg";
+function el(tag, attrs, ...kids) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v == null || v === false) continue;
+    if (k === "class") n.className = v;
+    else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+    else n.setAttribute(k, v === true ? "" : v);
+  }
+  for (const k of kids.flat()) if (k != null && k !== false) n.append(k instanceof Node ? k : document.createTextNode(String(k)));
+  return n;
+}
+function sv(tag, attrs, ...kids) {
+  const n = document.createElementNS(SVGNS, tag);
+  for (const [k, v] of Object.entries(attrs || {})) if (v != null) n.setAttribute(k, v);
+  for (const k of kids.flat()) if (k != null) n.append(k instanceof Node ? k : document.createTextNode(String(k)));
+  return n;
+}
+
+// ---------- formatting ----------
+const usd = (v, signed) => {
+  if (v == null || !isFinite(v)) return "—";
+  const a = Math.abs(v);
+  const s = a >= 1e6 ? (a / 1e6).toFixed(2) + "M" : a >= 1e4 ? (a / 1e3).toFixed(1) + "k" : a.toFixed(2);
+  const sign = v < 0 ? "−" : signed && v > 0 ? "+" : "";
+  return sign + "$" + s;
+};
+const pct = (v, signed) => v == null || !isFinite(v) ? "—" : (v < 0 ? "−" : signed && v > 0 ? "+" : "") + Math.abs(v * 100).toFixed(Math.abs(v) < 0.1 ? 2 : 1) + "%";
+const count = n => n == null ? "—" : n >= 1e9 ? (n / 1e9).toFixed(2) + "G" : n >= 1e6 ? (n / 1e6).toFixed(2) + "M" : n >= 1e4 ? (n / 1e3).toFixed(1) + "k" : n.toLocaleString();
+const dur = s => s == null ? "—" : s < 90 ? s.toFixed(1) + "s" : s < 5400 ? Math.round(s / 60) + "m" : (s / 3600).toFixed(1) + "h";
+const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const day = d => MON[d.getMonth()] + " " + d.getDate();
+const hm = d => String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+const when = t => { const d = new Date(t); return day(d) + " " + hm(d); };
+const span = (a, b) => { const x = new Date(a), y = new Date(b);
+  return x.toDateString() === y.toDateString() ? day(x) + " " + hm(x) + "–" + hm(y) : day(x) + " – " + day(y) + " " + y.getFullYear(); };
+const windowText = r => r.window_hours ? (r.window_hours % 24 === 0 ? r.window_hours / 24 + "d" : r.window_hours + "h") : "all data";
+const fillRate = m => m && m.rests_placed ? m.rests_filled / m.rests_placed : null;
+const modeBadge = (mode, adverse) => el("span", {class: "badge"}, el("span", {class: "key " + mode}), mode + (adverse ? " + adverse" : ""));
+
+// Clean axis ticks: 1/2/5 × 10^n steps.
+function niceTicks(lo, hi, n) {
+  if (lo === hi) { lo -= 1; hi += 1; }
+  const raw = (hi - lo) / Math.max(1, n), mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 5, 10].map(m => m * mag).find(s => s >= raw);
+  const out = [], end = Math.ceil(hi / step - 1e-9) * step;
+  for (let v = Math.floor(lo / step + 1e-9) * step; v <= end + step * 1e-9; v += step) out.push(+v.toFixed(10));
+  return out;
+}
+function timeTicks(t0, t1, n) {
+  const out = [], d = (t1 - t0) / Math.max(1, n);
+  for (let i = 0; i <= n; i++) out.push(t0 + d * i);
+  return out;
+}
+const timeLabel = (t, spanMs) => { const d = new Date(t);
+  return spanMs < 6e5 ? hm(d) + ":" + String(d.getSeconds()).padStart(2, "0") : spanMs < 2 * 864e5 ? hm(d) : day(d); };
+
+// One tooltip element per chart, positioned inside the chart box.
+function tooltip(box) {
+  const tip = el("div", {class: "tip", role: "status", "aria-live": "polite"});
+  box.append(tip);
+  return {
+    show(x, y, build) {
+      tip.replaceChildren(...build());
+      tip.classList.add("on");
+      const bw = box.clientWidth, tw = tip.offsetWidth, th = tip.offsetHeight;
+      let left = x + 14; if (left + tw > bw) left = x - tw - 14; if (left < 0) left = 0;
+      let top = y - th - 10; if (top < 0) top = y + 14;
+      tip.style.left = left + "px"; tip.style.top = top + "px";
+    },
+    hide() { tip.classList.remove("on"); },
+  };
+}
+const tipLine = (color, text) => el("div", {class: "row"}, el("span", {class: "lk", style: "background:" + color}), text);
+
+// Redraw a chart when its box resizes.
+function responsive(box, draw) {
+  let w = 0;
+  const ro = new ResizeObserver(() => { if (box.clientWidth !== w) { w = box.clientWidth; draw(w); } });
+  ro.observe(box);
+}
+
+// ---------- data ----------
+async function getJSON(path) {
+  const r = await fetch(path, {cache: "no-cache"});
+  if (!r.ok) throw new Error(path + ": HTTP " + r.status);
+  return r.json();
+}
+let INDEX = null;
+async function loadIndex() {
+  if (!INDEX) {
+    try { INDEX = await getJSON(RUNS + "index.json"); } catch (e) { INDEX = {runs: [], error: String(e)}; }
+  }
+  return INDEX;
+}
+
+// ---------- router ----------
+const app = document.getElementById("app");
+async function route() {
+  const m = location.hash.match(/^#run=([A-Za-z0-9_.-]+)$/);
+  window.scrollTo(0, 0);
+  if (m) await showRun(m[1]); else await showIndex();
+}
+window.addEventListener("hashchange", route);
+
+// ---------- index view ----------
+const FILTER = {label: null, mode: "all"};
+
+async function showIndex() {
+  document.title = "Backtest runs";
+  const idx = await loadIndex();
+  const runs = idx.runs || [];
+  const head = [
+    el("div", {class: "eyebrow"}, "predbot · backtests"),
+    el("h1", {}, "Backtest runs"),
+    el("p", {class: "lede"}, "Every replay of the recorded order books through the strategy and fill simulator: how maker and taker compare, and how results hold up as data accumulates. Click a run for the full breakdown."),
+  ];
+  if (!runs.length) {
+    app.replaceChildren(...head, el("div", {class: "card", style: "margin-top:28px"},
+      el("p", {class: "empty"}, "No runs published yet. Run a backtest with ", el("code", {}, "-report-json run.json"),
+        ", then publish it with ", el("code", {}, "scripts/publish-backtest.sh run.json"), "."),
+      idx.error ? el("p", {class: "note"}, "(" + idx.error + ")") : null));
+    return;
+  }
+  const labels = [...new Set(runs.map(r => r.label || "(no label)"))];
+  if (FILTER.label === null) FILTER.label = labels.length > 1 ? (runs[0].label || "(no label)") : "all";
+
+  const labelSel = el("select", {"aria-label": "Label", onchange: e => { FILTER.label = e.target.value; showIndex(); }},
+    el("option", {value: "all"}, "All labels"), labels.map(l => el("option", {value: l, selected: l === FILTER.label}, l)));
+  const modeSel = el("select", {"aria-label": "Mode", onchange: e => { FILTER.mode = e.target.value; showIndex(); }},
+    ["all", "maker", "taker"].map(m => el("option", {value: m, selected: m === FILTER.mode}, m === "all" ? "Maker and taker" : m)));
+  const shown = runs.filter(r => (FILTER.label === "all" || (r.label || "(no label)") === FILTER.label) && (FILTER.mode === "all" || r.mode === FILTER.mode));
+
+  const body = [el("div", {class: "filters"}, el("label", {}, "Runs", labelSel), el("label", {}, "Mode", modeSel),
+    el("span", {class: "note", style: "margin:0"}, shown.length + " of " + runs.length + " runs"))];
+
+  if (!shown.length) {
+    body.push(el("p", {class: "empty", style: "margin-top:24px"}, "No runs match these filters."));
+  } else {
+    body.push(headToHead(shown));
+    if (shown.length >= 2) body.push(el("h2", {}, "Net P&L by run"),
+      el("p", {class: "h2note"}, "Each point is one run, placed by when it finished. Only compare runs over the same kind of window — the label filter above keeps them apples to apples."),
+      el("div", {class: "card"}, runsChart(shown)));
+    body.push(el("h2", {}, "All runs"), el("p", {class: "h2note"}, "Newest first. Select a row for its detail."), runsTable(shown));
+  }
+  app.replaceChildren(...head, ...body);
+}
+
+function headToHead(runs) {
+  const maker = runs.find(r => r.mode === "maker"), taker = runs.find(r => r.mode === "taker");
+  const pair = [maker, taker].filter(Boolean);
+  const wrap = [el("h2", {}, pair.length === 2 ? "Latest maker vs taker" : "Latest run"),
+    el("p", {class: "h2note"}, pair.length === 2 ? "The most recent run of each mode in the current filter. ▲ marks the better value." : "Only one mode in the current filter.")];
+  const rows = [
+    ["Net P&L", r => r.net_pnl_usd, v => usd(v, true), 1],
+    ["Annualized return", r => r.settled_pairs ? r.annualized : null, v => pct(v, true), 1],
+    ["vs idle-balance hurdle", r => r.settled_pairs ? r.excess_annualized : null, v => pct(v, true), 1],
+    ["Win rate", r => r.settled_pairs ? r.win_rate : null, v => pct(v), 1],
+    ["Max drawdown", r => r.max_drawdown_usd, v => v ? usd(-v) : "$0.00", -1],
+    ["Pairs completed / attempted", r => r.pairs_attempted ? r.pairs_completed / r.pairs_attempted : null, (v, r) => r.pairs_completed + " / " + r.pairs_attempted, 1],
+    ["Maker rests filled", r => r.fill_rate, (v, r) => v == null ? "—" : pct(v) + " of " + r.rests_placed, 0],
+    ["Data", r => null, (v, r) => span(r.data_from, r.data_to), 0],
+    ["Snapshots", r => r.snapshots, v => count(v), 0],
+    ["Finished", r => null, (v, r) => when(r.finished_at) + " · " + dur(r.duration_s), 0],
+  ];
+  const thead = el("tr", {}, el("th", {}, ""), pair.map(r => el("th", {}, el("a", {href: "#run=" + r.id, style: "text-decoration:none"}, modeBadge(r.mode, r.adverse)))));
+  const tbody = rows.map(([name, get, fmt, dir]) => {
+    const vals = pair.map(get);
+    let best = -1;
+    if (pair.length === 2 && dir && vals.every(v => v != null && isFinite(v)) && vals[0] !== vals[1]) best = (vals[0] > vals[1]) === (dir > 0) ? 0 : 1;
+    return el("tr", {}, el("td", {}, name), pair.map((r, i) => el("td", {class: "num" + (i === best ? " better" : "")}, fmt(vals[i], r))));
+  });
+  wrap.push(el("div", {class: "tablewrap"}, el("table", {}, el("thead", {}, thead), el("tbody", {}, tbody))));
+  return el("div", {}, wrap);
+}
+
+function runsTable(runs) {
+  const cols = [
+    ["Finished", r => when(r.finished_at)],
+    ["Label", r => r.label || "—"],
+    ["Mode", r => modeBadge(r.mode, r.adverse)],
+    ["Data", r => span(r.data_from, r.data_to)],
+    ["Net P&L", r => usd(r.net_pnl_usd, true), 1],
+    ["Annualized", r => r.settled_pairs ? pct(r.annualized, true) : "—", 1],
+    ["Win rate", r => r.settled_pairs ? pct(r.win_rate) : "—", 1],
+    ["Max DD", r => r.max_drawdown_usd ? usd(-r.max_drawdown_usd) : "$0.00", 1],
+    ["Pairs", r => r.pairs_completed + "/" + r.pairs_attempted, 1],
+    ["Fill rate", r => r.fill_rate == null ? "—" : pct(r.fill_rate), 1],
+  ];
+  const open = r => { location.hash = "run=" + r.id; };
+  return el("div", {class: "tablewrap"}, el("table", {},
+    el("thead", {}, el("tr", {}, cols.map(([h, , right]) => el("th", {class: right ? "r" : null}, h)))),
+    el("tbody", {}, runs.map(r => el("tr", {class: "link", tabindex: "0", "aria-label": "Open run " + r.id,
+      onclick: () => open(r), onkeydown: e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(r); } }},
+      cols.map(([, f, right]) => el("td", {class: right ? "r num" : null}, f(r))))))));
+}
+
+// Dot chart: one point per run, x = finish time, y = net P&L. Maker in the
+// accent (circle), taker in gray (square) — shape backs up color.
+function runsChart(runs) {
+  const box = el("div", {class: "chart"});
+  const legend = el("div", {class: "legend"},
+    runs.some(r => r.mode === "maker") ? el("span", {}, el("span", {class: "key maker"}), "maker") : null,
+    runs.some(r => r.mode === "taker") ? el("span", {}, el("span", {class: "key taker"}), "taker") : null);
+  const out = el("div", {}, legend, box);
+  const tip = tooltip(box);
+  responsive(box, W => {
+    box.querySelector("svg")?.remove();
+    const H = 240, m = {l: 64, r: 18, t: 12, b: 28};
+    const ts = runs.map(r => Date.parse(r.finished_at)), vs = runs.map(r => r.net_pnl_usd);
+    let t0 = Math.min(...ts), t1 = Math.max(...ts); if (t0 === t1) { t0 -= 36e5; t1 += 36e5; }
+    const pad = (t1 - t0) * 0.04; t0 -= pad; t1 += pad;
+    const yt = niceTicks(Math.min(0, ...vs), Math.max(0, ...vs), 4);
+    const y0 = yt[0], y1 = yt[yt.length - 1];
+    const X = t => m.l + (t - t0) / (t1 - t0) * (W - m.l - m.r), Y = v => m.t + (1 - (v - y0) / (y1 - y0)) * (H - m.t - m.b);
+    const svg = sv("svg", {viewBox: `0 0 ${W} ${H}`, height: H, role: "img", "aria-label": "Net P&L by run; the runs table below has the same values"});
+    for (const v of yt) svg.append(sv("line", {class: v === 0 ? "zero" : "gridline", x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v)}),
+      sv("text", {class: "tick", x: m.l - 8, y: Y(v) + 4, "text-anchor": "end"}, usd(v)));
+    const xt = timeTicks(t0 + pad, t1 - pad, Math.max(2, Math.min(5, Math.floor(W / 150))));
+    for (const t of xt) svg.append(sv("text", {class: "tick", x: X(t), y: H - 8, "text-anchor": "middle"}, timeLabel(t, t1 - t0)));
+    // Oldest first so the newest paints on top.
+    runs.map((r, i) => ({r, x: X(ts[i]), y: Y(vs[i])})).reverse().forEach(({r, x, y}) => {
+      const g = sv("g", {tabindex: "0", role: "link", "aria-label": `${r.mode} run ${when(r.finished_at)}: ${usd(r.net_pnl_usd, true)}`, style: "cursor:pointer"});
+      const mark = r.mode === "maker"
+        ? sv("circle", {cx: x, cy: y, r: 5, fill: "var(--mark-accent)", stroke: "var(--surface)", "stroke-width": 2})
+        : sv("rect", {x: x - 5, y: y - 5, width: 10, height: 10, rx: 2, fill: "var(--mark-muted)", stroke: "var(--surface)", "stroke-width": 2});
+      g.append(sv("circle", {cx: x, cy: y, r: 13, fill: "transparent"}), mark);
+      const show = () => { mark.setAttribute("stroke-width", 3); tip.show(x, y, () => [
+        el("strong", {}, usd(r.net_pnl_usd, true)),
+        tipLine(r.mode === "maker" ? "var(--mark-accent)" : "var(--mark-muted)", r.mode + (r.label ? " · " + r.label : "")),
+        el("div", {}, when(r.finished_at) + " · " + windowText(r))]); };
+      const hide = () => { mark.setAttribute("stroke-width", 2); tip.hide(); };
+      g.addEventListener("pointerenter", show); g.addEventListener("pointerleave", hide);
+      g.addEventListener("focus", show); g.addEventListener("blur", hide);
+      g.addEventListener("click", () => { location.hash = "run=" + r.id; });
+      g.addEventListener("keydown", e => { if (e.key === "Enter") location.hash = "run=" + r.id; });
+      svg.append(g);
+    });
+    box.prepend(svg);
+  });
+  return out;
+}
+
+// ---------- run detail view ----------
+async function showRun(id) {
+  let d;
+  try { d = await getJSON(RUNS + id + ".json"); }
+  catch (e) {
+    app.replaceChildren(el("a", {class: "back", href: "#"}, "← All runs"), el("p", {class: "empty"}, "Couldn't load run " + id + " (" + e.message + ")."));
+    return;
+  }
+  const run = d.run, rep = d.report;
+  document.title = (run.label || "Run") + " · " + run.mode + " · Backtest runs";
+
+  const head = [
+    el("a", {class: "back", href: "#"}, "← All runs"),
+    el("div", {class: "eyebrow"}, "predbot · backtest run"),
+    el("h1", {}, run.label || run.id),
+    el("div", {class: "meta"},
+      modeBadge(run.mode, run.adverse),
+      el("span", {}, el("b", {}, span(run.data_from, run.data_to)), " · ", windowText(run)),
+      el("span", {}, el("b", {}, count(run.snapshots)), " snapshots · ", el("b", {}, run.markets), " markets"),
+      el("span", {}, "ran ", el("b", {}, dur(run.duration_s)), " on ", run.host || "?", " · ", run.shards + " shards"),
+      run.revision ? el("span", {class: "mono"}, "build " + run.revision.slice(0, 7), run.dirty ? el("span", {class: "dirty"}, " (uncommitted changes)") : null) : null),
+  ];
+
+  const settled = rep.settled_pairs > 0;
+  const kpis = el("div", {class: "stats kpis"},
+    stat("Net P&L", usd(rep.net_pnl_usd, true), rep.capital_locked_usd ? usd(rep.capital_locked_usd) + " capital locked" : null, true),
+    stat("Annualized return", settled ? pct(rep.annualized, true) : "—", settled ? "avg hold " + Math.round(rep.avg_hold_days) + " days" : "no settled pairs"),
+    stat("vs idle-balance hurdle", settled ? pct(rep.excess_annualized, true) : "—", "hurdle " + pct(rep.idle_yield)),
+    stat("Win rate", settled ? pct(rep.win_rate) : "—", "of " + rep.settled_pairs + " settled pairs"),
+    stat("Max drawdown", rep.max_drawdown_usd ? usd(-rep.max_drawdown_usd) : "$0.00", "cumulative net, in entry order"),
+    stat("Sharpe (per trade)", rep.settled_pairs >= 2 ? rep.sharpe_per_trade.toFixed(2) : "—", rep.settled_pairs >= 2 ? null : "needs ≥ 2 trades"));
+
+  const pairsTiles = el("div", {class: "stats"},
+    stat("Pairs attempted", rep.pairs_attempted),
+    stat("Completed", rep.pairs_completed, rep.pairs_attempted ? pct(rep.pairs_completed / rep.pairs_attempted) + " hit rate" : null),
+    stat("Legged", rep.pairs_legged, "filled unevenly"),
+    stat("Faded", rep.pairs_faded, "gone within latency"),
+    d.maker ? stat("Maker rests filled", d.maker.rests_filled + " / " + d.maker.rests_placed, fillRate(d.maker) == null ? null : pct(fillRate(d.maker))) : null,
+    stat("Opportunities", d.opportunities, "gap-open episodes"),
+    stat("Intra-venue crossings", rep.intra_crossings, "feed-consistency check"));
+
+  const body = [
+    kpis,
+    el("h2", {}, "Equity curve"),
+    el("p", {class: "h2note"}, "Cumulative net P&L as each pair is entered. Hold-to-resolution arbs enter each market once, so each step is one market."),
+    el("div", {class: "card"}, d.pairs.length ? equityChart(d.pairs) : el("p", {class: "empty"}, "No settled pairs in this run."),
+      d.pairs.length ? el("details", {}, el("summary", {}, "Table view (" + d.pairs.length + " pairs)"), pairsTable(d.pairs)) : null),
+    el("div", {class: "two"},
+      el("div", {}, el("h2", {}, "Where the money went"),
+        el("p", {class: "h2note"}, "Gross gap captured, less fees and legging exits, is net P&L."),
+        el("div", {class: "card"}, waterfall(rep))),
+      el("div", {}, el("h2", {}, "Pairs"), el("p", {class: "h2note"}, "What happened to every attempt."), pairsTiles)),
+    el("h2", {}, "P&L by market"),
+    el("p", {class: "h2note"}, "Net P&L per market, best to worst." + (d.markets.length > 24 ? " Showing the 12 best and 12 worst; the table has all " + d.markets.length + "." : "")),
+    el("div", {class: "card"}, d.markets.length ? marketBars(d.markets) : el("p", {class: "empty"}, "No market-level results."),
+      d.markets.length ? el("details", {}, el("summary", {}, "Table view (" + d.markets.length + " markets)"), marketsTable(d.markets)) : null),
+    el("h2", {}, "Command"),
+    el("div", {class: "args"}, "backtest " + (run.args || []).join(" ")),
+  ];
+  app.replaceChildren(...head, ...body);
+}
+
+function stat(label, value, sub, hero) {
+  return el("div", {class: "stat" + (hero ? " hero" : "")}, el("div", {class: "v"}, value), el("div", {class: "l"}, label), sub ? el("div", {class: "s"}, sub) : null);
+}
+
+// Step line of cumulative net over entry time, with a crosshair that snaps to
+// the nearest pair. Arrow keys step through pairs when focused.
+function equityChart(pairs) {
+  const box = el("div", {class: "chart"});
+  const tip = tooltip(box);
+  let cum = 0;
+  const pts = pairs.map(p => ({t: p.entry_ms, v: (cum += p.net_usd), p}));
+  responsive(box, W => {
+    box.querySelector("svg")?.remove();
+    const H = 280, m = {l: 64, r: 18, t: 14, b: 28};
+    let t0 = pts[0].t, t1 = pts[pts.length - 1].t; if (t0 === t1) { t0 -= 36e5; t1 += 36e5; }
+    const yt = niceTicks(Math.min(0, ...pts.map(p => p.v)), Math.max(0, ...pts.map(p => p.v)), 4);
+    const y0 = yt[0], y1 = yt[yt.length - 1];
+    const X = t => m.l + (t - t0) / (t1 - t0) * (W - m.l - m.r), Y = v => m.t + (1 - (v - y0) / (y1 - y0)) * (H - m.t - m.b);
+    const svg = sv("svg", {viewBox: `0 0 ${W} ${H}`, height: H, tabindex: "0", role: "img",
+      "aria-label": `Equity curve: ${pts.length} pairs, ending at ${usd(pts[pts.length - 1].v, true)}. Use arrow keys to step through pairs.`});
+    for (const v of yt) svg.append(sv("line", {class: v === 0 ? "zero" : "gridline", x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v)}),
+      sv("text", {class: "tick", x: m.l - 8, y: Y(v) + 4, "text-anchor": "end"}, usd(v)));
+    for (const t of timeTicks(t0, t1, Math.max(2, Math.min(6, Math.floor(W / 140)))))
+      svg.append(sv("text", {class: "tick", x: X(t), y: H - 8, "text-anchor": "middle"}, timeLabel(t, t1 - t0)));
+    let d = `M${X(t0)},${Y(0)}`;
+    for (const p of pts) d += `H${X(p.t)}V${Y(p.v)}`;
+    d += `H${X(t1)}`;
+    svg.append(sv("path", {d: d + `V${Y(0)}Z`, fill: "var(--mark-accent)", "fill-opacity": .1, stroke: "none"}),
+      sv("path", {d, fill: "none", stroke: "var(--mark-accent)", "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round"}));
+    const last = pts[pts.length - 1];
+    svg.append(sv("circle", {cx: X(t1), cy: Y(last.v), r: 4, fill: "var(--mark-accent)", stroke: "var(--surface)", "stroke-width": 2}));
+    const cross = sv("line", {x1: 0, x2: 0, y1: m.t, y2: H - m.b, stroke: "var(--muted)", "stroke-width": 1, visibility: "hidden"});
+    const dot = sv("circle", {r: 5, fill: "var(--mark-accent)", stroke: "var(--surface)", "stroke-width": 2, visibility: "hidden"});
+    svg.append(cross, dot);
+    let cur = -1;
+    const at = i => {
+      cur = Math.max(0, Math.min(pts.length - 1, i));
+      const p = pts[cur], x = X(p.t), y = Y(p.v);
+      cross.setAttribute("x1", x); cross.setAttribute("x2", x); cross.setAttribute("visibility", "visible");
+      dot.setAttribute("cx", x); dot.setAttribute("cy", y); dot.setAttribute("visibility", "visible");
+      tip.show(x, y, () => [el("strong", {}, usd(p.v, true)),
+        tipLine("var(--mark-accent)", "this pair " + usd(p.p.net_usd, true) + " · " + p.p.canonical),
+        el("div", {}, when(p.t) + " · pair " + (cur + 1) + " of " + pts.length)]);
+    };
+    const off = () => { cross.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); tip.hide(); };
+    const hit = sv("rect", {x: m.l, y: m.t, width: Math.max(0, W - m.l - m.r), height: H - m.t - m.b, fill: "transparent"});
+    hit.addEventListener("pointermove", e => {
+      const r = svg.getBoundingClientRect(), t = t0 + (e.clientX - r.left - m.l) / (W - m.l - m.r) * (t1 - t0);
+      let lo = 0, hi = pts.length - 1;
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (pts[mid].t < t) lo = mid + 1; else hi = mid; }
+      at(lo > 0 && Math.abs(pts[lo - 1].t - t) < Math.abs(pts[lo].t - t) ? lo - 1 : lo);
+    });
+    hit.addEventListener("pointerleave", off);
+    svg.addEventListener("keydown", e => {
+      if (e.key === "ArrowRight" || e.key === "ArrowLeft") { e.preventDefault(); at(cur < 0 ? (e.key === "ArrowRight" ? 0 : pts.length - 1) : cur + (e.key === "ArrowRight" ? 1 : -1)); }
+      if (e.key === "Home") { e.preventDefault(); at(0); }
+      if (e.key === "End") { e.preventDefault(); at(pts.length - 1); }
+    });
+    svg.addEventListener("blur", off);
+    svg.append(hit);
+    box.prepend(svg);
+  });
+  return box;
+}
+
+// Horizontal bar, 4px rounded at the data end, square at the baseline.
+function hbar(x0, x1, y, h) {
+  const r = Math.min(4, Math.abs(x1 - x0) / 2, h / 2);
+  if (Math.abs(x1 - x0) < 0.5) return `M${x0},${y}h0.5v${h}h-0.5Z`;
+  if (x1 >= x0) return `M${x0},${y}H${x1 - r}Q${x1},${y} ${x1},${y + r}V${y + h - r}Q${x1},${y + h} ${x1 - r},${y + h}H${x0}Z`;
+  return `M${x0},${y}H${x1 + r}Q${x1},${y} ${x1},${y + r}V${y + h - r}Q${x1},${y + h} ${x1 + r},${y + h}H${x0}Z`;
+}
+
+// Rows of labelled horizontal bars sharing one scale: used by the waterfall
+// and the per-market chart. Each row: {label, from, to, color, value, tip[]}.
+function barRows(rows, opts) {
+  const box = el("div", {class: "chart"});
+  const tip = tooltip(box);
+  responsive(box, W => {
+    box.querySelector("svg")?.remove();
+    const rowH = 30, barH = 16, labW = Math.min(opts.labelWidth || 150, W * 0.38), valW = 76;
+    const H = rows.length * rowH + 24;
+    const lo = Math.min(0, ...rows.map(r => Math.min(r.from, r.to))), hi = Math.max(0, ...rows.map(r => Math.max(r.from, r.to)));
+    const x0 = labW + 8, x1 = W - valW, X = v => x0 + (v - lo) / ((hi - lo) || 1) * (x1 - x0);
+    const svg = sv("svg", {viewBox: `0 0 ${W} ${H}`, height: H, role: "img", "aria-label": opts.aria});
+    svg.append(sv("line", {class: "zero", x1: X(0), x2: X(0), y1: 0, y2: rows.length * rowH}));
+    rows.forEach((r, i) => {
+      const y = i * rowH + (rowH - barH) / 2, g = sv("g", {tabindex: "0", role: "img", "aria-label": r.label + ": " + r.valueText});
+      const label = r.label.length > 26 ? r.label.slice(0, 25) + "…" : r.label;
+      const bar = sv("path", {d: hbar(X(r.from), X(r.to), y, barH), fill: r.color});
+      g.append(sv("rect", {x: 0, y: i * rowH, width: W, height: rowH, fill: "transparent"}),
+        sv("text", {x: labW, y: y + barH / 2 + 4, "text-anchor": "end", fill: r.strong ? "var(--ink)" : "var(--ink-2)", "font-size": 12,
+          "font-family": "IBM Plex Mono, monospace", "font-weight": r.strong ? 600 : 400}, sv("title", {}, r.label), label),
+        bar,
+        sv("text", {x: Math.max(X(r.from), X(r.to)) + 6, y: y + barH / 2 + 4, fill: "var(--ink)", "font-size": 12,
+          "font-family": "IBM Plex Mono, monospace", "font-weight": r.strong ? 600 : 400}, r.valueText));
+      const show = () => { bar.setAttribute("fill-opacity", .78); const bx = Math.max(X(r.from), X(r.to));
+        tip.show(Math.min(bx, W - 20), y, () => [el("strong", {}, r.valueText), ...(r.tip || []).map(t => el("div", {}, t))]); };
+      const hide = () => { bar.removeAttribute("fill-opacity"); tip.hide(); };
+      g.addEventListener("pointerenter", show); g.addEventListener("pointerleave", hide);
+      g.addEventListener("focus", show); g.addEventListener("blur", hide);
+      svg.append(g);
+    });
+    for (const v of niceTicks(lo, hi, 4)) if (v >= lo - 1e-9 && v <= hi + 1e-9)
+      svg.append(sv("text", {class: "tick", x: X(v), y: H - 6, "text-anchor": "middle"}, usd(v)));
+    box.prepend(svg);
+  });
+  return box;
+}
+
+function waterfall(rep) {
+  const rows = [];
+  let run = 0;
+  const step = (label, delta, tipText) => {
+    rows.push({label, from: run, to: run + delta, color: delta >= 0 ? "var(--gain)" : "var(--loss)",
+      valueText: usd(delta, true), tip: [label, tipText].filter(Boolean)});
+    run += delta;
+  };
+  step("Gross captured", rep.gross_usd, "gap at realized fill prices");
+  for (const [venue, fee] of Object.entries(rep.fees_by_venue_usd || {}).sort())
+    step(venue + " fees", -fee, fee < 0 ? "net maker rebate" : "taker/maker fees paid");
+  if (rep.legging_cost_usd) step("Legging exits", -rep.legging_cost_usd, "closing unhedged excess");
+  rows.push({label: "Net P&L", from: 0, to: rep.net_pnl_usd, color: "var(--ink-2)", strong: true, valueText: usd(rep.net_pnl_usd, true), tip: ["Net P&L"]});
+  const out = el("div", {}, barRows(rows, {labelWidth: 130, aria: "Waterfall from gross captured to net P&L"}));
+  if (rep.slippage_usd) out.append(el("p", {class: "note"}, "Slippage vs top of book " + usd(-rep.slippage_usd, true) + " — already inside gross, shown for information."));
+  return out;
+}
+
+function marketBars(markets) {
+  const pick = markets.length > 24 ? [...markets.slice(0, 12), ...markets.slice(-12)] : markets;
+  const rows = pick.map(m => ({label: m.canonical, from: 0, to: m.net_usd, color: m.net_usd >= 0 ? "var(--gain)" : "var(--loss)",
+    valueText: usd(m.net_usd, true), tip: [m.canonical, m.pairs + " pair" + (m.pairs === 1 ? "" : "s") + " · " + usd(m.capital_usd) + " capital", m.attempts + " attempts"]}));
+  return barRows(rows, {labelWidth: 190, aria: "Net P&L by market; the table view has every market"});
+}
+
+function pairsTable(pairs) {
+  let cum = 0;
+  return el("div", {class: "tablewrap", style: "margin-top:10px; max-height:360px; overflow:auto"}, el("table", {},
+    el("thead", {}, el("tr", {}, el("th", {}, "Entered"), el("th", {}, "Market"), el("th", {class: "r"}, "Net"), el("th", {class: "r"}, "Capital"), el("th", {class: "r"}, "Cumulative"))),
+    el("tbody", {}, pairs.map(p => el("tr", {}, el("td", {}, when(p.entry_ms)), el("td", {class: "mono"}, p.canonical),
+      el("td", {class: "r num"}, usd(p.net_usd, true)), el("td", {class: "r num"}, usd(p.capital_usd)), el("td", {class: "r num"}, usd((cum += p.net_usd), true)))))));
+}
+
+function marketsTable(markets) {
+  return el("div", {class: "tablewrap", style: "margin-top:10px; max-height:360px; overflow:auto"}, el("table", {},
+    el("thead", {}, el("tr", {}, ["Market", "Category"].map(h => el("th", {}, h)), ["Net", "Capital", "Pairs", "Attempts"].map(h => el("th", {class: "r"}, h)))),
+    el("tbody", {}, markets.map(m => el("tr", {}, el("td", {class: "mono"}, m.canonical), el("td", {}, m.category),
+      el("td", {class: "r num"}, usd(m.net_usd, true)), el("td", {class: "r num"}, usd(m.capital_usd)), el("td", {class: "r num"}, m.pairs), el("td", {class: "r num"}, m.attempts))))));
+}
+
+route();
+</script>
+</body>
+</html>
