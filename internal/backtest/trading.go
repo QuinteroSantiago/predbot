@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"predbot/internal/book"
@@ -32,6 +33,10 @@ type TradingOpts struct {
 	// global across markets, so adverse runs need the whole stream in one place.
 	Adverse *AdverseSelection
 	Trades  []venue.Trade
+
+	// Progress, when set, is incremented once per replayed snapshot (mapped or
+	// not), so it counts toward the same total as the id-scan pass.
+	Progress *atomic.Int64
 }
 
 // TradingResult is everything the trading replay produces. Report is not yet
@@ -200,6 +205,9 @@ func runTrading(dir string, window int, markets []config.Market, opts TradingOpt
 		sh := newShard(markets, opts)
 		err := StreamReplay(dir, window, func(s core.BookSnapshot) error {
 			sh.tick(s)
+			if opts.Progress != nil {
+				opts.Progress.Add(1)
+			}
 			return nil
 		})
 		sh.finish()
@@ -231,6 +239,11 @@ func runTrading(dir string, window int, markets []config.Market, opts TradingOpt
 	owner := map[string]int{}
 	pending := make([][]core.BookSnapshot, n)
 	err := StreamReplay(dir, window, func(s core.BookSnapshot) error {
+		// Counted as routed, not as simulated: a shard can lag the router by
+		// up to shardQueue batches, which is noise against a whole archive.
+		if opts.Progress != nil {
+			opts.Progress.Add(1)
+		}
 		c, ok := route.Canonical(s.Venue, s.VenueID)
 		if !ok {
 			return nil // not in markets.yaml (§12); a shard would drop it too

@@ -14,12 +14,14 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"time"
 
 	"predbot/internal/backtest"
 	"predbot/internal/book"
 	"predbot/internal/config"
 	"predbot/internal/core"
+	"predbot/internal/progress"
 	"predbot/internal/sports"
 	"predbot/internal/strategy"
 )
@@ -38,6 +40,7 @@ func main() {
 	maker := flag.Bool("maker", false, "use the MAKER strategy: rest one leg (earns the Poly rebate) and take the other")
 	exportPath := flag.String("export", "", "write detected opportunities to this JSON file")
 	spreadPath := flag.String("export-spread", "", "write sampled cross-venue spread to this JSON file")
+	showProgress := flag.Bool("progress", true, "show progress on stderr: a live bar on a terminal, a status line every 30s when redirected")
 	flag.Parse()
 
 	cfg, err := config.Load(*cfgPath)
@@ -67,7 +70,9 @@ func main() {
 	seenID := map[string]bool{}
 	var nSnaps int
 	var firstTs, lastTs int64
+	scan := scanBar(*showProgress, dir, window)
 	if err := backtest.StreamReplay(dir, window, func(s core.BookSnapshot) error {
+		scan.observe(s.TsRecv)
 		nSnaps++
 		if firstTs == 0 {
 			firstTs = s.TsRecv
@@ -85,9 +90,11 @@ func main() {
 		}
 		return nil
 	}); err != nil {
+		scan.bar.Finish()
 		slog.Error("replay scan failed", "err", err, "dir", dir)
 		os.Exit(1)
 	}
+	scan.bar.Finish()
 	if nSnaps == 0 {
 		fmt.Printf("no recorded snapshots under %s — record some data first\n", dir)
 		return
@@ -107,7 +114,9 @@ func main() {
 	// report. It never touches the trading sim below.
 	if *leadlag {
 		ll := backtest.NewLeadLag()
+		bar := countBar(*showProgress, "pass 2/2 lead-lag", nSnaps)
 		_ = backtest.StreamReplay(dir, window, func(s core.BookSnapshot) error {
+			bar.Add(1)
 			canonical, ok := bm.Canonical(s.Venue, s.VenueID)
 			if !ok {
 				return nil
@@ -121,6 +130,7 @@ func main() {
 			ll.Observe(canonical, s.Venue, mid, s.TsRecv)
 			return nil
 		})
+		bar.Finish()
 		span := time.Duration(lastTs-firstTs) * time.Nanosecond
 		fmt.Printf("Replayed %d snapshots over %s across %d markets\n\n",
 			nSnaps, span.Round(time.Minute), len(bm.Canonicals()))
@@ -146,7 +156,9 @@ func main() {
 			return
 		}
 		ls := backtest.NewLongshot(outcomes)
+		bar := countBar(*showProgress, "pass 2/2 longshot", nSnaps)
 		_ = backtest.StreamReplay(dir, window, func(s core.BookSnapshot) error {
+			bar.Add(1)
 			bid, okB := s.BestYesBid()
 			ask, okA := s.BestYesAsk()
 			if !okB || !okA {
@@ -156,6 +168,7 @@ func main() {
 			ls.ObserveMid(s.Venue+"|"+s.VenueID, prob)
 			return nil
 		})
+		bar.Finish()
 		fmt.Printf("Loaded %d settled outcomes; replayed %d snapshots\n\n", len(outcomes), nSnaps)
 		fmt.Print(ls.Report())
 		return
@@ -202,7 +215,10 @@ func main() {
 
 	// Second streaming pass: the actual replay (design §10.1).
 	allMarkets := append(append([]config.Market{}, markets...), sportsMarkets...)
+	bar := countBar(*showProgress, "pass 2/2 replay", nSnaps)
+	opts.Progress = bar.Counter()
 	res, err := backtest.RunTrading(dir, window, allMarkets, opts)
+	bar.Finish()
 	if err != nil {
 		slog.Warn("trading replay stopped early", "err", err)
 	}
@@ -274,6 +290,53 @@ func loadOutcomes(path string) (map[string]int, error) {
 		out[r.Venue+"|"+r.VenueID] = y
 	}
 	return out, sc.Err()
+}
+
+// scanProgress tracks the id-scan pass. Its snapshot count isn't known until
+// the pass ends, so the bar measures how far through the archive's time span
+// the replay has got.
+type scanProgress struct {
+	bar    *progress.Bar
+	fromNs int64
+	seen   atomic.Int64
+}
+
+func scanBar(on bool, dir string, window int) *scanProgress {
+	sp := &scanProgress{}
+	if !on {
+		return sp
+	}
+	from, to, ok, err := backtest.ArchiveSpan(dir, window)
+	if err != nil || !ok {
+		return sp
+	}
+	sp.fromNs = from.UnixNano()
+	sp.bar = progress.Start("pass 1/2 scan  ", to.UnixNano()-sp.fromNs, func(done, _ int64, elapsed time.Duration) string {
+		n := sp.seen.Load()
+		return fmt.Sprintf("through %s  %s snapshots  %s/s",
+			time.Unix(0, sp.fromNs+done).UTC().Format("2006-01-02 15:04"),
+			progress.Count(n), progress.Count(int64(float64(n)/elapsed.Seconds())))
+	})
+	return sp
+}
+
+func (sp *scanProgress) observe(tsRecv int64) {
+	if sp.bar == nil {
+		return
+	}
+	sp.seen.Add(1)
+	sp.bar.Set(tsRecv - sp.fromNs)
+}
+
+// countBar shows a pass over a known number of snapshots; nil when off.
+func countBar(on bool, label string, total int) *progress.Bar {
+	if !on {
+		return nil
+	}
+	return progress.Start(label, int64(total), func(done, total int64, elapsed time.Duration) string {
+		return fmt.Sprintf("%s/%s snapshots  %s/s",
+			progress.Count(done), progress.Count(total), progress.Count(int64(float64(done)/elapsed.Seconds())))
+	})
 }
 
 // sportsToMarkets converts reconstructed sports matches into config.Market rows.

@@ -52,6 +52,24 @@ func StreamReplay(dir string, hours int, fn func(core.BookSnapshot) error) error
 	return streamHours(byHour, sortedHours(byHour), replayWorkers(), fn)
 }
 
+// ArchiveSpan returns the time range StreamReplay(dir, hours) will cover, from
+// the start of its first hourly file to the end of its last. ok is false when
+// there is nothing to replay. Used to show progress through a pass whose
+// snapshot count isn't known yet.
+func ArchiveSpan(dir string, hours int) (from, to time.Time, ok bool, err error) {
+	byHour, err := hourlyFiles(dir, hours)
+	if err != nil || len(byHour) == 0 {
+		return time.Time{}, time.Time{}, false, err
+	}
+	hs := sortedHours(byHour)
+	from, err1 := time.Parse("2006-01-02T15", hs[0])
+	last, err2 := time.Parse("2006-01-02T15", hs[len(hs)-1])
+	if err1 != nil || err2 != nil {
+		return time.Time{}, time.Time{}, false, nil
+	}
+	return from, last.Add(time.Hour), true, nil
+}
+
 // errCanceled unwinds a decode goroutine whose output is no longer wanted. It
 // never escapes streamHours.
 var errCanceled = errors.New("replay canceled")
