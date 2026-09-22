@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"predbot/internal/core"
@@ -225,6 +226,15 @@ type snapReader struct {
 	kalsh *kalshi.State // per-file Kalshi book state (stateful deltas)
 	cur   core.BookSnapshot
 	ok    bool
+
+	// Parallel parse of a normalized file (see startParse). nil for raw files
+	// and for serial parsing.
+	parsed []chan []core.BookSnapshot // per worker, results in batch order
+	next   int                        // worker holding the next batch
+	batch  []core.BookSnapshot
+	pos    int
+	stop   chan struct{}
+	wg     sync.WaitGroup
 }
 
 func openSnapReader(path string) (*snapReader, error) {
@@ -242,17 +252,130 @@ func openSnapReader(path string) (*snapReader, error) {
 	r := &snapReader{f: f, gz: gz, sc: sc,
 		raw:   strings.Contains(path, string(os.PathSeparator)+"raw"+string(os.PathSeparator)),
 		kalsh: kalshi.NewState()}
+	// Raw files carry stateful Kalshi deltas, so only normalized lines, which
+	// parse independently, go to the worker pool.
+	if w := parseWorkers(); !r.raw && w > 1 {
+		r.startParse(w)
+	}
 	r.advance()
 	return r, nil
 }
 
 func (r *snapReader) close() {
+	if r.stop != nil {
+		close(r.stop)
+		r.wg.Wait() // the pipeline reads the file; let it exit before closing
+	}
 	r.gz.Close()
 	r.f.Close()
 }
 
+// parseBatch is how many lines a parse worker takes at once.
+const parseBatch = 256
+
+// parseWorkers is how many goroutines parse each normalized file: GOMAXPROCS,
+// or PREDBOT_PARSE_WORKERS (1 = parse inline, the old serial path).
+func parseWorkers() int {
+	n := runtime.GOMAXPROCS(0)
+	if v, err := strconv.Atoi(os.Getenv("PREDBOT_PARSE_WORKERS")); err == nil && v > 0 {
+		n = v
+	}
+	return n
+}
+
+// startParse moves JSON decoding, which is most of a replay's CPU, off the
+// consumer. One goroutine scans lines (gunzip + split) and deals batches to
+// workers round-robin; advance collects results from the workers in that same
+// order, so snapshots come out exactly as the serial parse yields them. Each
+// worker holds at most a batch in, one in progress and one out, so memory stays
+// O(workers) per open file.
+//
+// The earlier hour-level parallelism in streamHours can't do this on its own:
+// a look-ahead hour may only run batchesAhead batches in front of the consumer,
+// so in practice one hour decodes at a time.
+func (r *snapReader) startParse(workers int) {
+	r.stop = make(chan struct{})
+	lines := make([]chan [][]byte, workers)
+	r.parsed = make([]chan []core.BookSnapshot, workers)
+	for i := range lines {
+		lines[i] = make(chan [][]byte, 1)
+		r.parsed[i] = make(chan []core.BookSnapshot, 1)
+	}
+	r.wg.Add(1 + workers)
+	go func() {
+		defer r.wg.Done()
+		defer func() {
+			for _, in := range lines {
+				close(in)
+			}
+		}()
+		w := 0
+		batch := make([][]byte, 0, parseBatch)
+		send := func() bool {
+			select {
+			case lines[w] <- batch:
+			case <-r.stop:
+				return false
+			}
+			w = (w + 1) % workers
+			batch = make([][]byte, 0, parseBatch)
+			return true
+		}
+		for r.sc.Scan() {
+			line := r.sc.Bytes()
+			if len(line) == 0 {
+				continue
+			}
+			// The scanner reuses its buffer; the worker needs its own copy.
+			batch = append(batch, append([]byte(nil), line...))
+			if len(batch) == parseBatch && !send() {
+				return
+			}
+		}
+		if len(batch) > 0 {
+			send()
+		}
+	}()
+	for i := range lines {
+		go func(in <-chan [][]byte, out chan<- []core.BookSnapshot) {
+			defer r.wg.Done()
+			defer close(out)
+			for batch := range in {
+				snaps := make([]core.BookSnapshot, 0, len(batch))
+				for _, line := range batch {
+					var s core.BookSnapshot
+					if json.Unmarshal(line, &s) == nil {
+						snaps = append(snaps, s)
+					}
+				}
+				select {
+				case out <- snaps:
+				case <-r.stop:
+					return
+				}
+			}
+		}(lines[i], r.parsed[i])
+	}
+}
+
 // advance loads the next snapshot, setting ok=false at end of file.
 func (r *snapReader) advance() {
+	if r.parsed != nil {
+		for r.pos >= len(r.batch) {
+			// Batches were dealt round-robin, so if the worker owed the next one
+			// has closed, there are no more batches anywhere.
+			b, more := <-r.parsed[r.next]
+			if !more {
+				r.ok = false
+				return
+			}
+			r.next = (r.next + 1) % len(r.parsed)
+			r.batch, r.pos = b, 0
+		}
+		r.cur, r.ok = r.batch[r.pos], true
+		r.pos++
+		return
+	}
 	for r.sc.Scan() {
 		line := r.sc.Bytes()
 		if len(line) == 0 {
