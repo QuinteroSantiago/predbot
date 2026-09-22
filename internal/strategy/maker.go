@@ -6,9 +6,9 @@ import "predbot/internal/core"
 // profitable when ONE leg rests as a maker (design §9.2 "Maker variants").
 //
 // Why this matters: the binding constraint on this bot has never been speed, it
-// is fees. A taker/taker round trip costs ~3.25c per contract at p=0.5, and
+// is fees. A taker/taker round trip costs ~3.49c per contract at p=0.5, and
 // almost nothing clears that. Resting the Polymarket leg EARNS a rebate
-// (Θ=−0.0125) instead of paying Θ=0.06, which drops the hurdle to ~1.44c —
+// (Θ=−0.0125) instead of paying Θ=0.0695, which drops the hurdle to ~1.44c —
 // measured on recorded data, that turns 1 opportunity into 120.
 //
 // THE CATCH, and it is a big one: a resting order only earns if it FILLS, and it

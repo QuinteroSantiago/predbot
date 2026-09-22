@@ -128,7 +128,7 @@ footer{margin-top:40px; padding-top:20px; border-top:1px solid var(--border); fo
 <div class="wrap">
   <div class="eyebrow">predbot · phase 2 backtest · Kalshi ⇄ Polymarket US</div>
   <h1>The Fee&nbsp;Wall</h1>
-  <p class="lede">Across <b id="l-markets"></b> cross-listed markets and <b id="l-obs"></b> cross-venue price observations over <b id="l-hours"></b>, this is every arbitrage the bot could have taken — and why the fees left only <b id="l-trade"></b> standing. <span class="mono" style="color:var(--muted)">gross&nbsp;edge&nbsp;vs&nbsp;the&nbsp;~3.25¢&nbsp;round-trip&nbsp;fee&nbsp;hurdle.</span></p>
+  <p class="lede">Across <b id="l-markets"></b> cross-listed markets and <b id="l-obs"></b> cross-venue price observations over <b id="l-hours"></b>, this is every arbitrage the bot could have taken — and why the fees left only <b id="l-trade"></b> standing. <span class="mono" style="color:var(--muted)">gross&nbsp;edge&nbsp;vs&nbsp;the&nbsp;~3.49¢&nbsp;round-trip&nbsp;fee&nbsp;hurdle.</span></p>
 
   <div class="funnel" id="funnel"></div>
 
@@ -142,7 +142,7 @@ footer{margin-top:40px; padding-top:20px; border-top:1px solid var(--border); fo
   <p class="h2note">Best cross-venue gross edge per market, sampled every 5 minutes, by category. The dashed line is the fee wall — a gap must clear it before fees even to break even. Dots above it are gold; nearly everything sits below.</p>
   <div class="panels" id="panels"></div>
   <div class="legendline">
-    <span><span class="sw"></span> fee wall ≈ 3.25¢</span>
+    <span><span class="sw"></span> fee wall ≈ 3.49¢</span>
     <span><span class="swd" style="background:var(--accent-mark)"></span> above the wall</span>
     <span><span class="swd" style="background:var(--muted);opacity:.5"></span> below (no arb)</span>
     <span><span class="mono" style="color:var(--accent)">◆</span> taken</span>
@@ -159,7 +159,7 @@ footer{margin-top:40px; padding-top:20px; border-top:1px solid var(--border); fo
   <footer>
     <span class="mono">predbot</span>
     <span id="f-window"></span>
-    <span>fee model: Kalshi 0.07·C·p(1−p) taker · Poly US Θ=0.06 taker</span>
+    <span>fee model: Kalshi 0.07·C·p(1−p) taker · Poly US Θ=0.0695 taker</span>
     <span>hold-to-resolution · §9.3 / §10.5</span>
   </footer>
 </div>
@@ -189,7 +189,7 @@ document.getElementById('f-window').textContent = dfmt(d0)+' → '+dfmt(d1);
 const fmax = M.n_obs;
 const funnel = [
   {k:M.n_obs.toLocaleString(), lab:'spread observations', sub:M.n_markets+' markets · every 5 min', v:M.n_obs},
-  {k:M.above_wall, lab:'poked above the fee wall', sub:'gross edge > 3.25¢', v:M.above_wall},
+  {k:M.above_wall, lab:'poked above the fee wall', sub:'gross edge > 3.49¢', v:M.above_wall},
   {k:M.tradeable, lab:'actually tradeable', sub:'same-time quote + hold-to-resolution', v:M.tradeable, win:true},
 ];
 document.getElementById('funnel').innerHTML = funnel.map((s,i)=>{

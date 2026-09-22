@@ -14,7 +14,7 @@ import (
 // disproportionately when the price is about to move AGAINST you.
 //
 // Why this decides the maker-rebate thesis: resting a leg cuts the fee hurdle
-// from ~3.25c to ~1.44c, turning 1 opportunity into 120. But if each fill is
+// from ~3.49c to ~1.44c, turning 1 opportunity into 120. But if each fill is
 // followed by an adverse move larger than the rebate plus captured spread, the
 // rebate is bait — you are being paid to buy things about to be worth less.
 //

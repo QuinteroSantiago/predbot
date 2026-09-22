@@ -91,7 +91,7 @@ add(text("", (
     "(Kalshi + Polymarket US, Go). This board reads top-to-bottom like the interview walkthrough: "
     "**Reliability → Latency → The Edge → Execution.** Every series is live from the always-on "
     "recorder — no real money is at risk. The *honest* headline is in **The Edge**: at retail depth "
-    "the cross-venue gap almost never clears the ~3.25¢ fee wall, and this system proves it with data "
+    "the cross-venue gap almost never clears the ~3.49¢ fee wall, and this system proves it with data "
     "instead of losing money finding out."), h=3))
 
 # ── 1. Reliability ────────────────────────────────────────────────────────
@@ -149,7 +149,7 @@ add(
 
 # ── 3. The Edge ───────────────────────────────────────────────────────────
 panels.append(row("3 · The Edge  ·  measurement honesty (does the arb survive fees?)"))
-opp = ("count( (predbot_cross_edge_cents > 3.25) and on(market,category) "
+opp = ("count( (predbot_cross_edge_cents > 3.49) and on(market,category) "
        "(predbot_cross_edge_size >= 10) and on(market,category) "
        "(predbot_cross_edge_trade_age_seconds < 300) ) or vector(0)")
 widest = ("max( predbot_cross_edge_cents and on(market,category) "
@@ -157,20 +157,20 @@ widest = ("max( predbot_cross_edge_cents and on(market,category) "
           "(predbot_cross_edge_trade_age_seconds < 300) ) or vector(0)")
 add(
     stat("Real opportunities", opp, w=6, x=0,
-         desc="Edges clearing ALL three phantom-edge gates at once: > 3.25¢ fee wall AND ≥ 10 contracts of real depth AND traded in the last 5 min. Usually 0 — that is the finding.",
+         desc="Edges clearing ALL three phantom-edge gates at once: > 3.49¢ fee wall AND ≥ 10 contracts of real depth AND traded in the last 5 min. Usually 0 — that is the finding.",
          thresholds=[{"color": "text", "value": None}, {"color": "green", "value": 1}]),
     stat("Widest executable edge", widest, unit="none", w=6, x=6, decimals=2,
-         desc="The best gap that would actually be fillable right now, in cents. Compare to the 3.25¢ fee wall."),
-    stat("Fee wall", "vector(3.25)", unit="none", w=6, x=12, decimals=2, color="background",
+         desc="The best gap that would actually be fillable right now, in cents. Compare to the 3.49¢ fee wall."),
+    stat("Fee wall", "vector(3.49)", unit="none", w=6, x=12, decimals=2, color="background",
          desc="Round-trip taker/taker cost per contract. An edge must clear this to be free money — most don't.",
          thresholds=[{"color": "red", "value": None}]),
     stat("Widest RAW edge (ungated)", "max(predbot_cross_edge_cents) or vector(0)", unit="none", w=6, x=18, decimals=2,
          desc="Best top-of-book gap ignoring size & volume. The gap between this and the executable edge is the phantom-edge trap retail falls into."),
 )
-add(ts("Live cross-venue edge by MLB game  (size- & volume-vetted vs the 3.25¢ fee wall)",
+add(ts("Live cross-venue edge by MLB game  (size- & volume-vetted vs the 3.49¢ fee wall)",
        [target("predbot_cross_edge_cents", "{{market}}"),
-        target("vector(3.25)", "fee wall (3.25¢)")],
-       unit="none", w=24, x=0, h=9, fillthreshold="fee wall (3.25¢)",
+        target("vector(3.49)", "fee wall (3.49¢)")],
+       unit="none", w=24, x=0, h=9, fillthreshold="fee wall (3.49¢)",
        desc="Every tracked game's real-time gross edge. The dashed red line is the fee wall; series rarely poke above it, and when they do the size/volume gates usually reject them as phantoms."))
 
 # ── 4. Execution & Risk ───────────────────────────────────────────────────

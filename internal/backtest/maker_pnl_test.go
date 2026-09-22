@@ -7,7 +7,7 @@ import (
 )
 
 // The whole maker thesis in one test: a 2c gross spread LOSES money as
-// taker/taker (3.25c hurdle at p=0.5) but MAKES money when one leg rests and
+// taker/taker (3.49c hurdle at p=0.5) but MAKES money when one leg rests and
 // collects the Polymarket rebate instead of paying the taker fee.
 func TestMakerRebateFlipsAMarginalSpread(t *testing.T) {
 	f := Fees{KalshiMult: 0.07}

@@ -29,9 +29,9 @@ def main():
         "meta": {
             "n_markets": len({s["canonical"] for s in spread}) or 24,
             "n_obs": len(spread),
-            "above_wall": sum(1 for s in spread if s["gross_edge_cents"] > 3.25),
+            "above_wall": sum(1 for s in spread if s["gross_edge_cents"] > 3.49),
             "tradeable": len(opps),
-            "fee_wall": 3.25,
+            "fee_wall": 3.49,
             "t0": min(ts),
             "t1": max(ts),
             "net_if_taken": round(sum(o["net_usd"] for o in opps), 4),

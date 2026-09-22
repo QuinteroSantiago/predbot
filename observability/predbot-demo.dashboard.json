@@ -43,7 +43,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "**A live, OpenTelemetry-instrumented cross-venue prediction-market trading system** (Kalshi + Polymarket US, Go). This board reads top-to-bottom like the interview walkthrough: **Reliability \u2192 Latency \u2192 The Edge \u2192 Execution.** Every series is live from the always-on recorder \u2014 no real money is at risk. The *honest* headline is in **The Edge**: at retail depth the cross-venue gap almost never clears the ~3.25\u00a2 fee wall, and this system proves it with data instead of losing money finding out."
+        "content": "**A live, OpenTelemetry-instrumented cross-venue prediction-market trading system** (Kalshi + Polymarket US, Go). This board reads top-to-bottom like the interview walkthrough: **Reliability \u2192 Latency \u2192 The Edge \u2192 Execution.** Every series is live from the always-on recorder \u2014 no real money is at risk. The *honest* headline is in **The Edge**: at retail depth the cross-venue gap almost never clears the ~3.49\u00a2 fee wall, and this system proves it with data instead of losing money finding out."
       }
     },
     {
@@ -868,7 +868,7 @@
     {
       "type": "stat",
       "title": "Real opportunities",
-      "description": "Edges clearing ALL three phantom-edge gates at once: > 3.25\u00a2 fee wall AND \u2265 10 contracts of real depth AND traded in the last 5 min. Usually 0 \u2014 that is the finding.",
+      "description": "Edges clearing ALL three phantom-edge gates at once: > 3.49\u00a2 fee wall AND \u2265 10 contracts of real depth AND traded in the last 5 min. Usually 0 \u2014 that is the finding.",
       "gridPos": {
         "h": 4,
         "w": 6,
@@ -885,7 +885,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "count( (predbot_cross_edge_cents > 3.25) and on(market,category) (predbot_cross_edge_size >= 10) and on(market,category) (predbot_cross_edge_trade_age_seconds < 300) ) or vector(0)",
+          "expr": "count( (predbot_cross_edge_cents > 3.49) and on(market,category) (predbot_cross_edge_size >= 10) and on(market,category) (predbot_cross_edge_trade_age_seconds < 300) ) or vector(0)",
           "legendFormat": "",
           "refId": "A",
           "range": false,
@@ -929,7 +929,7 @@
     {
       "type": "stat",
       "title": "Widest executable edge",
-      "description": "The best gap that would actually be fillable right now, in cents. Compare to the 3.25\u00a2 fee wall.",
+      "description": "The best gap that would actually be fillable right now, in cents. Compare to the 3.49\u00a2 fee wall.",
       "gridPos": {
         "h": 4,
         "w": 6,
@@ -1004,7 +1004,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "vector(3.25)",
+          "expr": "vector(3.49)",
           "legendFormat": "",
           "refId": "A",
           "range": false,
@@ -1102,7 +1102,7 @@
     },
     {
       "type": "timeseries",
-      "title": "Live cross-venue edge by MLB game  (size- & volume-vetted vs the 3.25\u00a2 fee wall)",
+      "title": "Live cross-venue edge by MLB game  (size- & volume-vetted vs the 3.49\u00a2 fee wall)",
       "description": "Every tracked game's real-time gross edge. The dashed red line is the fee wall; series rarely poke above it, and when they do the size/volume gates usually reject them as phantoms.",
       "gridPos": {
         "h": 9,
@@ -1131,8 +1131,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "vector(3.25)",
-          "legendFormat": "fee wall (3.25\u00a2)",
+          "expr": "vector(3.49)",
+          "legendFormat": "fee wall (3.49\u00a2)",
           "refId": "A",
           "range": true,
           "instant": false
@@ -1153,7 +1153,7 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "fee wall (3.25\u00a2)"
+              "options": "fee wall (3.49\u00a2)"
             },
             "properties": [
               {

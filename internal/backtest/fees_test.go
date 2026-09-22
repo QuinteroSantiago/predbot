@@ -42,12 +42,12 @@ func TestMakerSigns(t *testing.T) {
 	}
 }
 
-// At p=0.5, Poly taker fee = 0.06 * C * 0.25 = 0.015/contract. 100 contracts -> $1.50.
+// At p=0.5, Poly taker fee = 0.0695 * C * 0.25 = 0.017375/contract. 100 contracts -> $1.7375 -> $1.74.
 func TestPolyFeeMagnitude(t *testing.T) {
 	f := Fees{}
 	fee := f.Fee("polymarketus", 5000, 10000, false) // 100 contracts at $0.50
-	// $1.50 in $0.0001 units = 15000.
-	if fee != 15000 {
-		t.Errorf("poly fee at p=0.5, 100 contracts = %d; want 15000 ($1.50)", fee)
+	// $1.74 in $0.0001 units = 17400.
+	if fee != 17400 {
+		t.Errorf("poly fee at p=0.5, 100 contracts = %d; want 17400 ($1.74)", fee)
 	}
 }

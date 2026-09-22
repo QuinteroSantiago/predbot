@@ -137,7 +137,7 @@ const NoTradeAgeSec = 999999
 // snapshot() for the current cross-venue edge of every fresh market and report
 // it as predbot_cross_edge_cents{market,category} plus the fillable size behind
 // it as predbot_cross_edge_size{market,category}. This is the live arb surface:
-// an edge above the ~3.25c fee wall is only a real opportunity when the size is
+// an edge above the ~3.49c fee wall is only a real opportunity when the size is
 // also non-trivial — a wide edge on a one-lot book is not executable.
 func RegisterCrossEdgeGauge(snapshot func() []MarketEdge) error {
 	m := otel.Meter(serviceName)

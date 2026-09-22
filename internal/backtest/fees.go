@@ -12,7 +12,7 @@ import (
 // contract, maximized at p=0.5 and zero at the extremes.
 //
 //	Kalshi:      ceil-to-$0.0001( mult · C · p · (1−p) ), taker; maker ≈ 25% of taker [VERIFY]
-//	Polymarket US: bankers-round-to-$0.01( Θ · C · p · (1−p) ), Θ=0.06 taker, −0.0125 maker
+//	Polymarket US: bankers-round-to-$0.01( Θ · C · p · (1−p) ), Θ=0.0695 taker (0.06 before 2026-09-16 23:59 ET), −0.0125 maker
 //
 // C = contracts, p = price in dollars. Returned in signed $0.0001 units
 // (negative == rebate). NOTE: Kalshi's per-order rounding accumulator (§6.1) is
@@ -22,14 +22,14 @@ type Fees struct {
 }
 
 const (
-	polyTakerTheta = 0.06
-	polyMakerTheta = -0.0125
+	polyTakerTheta  = 0.0695 // raised from 0.06 effective 2026-09-16 23:59 ET; maker rebate unchanged
+	polyMakerTheta  = -0.0125
 	kalshiMakerFrac = 0.25 // maker ≈ 25% of taker [VERIFY against official PDF]
 )
 
 // Fee returns the signed fee in $0.0001 units.
 func (f Fees) Fee(venue string, px core.Price, qty core.Qty, maker bool) int64 {
-	c := float64(qty) / 100          // contracts
+	c := float64(qty) / 100 // contracts
 	p := float64(px) / float64(core.OneDollar)
 	risk := c * p * (1 - p)
 	switch venue {
