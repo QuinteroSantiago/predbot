@@ -113,6 +113,40 @@ func main() {
 	if len(sportsMarkets) > 0 {
 		fmt.Printf("reconstructed %d cross-listed sports markets from recorded data\n", len(sportsMarkets))
 	}
+	// runMeta describes this run for -report-json.
+	runMeta := func(kind, mode string) backtest.RunMeta {
+		finished := time.Now()
+		m := backtest.RunMeta{
+			ID:          started.UTC().Format("20060102T150405Z") + "-" + mode,
+			Kind:        kind,
+			Label:       *label,
+			Mode:        mode,
+			Adverse:     *adverse,
+			WindowHours: window,
+			DataFrom:    time.Unix(0, firstTs).UTC(),
+			DataTo:      time.Unix(0, lastTs).UTC(),
+			Snapshots:   nSnaps,
+			Markets:     len(bm.Canonicals()),
+			StartedAt:   started.UTC(),
+			FinishedAt:  finished.UTC(),
+			DurationS:   finished.Sub(started).Seconds(),
+			Args:        os.Args[1:],
+		}
+		m.Host, _ = os.Hostname()
+		m.Revision, m.Dirty = buildRevision()
+		m.ParseWorkers = backtest.ParseWorkers()
+		return m
+	}
+	writeReport := func(v any) {
+		if *reportJSON == "" {
+			return
+		}
+		if err := writeJSON(*reportJSON, v); err != nil {
+			slog.Error("report json write failed", "err", err, "path", *reportJSON)
+			os.Exit(1)
+		}
+	}
+
 	// Lead-lag is a standalone read-only pass: feed each venue's YES mid into the
 	// analyzer (canonical via a pure lookup, no book mutation) and print the
 	// report. It never touches the trading sim below.
@@ -139,6 +173,9 @@ func main() {
 		fmt.Printf("Replayed %d snapshots over %s across %d markets\n\n",
 			nSnaps, span.Round(time.Minute), len(bm.Canonicals()))
 		fmt.Print(ll.Report())
+		res := ll.Result()
+		writeReport(backtest.AnalysisReport{Schema: backtest.RunReportSchema,
+			Run: runMeta("leadlag", "leadlag"), LeadLag: &res})
 		return
 	}
 
@@ -175,6 +212,10 @@ func main() {
 		bar.Finish()
 		fmt.Printf("Loaded %d settled outcomes; replayed %d snapshots\n\n", len(outcomes), nSnaps)
 		fmt.Print(ls.Report())
+		res := ls.Result()
+		res.Outcomes = len(outcomes)
+		writeReport(backtest.AnalysisReport{Schema: backtest.RunReportSchema,
+			Run: runMeta("longshot", "longshot"), Longshot: &res})
 		return
 	}
 
@@ -252,30 +293,9 @@ func main() {
 		if *maker {
 			mode = "maker"
 		}
-		finished := time.Now()
-		meta := backtest.RunMeta{
-			ID:           started.UTC().Format("20060102T150405Z") + "-" + mode,
-			Label:        *label,
-			Mode:         mode,
-			Adverse:      *adverse,
-			WindowHours:  window,
-			DataFrom:     time.Unix(0, firstTs).UTC(),
-			DataTo:       time.Unix(0, lastTs).UTC(),
-			Snapshots:    nSnaps,
-			Markets:      len(bm.Canonicals()),
-			StartedAt:    started.UTC(),
-			FinishedAt:   finished.UTC(),
-			DurationS:    finished.Sub(started).Seconds(),
-			Shards:       backtest.TradingShards(opts),
-			ParseWorkers: backtest.ParseWorkers(),
-			Args:         os.Args[1:],
-		}
-		meta.Host, _ = os.Hostname()
-		meta.Revision, meta.Dirty = buildRevision()
-		if err := writeJSON(*reportJSON, backtest.NewRunReport(meta, res, *maker)); err != nil {
-			slog.Error("report json write failed", "err", err, "path", *reportJSON)
-			os.Exit(1)
-		}
+		meta := runMeta("trading", mode)
+		meta.Shards = backtest.TradingShards(opts)
+		writeReport(backtest.NewRunReport(meta, res, *maker))
 	}
 
 	span := time.Duration(lastTs-firstTs) * time.Nanosecond

@@ -177,65 +177,113 @@ func (l *LeadLag) analyze(canonical string, mm *llMarket) (llResult, bool) {
 }
 
 // Report runs the analysis over every market and renders a text summary.
-func (l *LeadLag) Report() string {
+// LeadLagResult is the lead-lag analysis, for the text report and the backtest
+// runs page.
+type LeadLagResult struct {
+	GridSec   int64   `json:"grid_s"`     // resample interval
+	MaxLagS   int64   `json:"max_lag_s"`  // lags scanned: ±MaxLagS
+	CorrFloor float64 `json:"corr_floor"` // |corr| below this counts as no signal
+	Analyzed  int     `json:"analyzed"`
+	// Of the markets with signal: which venue moved first, or neither.
+	KalshiLeads     int `json:"kalshi_leads"`
+	PolyLeads       int `json:"poly_leads"`
+	Contemporaneous int `json:"contemporaneous"`
+	NoSignal        int `json:"no_signal"`
+	// Over markets with a lagged signal; 0 when there are none.
+	MedianLeadS    float64 `json:"median_lead_s"` // + = Kalshi leads
+	MedianPeakCorr float64 `json:"median_peak_corr"`
+	// Every analyzed market, strongest |peak corr| first.
+	Markets []LeadLagMarket `json:"markets"`
+}
+
+// LeadLagMarket is one market's cross-correlation of YES-mid changes.
+type LeadLagMarket struct {
+	Canonical string  `json:"canonical"`
+	PeakLagS  int64   `json:"peak_lag_s"` // + = Kalshi leads Poly
+	PeakCorr  float64 `json:"peak_corr"`
+	ZeroCorr  float64 `json:"lag0_corr"`
+	N         int     `json:"n"` // aligned grid points
+	Signal    bool    `json:"signal"`
+}
+
+// Result computes the lead-lag analysis over every market with enough overlap.
+func (l *LeadLag) Result() LeadLagResult {
+	res := LeadLagResult{GridSec: l.gridSec, MaxLagS: int64(l.maxLag) * l.gridSec, CorrFloor: l.corrFloor}
 	var results []llResult
 	for c, mm := range l.m {
 		if r, ok := l.analyze(c, mm); ok {
 			results = append(results, r)
 		}
 	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "LEAD-LAG  (Kalshi vs Polymarket US, %ds grid, ±%ds scan)\n",
-		l.gridSec, l.maxLag)
-	fmt.Fprintf(&b, "  + lag = Kalshi leads Poly ;  - lag = Poly leads Kalshi ;  0 = move together\n\n")
-	if len(results) == 0 {
-		b.WriteString("  no markets had enough two-sided, two-venue overlap to analyze.\n")
-		return b.String()
-	}
-
+	res.Analyzed = len(results)
+	sort.Slice(results, func(i, j int) bool {
+		a, b := math.Abs(results[i].peakCorr), math.Abs(results[j].peakCorr)
+		if a != b {
+			return a > b
+		}
+		return results[i].canonical < results[j].canonical
+	})
 	// Tally direction only among markets with a real peak (|corr| >= floor and a
 	// non-zero lag). A peak at lag 0 is "contemporaneous" — neither leads.
-	var kLead, pLead, together, noSignal int
 	var leadLags []float64 // signed peak lag (seconds) for markets with signal
 	var peakCorrs []float64
 	for _, r := range results {
-		if math.Abs(r.peakCorr) < l.corrFloor {
-			noSignal++
+		signal := math.Abs(r.peakCorr) >= l.corrFloor
+		res.Markets = append(res.Markets, LeadLagMarket{
+			Canonical: r.canonical, PeakLagS: int64(r.peakLag) * l.gridSec,
+			PeakCorr: r.peakCorr, ZeroCorr: r.zeroCorr, N: r.n, Signal: signal,
+		})
+		if !signal {
+			res.NoSignal++
 			continue
 		}
 		peakCorrs = append(peakCorrs, math.Abs(r.peakCorr))
 		switch {
 		case r.peakLag > 0:
-			kLead++
+			res.KalshiLeads++
 			leadLags = append(leadLags, float64(r.peakLag)*float64(l.gridSec))
 		case r.peakLag < 0:
-			pLead++
+			res.PolyLeads++
 			leadLags = append(leadLags, float64(r.peakLag)*float64(l.gridSec))
 		default:
-			together++
+			res.Contemporaneous++
 		}
 	}
-	fmt.Fprintf(&b, "  markets analyzed: %d   (with signal |corr|≥%.2f: %d, contemporaneous: %d, no signal: %d)\n",
-		len(results), l.corrFloor, kLead+pLead, together, noSignal)
-	fmt.Fprintf(&b, "  direction (signal + lagged): Kalshi leads %d | Poly leads %d\n", kLead, pLead)
 	if len(leadLags) > 0 {
+		res.MedianLeadS, res.MedianPeakCorr = median(leadLags), median(peakCorrs)
+	}
+	return res
+}
+
+func (l *LeadLag) Report() string {
+	res := l.Result()
+	var b strings.Builder
+	fmt.Fprintf(&b, "LEAD-LAG  (Kalshi vs Polymarket US, %ds grid, ±%ds scan)\n",
+		l.gridSec, l.maxLag)
+	fmt.Fprintf(&b, "  + lag = Kalshi leads Poly ;  - lag = Poly leads Kalshi ;  0 = move together\n\n")
+	if res.Analyzed == 0 {
+		b.WriteString("  no markets had enough two-sided, two-venue overlap to analyze.\n")
+		return b.String()
+	}
+	kLead, pLead, together := res.KalshiLeads, res.PolyLeads, res.Contemporaneous
+	fmt.Fprintf(&b, "  markets analyzed: %d   (with signal |corr|≥%.2f: %d, contemporaneous: %d, no signal: %d)\n",
+		res.Analyzed, l.corrFloor, kLead+pLead, together, res.NoSignal)
+	fmt.Fprintf(&b, "  direction (signal + lagged): Kalshi leads %d | Poly leads %d\n", kLead, pLead)
+	if kLead+pLead > 0 {
 		fmt.Fprintf(&b, "  median lead lag: %+.0fs   median peak |corr|: %.2f\n",
-			median(leadLags), median(peakCorrs))
+			res.MedianLeadS, res.MedianPeakCorr)
 	}
 	b.WriteString("\n")
 
 	// Per-market detail, strongest signal first.
-	sort.Slice(results, func(i, j int) bool {
-		return math.Abs(results[i].peakCorr) > math.Abs(results[j].peakCorr)
-	})
 	fmt.Fprintf(&b, "  %-34s %8s %10s %10s %9s\n", "market", "peak_lag", "peak_corr", "lag0_corr", "n")
 	shown := 0
-	for _, r := range results {
-		if math.Abs(r.peakCorr) < l.corrFloor {
+	for _, r := range res.Markets {
+		if !r.Signal {
 			continue
 		}
 		fmt.Fprintf(&b, "  %-34s %+7ds %10.3f %10.3f %9d\n",
-			trim(r.canonical, 34), r.peakLag*int(l.gridSec), r.peakCorr, r.zeroCorr, r.n)
+			trim(r.Canonical, 34), r.PeakLagS, r.PeakCorr, r.ZeroCorr, r.N)
 		shown++
 		if shown >= 40 {
 			fmt.Fprintf(&b, "  … (%d more with signal not shown)\n", kLead+pLead+together-shown)

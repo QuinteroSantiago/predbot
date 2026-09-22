@@ -2,6 +2,7 @@ package backtest
 
 import (
 	"fmt"
+	"math"
 	"strings"
 )
 
@@ -42,35 +43,57 @@ func (l *Longshot) ObserveMid(key string, prob float64) {
 	l.open[key] = prob
 }
 
-type llBucket struct {
-	lo, hi       float64
-	n            int
-	sumImplied   float64
-	sumOutcome   float64
+// LongshotResult is the calibration analysis, for the text report and the
+// backtest runs page. Probabilities are fractions.
+type LongshotResult struct {
+	Outcomes     int              `json:"outcomes"` // settled outcomes loaded (set by the caller)
+	Markets      int              `json:"markets"`  // settled markets with an opening price
+	MeanImplied  float64          `json:"mean_implied"`
+	RealizedRate float64          `json:"realized_rate"`
+	Buckets      []LongshotBucket `json:"buckets"` // non-empty buckets only, low to high
+	// Least-squares fit realized ~ Intercept + Slope·implied across markets.
+	// Slope>1 with Intercept<0 is the classic favorite–longshot signature.
+	FitOK     bool    `json:"fit_ok"`
+	Intercept float64 `json:"intercept"`
+	Slope     float64 `json:"slope"`
+	Verdict   string  `json:"verdict"` // "favorite-longshot", "reverse", "calibrated", or ""
+	Brier     float64 `json:"brier"`
+	BrierBase float64 `json:"brier_base"` // always-predict-the-base-rate baseline
 }
 
-// Report renders the calibration table and the fitted favorite–longshot line.
-func (l *Longshot) Report() string {
+// LongshotBucket is one implied-probability band.
+type LongshotBucket struct {
+	Lo          float64 `json:"lo"`
+	Hi          float64 `json:"hi"`
+	N           int     `json:"n"`
+	MeanImplied float64 `json:"mean_implied"`
+	Realized    float64 `json:"realized"`
+	Edge        float64 `json:"edge"` // realized − implied; + = the market underpriced YES
+	// StdErr is the binomial standard error of Realized. ±1.96·StdErr is a rough
+	// 95% range: an Edge inside it is indistinguishable from noise.
+	StdErr float64 `json:"stderr"`
+}
+
+// Result computes the calibration analysis.
+func (l *Longshot) Result() LongshotResult {
+	var res LongshotResult
 	// Collect (implied, outcome) pairs for markets we have both for.
 	type pt struct{ p, y float64 }
 	var pts []pt
 	for key, p := range l.open {
 		pts = append(pts, pt{p, float64(l.outcome[key])})
 	}
-	var b strings.Builder
-	fmt.Fprintf(&b, "FAVORITE–LONGSHOT / CALIBRATION  (opening line vs realized)\n")
-	fmt.Fprintf(&b, "  a market priced at implied p should resolve YES p of the time.\n\n")
+	res.Markets = len(pts)
 	if len(pts) < 2 {
-		fmt.Fprintf(&b, "  only %d settled markets with price history — not enough to analyze.\n", len(pts))
-		return b.String()
+		return res
 	}
 
 	// Bucketed calibration table.
-	bk := make([]llBucket, l.nb)
-	for i := range bk {
-		bk[i].lo = float64(i) / float64(l.nb)
-		bk[i].hi = float64(i+1) / float64(l.nb)
+	type acc struct {
+		n                      int
+		sumImplied, sumOutcome float64
 	}
+	bk := make([]acc, l.nb)
 	var sumP, sumY float64
 	for _, q := range pts {
 		i := int(q.p * float64(l.nb))
@@ -84,22 +107,20 @@ func (l *Longshot) Report() string {
 		sumY += q.y
 	}
 	n := float64(len(pts))
-	fmt.Fprintf(&b, "  settled markets analyzed: %d   mean implied: %.3f   realized YES rate: %.3f\n\n",
-		len(pts), sumP/n, sumY/n)
-	fmt.Fprintf(&b, "  %-13s %6s %11s %11s %10s\n", "implied", "n", "mean_impl", "realized", "edge")
-	for _, c := range bk {
+	res.MeanImplied, res.RealizedRate = sumP/n, sumY/n
+	for i, c := range bk {
 		if c.n == 0 {
 			continue
 		}
 		mi := c.sumImplied / float64(c.n)
 		rz := c.sumOutcome / float64(c.n)
-		fmt.Fprintf(&b, "  %4.2f–%-4.2f    %6d %11.3f %11.3f %+10.3f\n",
-			c.lo, c.hi, c.n, mi, rz, rz-mi)
+		res.Buckets = append(res.Buckets, LongshotBucket{
+			Lo: float64(i) / float64(l.nb), Hi: float64(i+1) / float64(l.nb),
+			N: c.n, MeanImplied: mi, Realized: rz, Edge: rz - mi,
+			StdErr: math.Sqrt(rz * (1 - rz) / float64(c.n)),
+		})
 	}
-	fmt.Fprintf(&b, "  (edge = realized − implied; + = the market UNDERpriced this bucket's YES)\n\n")
 
-	// Least-squares fit realized ~ a + b·implied across markets. b>1 & a<0 is the
-	// classic favorite–longshot signature; b≈1 & a≈0 is well-calibrated.
 	var sx, sy, sxx, sxy float64
 	for _, q := range pts {
 		sx += q.p
@@ -107,31 +128,62 @@ func (l *Longshot) Report() string {
 		sxx += q.p * q.p
 		sxy += q.p * q.y
 	}
-	den := n*sxx - sx*sx
-	fit := ""
-	if den != 0 {
-		slope := (n*sxy - sx*sy) / den
-		intercept := (sy - slope*sx) / n
-		fit = fmt.Sprintf("  fitted realized = %.3f + %.3f·implied", intercept, slope)
+	if den := n*sxx - sx*sx; den != 0 {
+		res.FitOK = true
+		res.Slope = (n*sxy - sx*sy) / den
+		res.Intercept = (sy - res.Slope*sx) / n
 		switch {
-		case slope > 1.1 && intercept < -0.02:
+		case res.Slope > 1.1 && res.Intercept < -0.02:
+			res.Verdict = "favorite-longshot"
+		case res.Slope < 0.9:
+			res.Verdict = "reverse"
+		default:
+			res.Verdict = "calibrated"
+		}
+	}
+
+	// Brier score vs the trivial always-base-rate baseline, as a sanity anchor.
+	for _, q := range pts {
+		res.Brier += (q.p - q.y) * (q.p - q.y)
+	}
+	res.Brier /= n
+	res.BrierBase = res.RealizedRate * (1 - res.RealizedRate)
+	return res
+}
+
+// Report renders the calibration table and the fitted favorite–longshot line.
+func (l *Longshot) Report() string {
+	res := l.Result()
+	var b strings.Builder
+	fmt.Fprintf(&b, "FAVORITE–LONGSHOT / CALIBRATION  (opening line vs realized)\n")
+	fmt.Fprintf(&b, "  a market priced at implied p should resolve YES p of the time.\n\n")
+	if res.Markets < 2 {
+		fmt.Fprintf(&b, "  only %d settled markets with price history — not enough to analyze.\n", res.Markets)
+		return b.String()
+	}
+	fmt.Fprintf(&b, "  settled markets analyzed: %d   mean implied: %.3f   realized YES rate: %.3f\n\n",
+		res.Markets, res.MeanImplied, res.RealizedRate)
+	fmt.Fprintf(&b, "  %-13s %6s %11s %11s %10s\n", "implied", "n", "mean_impl", "realized", "edge")
+	for _, c := range res.Buckets {
+		fmt.Fprintf(&b, "  %4.2f–%-4.2f    %6d %11.3f %11.3f %+10.3f\n",
+			c.Lo, c.Hi, c.N, c.MeanImplied, c.Realized, c.Edge)
+	}
+	fmt.Fprintf(&b, "  (edge = realized − implied; + = the market UNDERpriced this bucket's YES)\n\n")
+
+	fit := ""
+	if res.FitOK {
+		fit = fmt.Sprintf("  fitted realized = %.3f + %.3f·implied", res.Intercept, res.Slope)
+		switch res.Verdict {
+		case "favorite-longshot":
 			fit += "   → favorite–longshot bias (longshots overpriced, favorites underpriced)"
-		case slope < 0.9:
+		case "reverse":
 			fit += "   → reverse bias (favorites overpriced)"
 		default:
 			fit += "   → roughly calibrated (within noise)"
 		}
 	}
 	fmt.Fprintln(&b, fit)
-
-	// Brier score vs the trivial always-base-rate baseline, as a sanity anchor.
-	var brier float64
-	for _, q := range pts {
-		brier += (q.p - q.y) * (q.p - q.y)
-	}
-	brier /= n
-	base := (sumY / n) * (1 - sumY/n)
-	fmt.Fprintf(&b, "  Brier score: %.3f   (base-rate baseline %.3f; lower is a sharper forecast)\n", brier, base)
+	fmt.Fprintf(&b, "  Brier score: %.3f   (base-rate baseline %.3f; lower is a sharper forecast)\n", res.Brier, res.BrierBase)
 
 	fmt.Fprintf(&b, "\n  NOTE: n is small (a few days of recorded games). Read the SIGN, not the\n"+
 		"  magnitude — favorite–longshot bias needs hundreds of settled markets to pin down.\n")
