@@ -54,6 +54,29 @@ func (r *Report) addPair(canonical string, net, capital, entryTs int64) {
 	r.pairs = append(r.pairs, pairResult{canonical, net, capital, entryTs})
 }
 
+// Merge folds o's raw tallies into r. It is for combining reports built over
+// disjoint sets of markets (one per replay shard), so per-canonical entries
+// never collide. Derived stats are left alone: Finalize the merged report once.
+func (r *Report) Merge(o *Report) {
+	r.GrossCaptured += o.GrossCaptured
+	for v, f := range o.FeesByVenue {
+		r.FeesByVenue[v] += f
+	}
+	r.Slippage += o.Slippage
+	r.LeggingCost += o.LeggingCost
+	r.NetPnL += o.NetPnL
+	r.CapitalLocked += o.CapitalLocked
+	r.PairsAttempted += o.PairsAttempted
+	r.PairsCompleted += o.PairsCompleted
+	r.PairsLegged += o.PairsLegged
+	r.PairsFaded += o.PairsFaded
+	r.IntraCrossings += o.IntraCrossings
+	for c, n := range o.byCanonical {
+		r.byCanonical[c] += n
+	}
+	r.pairs = append(r.pairs, o.pairs...)
+}
+
 // Finalize computes the §10.4/§10.5 return and risk stats. resolution maps a
 // canonical id to its resolution date (from markets.yaml); idleYield is the
 // annual hurdle to beat — capital is locked until resolution, so an arb has to
@@ -63,6 +86,16 @@ func (r *Report) Finalize(resolution map[string]time.Time, idleYield float64) {
 	if len(r.pairs) == 0 {
 		return
 	}
+	// Walk pairs in entry order: max drawdown follows the cumulative P&L curve,
+	// and a fixed order keeps the float sums identical however the replay was
+	// sharded.
+	sort.SliceStable(r.pairs, func(i, j int) bool {
+		a, b := r.pairs[i], r.pairs[j]
+		if a.entryTs != b.entryTs {
+			return a.entryTs < b.entryTs
+		}
+		return a.canonical < b.canonical
+	})
 	var sumNet, sumCap, capDays float64
 	rets := make([]float64, 0, len(r.pairs))
 	wins := 0
