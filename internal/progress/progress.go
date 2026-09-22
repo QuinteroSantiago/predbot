@@ -17,7 +17,7 @@ import (
 )
 
 // Interval is how often a redirected (non-terminal) bar prints a status line.
-var Interval = 30 * time.Second
+var Interval = 15 * time.Second
 
 // Bar tracks done out of total. Units are whatever the caller counts
 // (snapshots, nanoseconds of replayed time); Detail turns them into text.

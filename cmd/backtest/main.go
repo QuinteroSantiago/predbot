@@ -40,7 +40,7 @@ func main() {
 	maker := flag.Bool("maker", false, "use the MAKER strategy: rest one leg (earns the Poly rebate) and take the other")
 	exportPath := flag.String("export", "", "write detected opportunities to this JSON file")
 	spreadPath := flag.String("export-spread", "", "write sampled cross-venue spread to this JSON file")
-	showProgress := flag.Bool("progress", true, "show progress on stderr: a live bar on a terminal, a status line every 30s when redirected")
+	showProgress := flag.Bool("progress", true, "show progress on stderr: a live bar on a terminal, a status line every 15s when redirected")
 	flag.Parse()
 
 	cfg, err := config.Load(*cfgPath)
