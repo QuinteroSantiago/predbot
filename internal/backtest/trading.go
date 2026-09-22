@@ -1,6 +1,10 @@
 package backtest
 
 import (
+	"os"
+	"sort"
+	"strconv"
+	"sync"
 	"time"
 
 	"predbot/internal/book"
@@ -174,20 +178,129 @@ func (sh *shard) finish() { sh.sim.Flush(sh.bm) }
 // RunTrading makes the trading pass over the recorded archive: every snapshot
 // goes through the Book Manager, the strategy and the SimExecutor in TsRecv
 // order. markets must include any sports markets reconstructed from the data.
+//
+// The sim, not decode, is what bounds a trading run, so it is sharded by
+// market: each canonical market is pinned to one shard, which sees that
+// market's snapshots in order and owns all of its state. Markets never touch
+// each other's state (no shared capital gate; a pair settles against its own
+// market's books), so the merged result matches a serial run.
 func RunTrading(dir string, window int, markets []config.Market, opts TradingOpts) (*TradingResult, error) {
-	sh := newShard(markets, opts)
+	return runTrading(dir, window, markets, opts, simShards())
+}
+
+func runTrading(dir string, window int, markets []config.Market, opts TradingOpts, n int) (*TradingResult, error) {
+	if n < 1 {
+		n = 1
+	}
+	if opts.Adverse != nil {
+		n = 1 // the trade cursor is global across markets
+	}
+	if n == 1 {
+		sh := newShard(markets, opts)
+		err := StreamReplay(dir, window, func(s core.BookSnapshot) error {
+			sh.tick(s)
+			return nil
+		})
+		sh.finish()
+		return mergeShards([]*shard{sh}), err
+	}
+
+	shards := make([]*shard, n)
+	queues := make([]chan []core.BookSnapshot, n)
+	var wg sync.WaitGroup
+	for i := range shards {
+		shards[i] = newShard(markets, opts)
+		queues[i] = make(chan []core.BookSnapshot, shardQueue)
+		wg.Add(1)
+		go func(sh *shard, q <-chan []core.BookSnapshot) {
+			defer wg.Done()
+			for batch := range q {
+				for _, s := range batch {
+					sh.tick(s)
+				}
+			}
+			sh.finish()
+		}(shards[i], queues[i])
+	}
+
+	// Route read-only: this manager only maps venue ids to canonicals. Markets
+	// are dealt to shards round-robin as they first appear; a day's games show
+	// up together, so they land on different shards and run side by side.
+	route := book.NewManager(markets)
+	owner := map[string]int{}
+	pending := make([][]core.BookSnapshot, n)
 	err := StreamReplay(dir, window, func(s core.BookSnapshot) error {
-		sh.tick(s)
+		c, ok := route.Canonical(s.Venue, s.VenueID)
+		if !ok {
+			return nil // not in markets.yaml (§12); a shard would drop it too
+		}
+		i, seen := owner[c]
+		if !seen {
+			i = len(owner) % n
+			owner[c] = i
+		}
+		pending[i] = append(pending[i], s)
+		if len(pending[i]) == routeBatch {
+			queues[i] <- pending[i]
+			pending[i] = make([]core.BookSnapshot, 0, routeBatch)
+		}
 		return nil
 	})
-	sh.finish()
-	return &TradingResult{
-		Report:      sh.rep,
-		Opps:        sh.opps,
-		Spread:      sh.spread,
-		RestsPlaced: sh.restsPlaced,
-		RestsFilled: sh.restsFilled,
-	}, err
+	for i, q := range queues {
+		if len(pending[i]) > 0 {
+			q <- pending[i]
+		}
+		close(q)
+	}
+	wg.Wait()
+	return mergeShards(shards), err
+}
+
+const (
+	// routeBatch is how many snapshots cross to a shard at once; per-snapshot
+	// channel sends would cost more than the routing itself.
+	routeBatch = 1024
+	// shardQueue is how many batches a shard may lag the router before the
+	// router blocks. Deep enough to ride out a burst on one market without
+	// stalling the others; bounded so memory stays O(shards), not O(archive).
+	shardQueue = 64
+)
+
+// simShards is the trading replay's shard count: PREDBOT_SIM_SHARDS, else 1.
+func simShards() int {
+	n := 1
+	if v, err := strconv.Atoi(os.Getenv("PREDBOT_SIM_SHARDS")); err == nil && v > 0 {
+		n = v
+	}
+	return n
+}
+
+// mergeShards combines the shards' results. Opportunities and spread samples
+// are ordered by time then market so exports don't depend on the shard count.
+func mergeShards(shards []*shard) *TradingResult {
+	res := &TradingResult{Report: NewReport()}
+	for _, sh := range shards {
+		res.Report.Merge(sh.rep)
+		res.Opps = append(res.Opps, sh.opps...)
+		res.Spread = append(res.Spread, sh.spread...)
+		res.RestsPlaced += sh.restsPlaced
+		res.RestsFilled += sh.restsFilled
+	}
+	sort.SliceStable(res.Opps, func(i, j int) bool {
+		a, b := res.Opps[i], res.Opps[j]
+		if a.TsMs != b.TsMs {
+			return a.TsMs < b.TsMs
+		}
+		return a.Canonical < b.Canonical
+	})
+	sort.SliceStable(res.Spread, func(i, j int) bool {
+		a, b := res.Spread[i], res.Spread[j]
+		if a.TsMs != b.TsMs {
+			return a.TsMs < b.TsMs
+		}
+		return a.Canonical < b.Canonical
+	})
+	return res
 }
 
 func staleAny(books map[string]core.BookSnapshot, now, maxAge int64) bool {
