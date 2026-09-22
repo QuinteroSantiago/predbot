@@ -196,9 +196,10 @@ func walk(levels []core.Level, want core.Qty, ok func(core.Price) bool) (core.Pr
 //   - the taking leg still crosses the book and pays the taker fee.
 //
 // restedQty is what actually filled on the rest; the taking leg is sized to it.
+// now is the fill time, which dates the pair for the hold-to-resolution stats.
 // If the taking leg cannot fill, the pair is legged and the rested position is
 // left unhedged — counted, not hidden.
-func (s *Sim) SettleMakerPair(canonical string, rested, taking core.Intent, restedQty core.Qty, bm *book.Manager) {
+func (s *Sim) SettleMakerPair(canonical string, rested, taking core.Intent, restedQty core.Qty, now int64, bm *book.Manager) {
 	books, ok := bm.Pair(canonical)
 	if !ok || restedQty == 0 {
 		s.rep.PairsFaded++
@@ -218,7 +219,7 @@ func (s *Sim) SettleMakerPair(canonical string, rested, taking core.Intent, rest
 	if takeQty == 0 {
 		// Rest filled but the hedge is gone: an unhedged maker position.
 		s.rep.PairsLegged++
-		s.rep.addPair(canonical, 0, 0, 0)
+		s.rep.addPair(canonical, 0, 0, now)
 		return
 	}
 	hedged := restedQty
@@ -249,7 +250,7 @@ func (s *Sim) SettleMakerPair(canonical string, rested, taking core.Intent, rest
 	s.rep.CapitalLocked += capital
 	s.rep.GrossCaptured += gross
 	s.rep.NetPnL += net
-	s.rep.addPair(canonical, net, capital, 0)
+	s.rep.addPair(canonical, net, capital, now)
 	if takeQty >= restedQty {
 		s.rep.PairsCompleted++
 	} else {

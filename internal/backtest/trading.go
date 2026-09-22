@@ -125,7 +125,7 @@ func (sh *shard) tick(s core.BookSnapshot) {
 			sh.restsFilled++
 			// The rest actually filled — now book the pair's real economics:
 			// maker fee (a rebate on Poly) on the rest, taker on the hedge.
-			sh.sim.SettleMakerPair(canonical, r.Intent, sh.restTaking[canonical], r.Filled, sh.bm)
+			sh.sim.SettleMakerPair(canonical, r.Intent, sh.restTaking[canonical], r.Filled, now, sh.bm)
 			delete(sh.resting, canonical)
 			delete(sh.restTaking, canonical)
 		}
