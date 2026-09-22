@@ -275,8 +275,16 @@ func (t *Trader) ExecutePair(ctx context.Context, canonical string, legs []core.
 	//    the lead before walking away.
 	if leadFilled == 0 {
 		t.engine.OnReject(canonical, hedge)
-		if verr := t.verifyNoSilentFill(ctx, canonical, lead); verr != nil {
+		delta, verr := t.verifyNoSilentFill(ctx, canonical, lead)
+		if verr != nil {
 			return verr
+		}
+		if delta != 0 {
+			// A silent fill on the taker lead: the auto-recovery path is the maker
+			// one (it has both legs' provenance). The taker path keeps the strict
+			// stop — it is not the armed live mode — so a human reconciles.
+			t.engine.Kill("silent fill: venue position without a fill event")
+			return fmt.Errorf("live: silent fill on %s %s — KILLED", lead.Venue, lead.VenueID)
 		}
 		t.logPairOutcome(canonical, lead, hedge, 0, 0)
 		t.log.Info("lead leg took nothing; pair abandoned before hedging",
@@ -321,10 +329,17 @@ func (t *Trader) ExecutePair(ctx context.Context, canonical string, legs []core.
 	// (Polymarket's was, dialed on the wrong endpoint) or the event can land
 	// after fillWait closed. Re-placing on that assumption is what sold 10
 	// against 5 on 2026-08-25.
-	if verr := t.verifyNoSilentFill(ctx, canonical, hedge); verr != nil {
+	delta, verr := t.verifyNoSilentFill(ctx, canonical, hedge)
+	if verr != nil {
 		t.log.Error("naked lead is OUTSTANDING and unresolved — human reconciliation required",
 			"canonical", canonical, "venue", lead.Venue, "qty", naked.String())
 		return verr
+	}
+	if delta != 0 {
+		t.engine.Kill("silent fill: venue position without a fill event")
+		t.log.Error("naked lead is OUTSTANDING and unresolved — human reconciliation required",
+			"canonical", canonical, "venue", lead.Venue, "qty", naked.String())
+		return fmt.Errorf("live: silent hedge fill on %s %s — KILLED", hedge.Venue, hedge.VenueID)
 	}
 
 	t.log.Warn("pair is legged — entering hedge grace window",
@@ -398,15 +413,22 @@ func (t *Trader) logPairOutcome(canonical string, first, second core.Intent, f1,
 		"naked_venue", nakedVenue, "naked_qty", nakedQty.String())
 }
 
-// verifyNoSilentFill confirms the venue holds no position for a leg that
+// verifyNoSilentFill checks whether the venue holds a position for a leg that
 // reported no fill. A fill stream can fail silently — Polymarket's did, because
 // it was dialed on the market-data endpoint — so an unfilled leg means
 // "unknown", not "flat", until the venue itself says otherwise.
-func (t *Trader) verifyNoSilentFill(ctx context.Context, canonical string, leg core.Intent) error {
+//
+// It returns the SIGNED position delta (venue contracts minus what the ledger
+// believes, positive == more long YES than expected), 0 when the venue agrees
+// within tolerance. A nonzero delta is a silent fill: the CALLER decides whether
+// to recover it (hedge-or-flatten, where it has the pair's provenance) or Kill.
+// The only case this kills itself is a BROKEN verifier — a check that cannot run
+// leaves the position genuinely unknown, which is a stop-everything emergency.
+func (t *Trader) verifyNoSilentFill(ctx context.Context, canonical string, leg core.Intent) (float64, error) {
 	if t.verify == nil {
 		t.log.Error("leg reported no fill and NO VERIFIER is installed — cannot rule out a silent fill",
 			"canonical", canonical, "venue", leg.Venue, "market", leg.VenueID)
-		return nil
+		return 0, nil
 	}
 	qty, verr := t.verify(ctx, leg.Venue, leg.VenueID)
 	if verr != nil {
@@ -414,7 +436,7 @@ func (t *Trader) verifyNoSilentFill(ctx context.Context, canonical string, leg c
 		t.log.Error("KILL: cannot verify position after a no-fill — the silent-fill check is blind",
 			"canonical", canonical, "venue", leg.Venue, "market", leg.VenueID, "err", verr)
 		t.engine.Kill("position verification failed after an unfilled leg")
-		return fmt.Errorf("live: leg verification failed on %s %s: %w — KILLED", leg.Venue, leg.VenueID, verr)
+		return 0, fmt.Errorf("live: leg verification failed on %s %s: %w — KILLED", leg.Venue, leg.VenueID, verr)
 	}
 	// Compare against what the bot BELIEVES it holds, not against zero: a
 	// completed pair legitimately leaves a position on each venue.
@@ -422,14 +444,12 @@ func (t *Trader) verifyNoSilentFill(ctx context.Context, canonical string, leg c
 	expected := t.posByVenueID[leg.VenueID]
 	t.mu.Unlock()
 	if diff := qty - expected; diff > silentFillTolerance || diff < -silentFillTolerance {
-		t.log.Error("SILENT FILL DETECTED — venue holds a position we saw no fill for",
+		t.log.Warn("SILENT FILL DETECTED — venue holds a position we saw no fill for",
 			"canonical", canonical, "venue", leg.Venue, "market", leg.VenueID,
 			"venue_qty", qty, "bot_qty", expected, "unexplained", diff)
-		t.engine.Kill("silent fill: venue position without a fill event")
-		return fmt.Errorf("live: silent fill on %s %s (venue %v, bot %v) — KILLED",
-			leg.Venue, leg.VenueID, qty, expected)
+		return diff, nil
 	}
-	return nil
+	return 0, nil
 }
 
 // splitLeadHedge returns (lead, hedge): the lead is the leg on leadVenue — fired

@@ -71,6 +71,69 @@ func TestMakerRestTimesOutCancelsClean(t *testing.T) {
 	}
 }
 
+// A rest that fills while the fill stream is DOWN (no event) is discovered by
+// the venue check and RECOVERED — the Kalshi hedge is placed and the pair
+// completes — instead of killing. This is the hedge-or-flatten path.
+func TestMakerSilentFillRecoversByHedging(t *testing.T) {
+	tr, k, p, eng := setup(t)
+	tr.restWait = 100 * time.Millisecond
+	// Poly accepts the rest but the stream reports NO fill (it was disconnected).
+	p.placeFn = func(core.Order) (string, error) { return "poid", nil }
+	// Asked directly, the venue reveals the rest actually filled: short 5 on Poly
+	// (the rested leg is a SELL), which matches the resting order's direction.
+	tr.SetVerifier(func(_ context.Context, venue, _ string) (float64, error) {
+		if venue == "polymarketus" {
+			return -5, nil
+		}
+		return 0, nil
+	})
+
+	if err := tr.ExecuteMakerPair(context.Background(), "MKT", makerPair()); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	tr.pending.Wait()
+
+	if eng.Killed() {
+		t.Fatal("a silent fill with known provenance must recover, not kill")
+	}
+	if len(k.orders()) != 1 {
+		t.Fatalf("want the Kalshi hedge placed to recover, got %d kalshi orders", len(k.orders()))
+	}
+	if s := tr.Stats(); s.PairsCompleted != 1 {
+		t.Errorf("completed=%d; want 1 (recovered pair hedged whole)", s.PairsCompleted)
+	}
+	if tr.HasUnhedged() {
+		t.Error("unhedged tally should clear once the recovered fill is hedged")
+	}
+}
+
+// A venue position that points the WRONG way relative to the resting order is
+// not "our missed fill" — it is unexplained drift, and must still hard-stop.
+func TestMakerSilentFillWrongDirectionKills(t *testing.T) {
+	tr, k, p, eng := setup(t)
+	tr.restWait = 100 * time.Millisecond
+	p.placeFn = func(core.Order) (string, error) { return "poid", nil }
+	// We rested a SELL, but the venue shows a LONG — this is not our fill.
+	tr.SetVerifier(func(_ context.Context, venue, _ string) (float64, error) {
+		if venue == "polymarketus" {
+			return +5, nil
+		}
+		return 0, nil
+	})
+
+	if err := tr.ExecuteMakerPair(context.Background(), "MKT", makerPair()); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	tr.pending.Wait()
+
+	if !eng.Killed() {
+		t.Fatal("unexplained-direction drift must kill")
+	}
+	if len(k.orders()) != 0 {
+		t.Fatalf("no hedge should be placed on unexplained drift, got %d kalshi orders", len(k.orders()))
+	}
+}
+
 // A killed engine places nothing.
 func TestMakerKilledPlacesNothing(t *testing.T) {
 	tr, k, p, eng := setup(t)

@@ -27,6 +27,7 @@ package live
 import (
 	"context"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/google/uuid"
@@ -179,7 +180,16 @@ func (t *Trader) restLifecycle(ctx context.Context, canonical string, rest, take
 	if filled == 0 {
 		// The rest never filled — no position, the clean and common outcome.
 		// "No fill EVENT" is still not proof of no position, so verify the venue.
-		if verr := t.verifyNoSilentFill(ctx, canonical, rest); verr != nil {
+		delta, verr := t.verifyNoSilentFill(ctx, canonical, rest)
+		if verr != nil {
+			return // verifier itself is broken — already killed inside.
+		}
+		if delta != 0 {
+			// The rest DID fill; we just never saw the event (the stream was
+			// down — see fills_poly's "down_for"). We have full provenance here
+			// (this rest, this pair), so recover instead of killing: hedge the
+			// Kalshi leg if it is still profitable, otherwise flatten.
+			t.recoverSilentFill(ctx, canonical, rest, take, delta)
 			return
 		}
 		t.log.Info("maker rest cancelled unfilled; pair abandoned cleanly",
@@ -230,4 +240,72 @@ func drain(ch <-chan Fill, want core.Qty, d time.Duration) core.Qty {
 			return total
 		}
 	}
+}
+
+// recoverSilentFill handles a resting leg the venue says filled while we saw no
+// fill event (delta = signed contracts the venue holds beyond our ledger). It
+// books the fill into both ledgers, then routes it through the SAME
+// completeOrExit path a seen fill uses — which hedges the taking leg if it is
+// still profitable at the current touch, and flattens (IOC-dumps) if it is not.
+// That is the "hedge-or-flatten" recovery: it replaces the blunt Kill() with an
+// attempt to make the pair whole, because here we know exactly which pair, side,
+// and size filled.
+func (t *Trader) recoverSilentFill(ctx context.Context, canonical string, rest, take core.Intent, delta float64) {
+	// The venue's extra position must point the SAME way as the resting order.
+	// A rested BUY that shows up as a short (or vice versa) is not "our fill we
+	// missed" — it is unexplained drift, and unexplained drift is a hard stop.
+	wantLong := rest.Side == core.BuyYes
+	if (delta > 0) != wantLong {
+		t.engine.Kill("silent fill contradicts the resting order side")
+		t.log.Error("silent fill direction unexplained — KILLED",
+			"canonical", canonical, "venue", rest.Venue, "rest_side", rest.Side.String(), "delta", delta)
+		return
+	}
+	recovered := core.Qty(math.Round(math.Abs(delta) * 100))
+	if recovered <= 0 {
+		return
+	}
+	if recovered > rest.Qty {
+		recovered = rest.Qty // never claim more filled than we ever rested
+	}
+
+	// Book the position into both ledgers as a seen fill would have. No risk
+	// reservation survives (restLifecycle already released it), so seed the
+	// engine's position directly rather than moving in-flight to filled.
+	signed := recovered
+	if rest.Side == core.SellYes {
+		signed = -recovered
+	}
+	t.engine.AdoptPosition(canonical, t.engine.Position(canonical)+signed)
+	t.bookSilentFill(rest, recovered)
+
+	t.engine.SetUnhedged(canonical, recovered)
+	t.bump(func(s *Stats) { s.PairsLegged++; s.UnhedgedQty += recovered })
+	if t.onOrder != nil {
+		t.onOrder(rest.Venue, "filled")
+	}
+	t.log.Warn("SILENT FILL RECOVERED — hedging the taking leg (or flattening if unprofitable)",
+		"canonical", canonical, "naked_venue", rest.Venue, "naked_qty", recovered.String(),
+		"hedge_venue", take.Venue, "grace", t.hedgeGrace.String())
+	t.completeOrExit(ctx, canonical, rest, take, recovered)
+}
+
+// bookSilentFill applies a recovered fill to the trader's own ledger — the
+// per-venue position and realized cash — mirroring OnFill's accounting for a
+// fill that arrived on the stream. The price is the resting order's price (a
+// maker order fills AT its posted price); the fee is left at zero because the
+// venue position read carries no fee, and under-crediting a rebate is the safe
+// direction for the P&L floor.
+func (t *Trader) bookSilentFill(leg core.Intent, qty core.Qty) {
+	cash := float64(leg.Px) / 1e4 * (float64(qty) / 100)
+	contracts := float64(qty) / 100
+	t.mu.Lock()
+	if leg.Side == core.BuyYes {
+		t.stats.RealizedUSD -= cash
+		t.posByVenueID[leg.VenueID] += contracts
+	} else {
+		t.stats.RealizedUSD += cash
+		t.posByVenueID[leg.VenueID] -= contracts
+	}
+	t.mu.Unlock()
 }
