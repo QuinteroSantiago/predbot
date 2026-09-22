@@ -17,24 +17,53 @@ SCHEMA = 1
 ID_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
 
-def summary(d):
-    run, rep, maker = d["run"], d["report"], d.get("maker")
-    placed = maker["rests_placed"] if maker else None
+def base(run):
     return {
         "id": run["id"],
+        "kind": run.get("kind", "trading"),
         "label": run.get("label", ""),
         "mode": run["mode"],
-        "adverse": run.get("adverse", False),
         "window_hours": run.get("window_hours", 0),
         "data_from": run["data_from"],
         "data_to": run["data_to"],
         "span_s": run.get("span_s"),
-        "imported": bool(run.get("imported_from")),
         "snapshots": run["snapshots"],
         "markets": run["markets"],
         "finished_at": run["finished_at"],
         "duration_s": run["duration_s"],
         "revision": run.get("revision", ""),
+    }
+
+
+def leadlag_summary(d):
+    r = d["leadlag"]
+    return {**base(d["run"]), **{k: r[k] for k in (
+        "analyzed", "kalshi_leads", "poly_leads", "contemporaneous", "no_signal",
+        "median_lead_s", "median_peak_corr")}}
+
+
+def longshot_summary(d):
+    r = d["longshot"]
+    # Buckets whose edge is outside a rough 95% range, with enough markets to say.
+    clear = [b for b in r["buckets"] if b["n"] >= 30 and abs(b["edge"]) > 1.96 * b["stderr"]]
+    return {**base(d["run"]), **{k: r[k] for k in (
+        "outcomes", "markets", "verdict", "slope", "intercept", "brier", "brier_base")},
+        "clear_buckets": len(clear),
+        "solid_buckets": sum(1 for b in r["buckets"] if b["n"] >= 30)}
+
+
+def summary(d):
+    kind = d["run"].get("kind", "trading")
+    if kind == "leadlag":
+        return leadlag_summary(d)
+    if kind == "longshot":
+        return longshot_summary(d)
+    run, rep, maker = d["run"], d["report"], d.get("maker")
+    placed = maker["rests_placed"] if maker else None
+    return {
+        **base(run),
+        "adverse": run.get("adverse", False),
+        "imported": bool(run.get("imported_from")),
         "net_pnl_usd": rep["net_pnl_usd"],
         "annualized": rep["annualized"],
         "excess_annualized": rep["excess_annualized"],
