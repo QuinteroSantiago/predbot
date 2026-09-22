@@ -147,6 +147,7 @@ type polyPrivateEnvelope struct {
 // executions during the gap were missed.
 func (p *PolyUSFills) Run(ctx context.Context, h FillHandler) {
 	backoff := 500 * time.Millisecond
+	var downSince time.Time // zero until the first disconnect; the blind window
 	for ctx.Err() == nil {
 		conn, err := p.dial(ctx)
 		if err != nil {
@@ -203,7 +204,14 @@ func (p *PolyUSFills) Run(ctx context.Context, h FillHandler) {
 			return len(slugs)
 		}
 		n := subscribe()
-		p.log.Info("private order stream connected", "subscribed_markets", n)
+		if downSince.IsZero() {
+			p.log.Info("private order stream connected", "subscribed_markets", n)
+		} else {
+			// The gap between disconnect and here is a window in which a resting
+			// leg could have filled with no execution delivered — RECONCILE now.
+			p.log.Info("private order stream reconnected — reconcile positions; fills in the gap were invisible",
+				"subscribed_markets", n, "down_for", time.Since(downSince).Round(time.Millisecond).String())
+		}
 
 		// Re-subscribe periodically so newly discovered markets are covered.
 		reSub, stopReSub := context.WithCancel(ctx)
@@ -243,6 +251,15 @@ func (p *PolyUSFills) Run(ctx context.Context, h FillHandler) {
 			if e.Order.Intent == "ORDER_INTENT_SELL_LONG" || e.Order.Intent == "ORDER_INTENT_BUY_SHORT" {
 				side = core.SellYes
 			}
+			// Log every execution we actually see. If a drift/reconcile kill later
+			// finds a Poly position with NO matching line here, the fill arrived
+			// while the stream was down (see the reconnect "down_for" below) — the
+			// naked-leg signature. A line here but no hedge points at the hedge
+			// path instead.
+			p.log.Info("private order execution",
+				"market", e.Order.MarketSlug, "order_id", e.Order.ID,
+				"side", side.String(), "qty", qty.String(), "px", px.String(),
+				"exec_type", e.Type)
 			h(Fill{
 				Venue: "polymarketus", VenueID: e.Order.MarketSlug,
 				// No client_order_id on this venue — correlate by exchange order id.
@@ -253,6 +270,7 @@ func (p *PolyUSFills) Run(ctx context.Context, h FillHandler) {
 		}
 		_ = conn.Close()
 		p.clearCovered() // subscriptions die with the connection
+		downSince = time.Now()
 		p.log.Warn("private order stream disconnected — reconcile positions (fills may have been missed)")
 	}
 }
