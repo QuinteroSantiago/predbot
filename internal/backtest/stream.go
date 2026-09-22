@@ -35,13 +35,15 @@ import (
 //
 // hours <= 0 walks the entire archive — which is now safe.
 //
-// Decoding runs in parallel. Gunzip + JSON parse is essentially all of the
-// replay's CPU time (a 14 GB window is ~85 min per pass single-threaded), and
-// each hour is self-contained: readers hold per-file Kalshi delta state, so no
-// hour depends on another. So hours are decoded on GOMAXPROCS goroutines while
-// the consumer hands snapshots to fn from ONE goroutine, in the original order.
-// fn therefore needs no locking and sees byte-identical output to the serial
-// walk. Override the worker count with PREDBOT_REPLAY_WORKERS (1 = serial).
+// Decoding runs in parallel. Gunzip + JSON parse is most of the replay's CPU
+// time (a 14 GB window is ~85 min per pass single-threaded). Within a file,
+// JSON lines are parsed on a worker pool and reassembled in order (see
+// startParse; PREDBOT_PARSE_WORKERS=1 = serial). Across files, each hour is
+// self-contained: readers hold per-file Kalshi delta state, so hours are also
+// decoded a little ahead on up to PREDBOT_REPLAY_WORKERS goroutines. Either
+// way the consumer hands snapshots to fn from ONE goroutine, in the original
+// order, so fn needs no locking and sees byte-identical output to the serial
+// walk.
 func StreamReplay(dir string, hours int, fn func(core.BookSnapshot) error) error {
 	byHour, err := hourlyFiles(dir, hours)
 	if err != nil {

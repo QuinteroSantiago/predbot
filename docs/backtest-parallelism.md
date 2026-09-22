@@ -1,6 +1,7 @@
-# Backtest parallelism: shard the sim by market
+# Backtest parallelism: parallel decode + shard the sim by market
 
-**Status:** proposed
+**Status:** implemented on branch `backtest-shard-sim`; validation on real data
+on the arch box still to do (see "Results")
 **Date:** 2026-09-22
 **Scope:** `cmd/backtest`, `internal/backtest`
 **Related:** design §10.1 (replay), §10.2 (latency Δ), §10.4 (capital/return)
@@ -11,14 +12,20 @@ A full `-maker` backtest pins **one core** and leaves the rest idle. Measured on
 the arch compute box (24c/30GB): `backtest` at ~108% CPU, load average ~1.0,
 95% of the machine idle, while a full-archive pass runs for tens of minutes.
 
-The replay already decodes in parallel (`internal/backtest/stream.go`: gunzip +
-JSON on up to `maxWorkers`=16 goroutines). But `stream.go`'s premise — "gunzip +
-JSON parse is essentially all of the replay's CPU time" — holds only for the
-read-only passes (`-leadlag`, `-longshot`). For `-maker` / cross-venue, the
-**strategy + sim evaluation dominates**, and it runs on a single consumer
-goroutine that hands snapshots to `fn` in time order. That consumer is the
-bottleneck; the 16-way decode sits starved behind it. Adding decode workers does
-nothing.
+The original version of this doc blamed the single sim consumer alone. That
+was half right. Profiling during implementation showed **two** serial stages:
+
+1. **Decode was effectively serial.** `streamHours` starts up to 16 hour
+   decoders, but each look-ahead hour may run only `batchesAhead` (2) batches,
+   i.e. 2,048 snapshots, ahead of the consumer before it blocks. An hour holds
+   hundreds of thousands of snapshots, so in practice one hour decoded at a
+   time. JSON decoding alone was ~60% of CPU on a synthetic `-maker` run, and
+   gunzip + line scanning another ~14%.
+2. **The sim consumer is serial by design.** On the same run it was ~15% of
+   CPU. Once decode is parallel it becomes the ceiling on a many-core box.
+
+Both are fixed below. Sharding the sim alone gave no speedup at all, because
+decode was the bigger serial stage.
 
 ## Key insight: markets are independent
 
@@ -328,3 +335,64 @@ Check `htop` to confirm more than one core is busy.
 
 `PREDBOT_SIM_SHARDS=1` restores the serial path at runtime without a rebuild.
 Steps 1–2 are pure refactors and can stay even if step 3+ is reverted.
+
+## Results (2026-09-22)
+
+What shipped on `backtest-shard-sim`, in commit order:
+
+| Commit | Change |
+|---|---|
+| `2495290` | Step 1: trading replay moved to `internal/backtest` (`RunTrading`, `shard`) |
+| `2b610fb` | Bug fix found along the way: maker pairs were dated at the epoch (`entryTs` 0), so `-maker` reported ~20,800-day holds and a meaningless annualized return. Now dated at fill time, like taker pairs |
+| `7036be9` | Step 2: `Report.Merge`, `Finalize` walks pairs in `(entryTs, canonical)` order |
+| `ee82769` | Step 3: sharded sim, markets dealt round-robin on first appearance |
+| `d0fb4a8` | Step 4: acceptance test (2/5/16 shards == 1 shard, taker and maker) |
+| `86e1ee0` | **Not in the original plan:** parallel JSON parse within each file (the real bottleneck, see Problem) |
+| `4ec5509` | Step 5: shards default to `GOMAXPROCS` |
+
+Two departures from the plan:
+
+- **Routing is round-robin on first appearance, not a hash.** The router feeds
+  shards in time order, so throughput is capped by how well the markets live at
+  the same moment are spread. A day's games appear together, so round-robin
+  puts them on different shards; a hash can pile several onto one.
+- **`-adverse` is a hook in the shard, not a duplicate loop in `main.go`.** It
+  runs pinned to one shard because its trade cursor is global.
+
+**Verified on the Pi:**
+
+- Old vs new binary on a synthetic archive (8 markets, 292k snapshots, 5,860
+  trade prints): identical output for the default run, `-maker`,
+  `-maker -adverse`, the `-export`/`-export-spread` files, and `-hours 1`.
+  (After the maker-date fix, only its two annualized/hold lines change.)
+- 1 vs 2/3/8/16 shards: byte-identical, including export files.
+- `go test -race ./internal/backtest/` passes, including the existing
+  early-stop and torn-file stream tests against the new parse pipeline. The
+  acceptance test fails as expected when a market's two venues are routed to
+  different shards.
+
+**Speed on the Pi (4 cores), 720k-snapshot `-maker` run, 30 markets:**
+
+| Config | Wall | CPU | RSS |
+|---|---|---|---|
+| serial (`PREDBOT_PARSE_WORKERS=1 PREDBOT_SIM_SHARDS=1`) | 12.7s | 121% | 41 MB |
+| parallel parse, 1 shard | 5.1s | 344% | 55 MB |
+| parallel parse, 4 shards (default) | 5.4s | 360% | 58 MB |
+
+On 4 cores, parsing alone saturates the box, so sharding adds nothing there.
+On the 24-core box the sim becomes the next serial stage, which is what
+sharding addresses.
+
+**Still to do, on the arch box with real data:**
+
+1. Golden diff: `PREDBOT_PARSE_WORKERS=1 PREDBOT_SIM_SHARDS=1 ./backtest ... -maker -days 3`
+   vs the default. Must be identical.
+2. Time the full archive with the defaults and record wall time, CPU% and RSS
+   here.
+3. If CPU still sits well under 2400%, check `htop` for a single pinned thread:
+   that is the consumer (heap merge + router). The next steps would be a
+   cheaper merge or raising `maxWorkers`, but only if the numbers call for it.
+
+**Knobs:** `PREDBOT_PARSE_WORKERS` (parse workers per file),
+`PREDBOT_SIM_SHARDS` (sim shards), `PREDBOT_REPLAY_WORKERS` (hour look-ahead).
+Setting all three to 1 restores the original serial behaviour.
