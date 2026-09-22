@@ -159,6 +159,8 @@ const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","
 const day = d => MON[d.getMonth()] + " " + d.getDate();
 const hm = d => String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
 const when = t => { const d = new Date(t); return day(d) + " " + hm(d); };
+const dataSpan = r => r.data_from && r.data_to ? span(r.data_from, r.data_to)
+  : r.span_s ? "≈" + (r.span_s >= 172800 ? Math.round(r.span_s / 86400) + " days" : Math.round(r.span_s / 3600) + " hours") + " of data" : "—";
 const span = (a, b) => { const x = new Date(a), y = new Date(b);
   return x.toDateString() === y.toDateString() ? day(x) + " " + hm(x) + "–" + hm(y) : day(x) + " – " + day(y) + " " + y.getFullYear(); };
 const windowText = r => r.window_hours ? (r.window_hours % 24 === 0 ? r.window_hours / 24 + "d" : r.window_hours + "h") : "all data";
@@ -286,9 +288,9 @@ function headToHead(runs) {
     ["Max drawdown", r => r.max_drawdown_usd, v => v ? usd(-v) : "$0.00", -1],
     ["Pairs completed / attempted", r => r.pairs_attempted ? r.pairs_completed / r.pairs_attempted : null, (v, r) => r.pairs_completed + " / " + r.pairs_attempted, 1],
     ["Maker rests filled", r => r.fill_rate, (v, r) => v == null ? "—" : pct(v) + " of " + r.rests_placed, 0],
-    ["Data", r => null, (v, r) => span(r.data_from, r.data_to), 0],
+    ["Data", r => null, (v, r) => dataSpan(r), 0],
     ["Snapshots", r => r.snapshots, v => count(v), 0],
-    ["Finished", r => null, (v, r) => when(r.finished_at) + " · " + dur(r.duration_s), 0],
+    ["Finished", r => null, (v, r) => when(r.finished_at) + (r.duration_s ? " · " + dur(r.duration_s) : ""), 0],
   ];
   const thead = el("tr", {}, el("th", {}, ""), pair.map(r => el("th", {}, el("a", {href: "#run=" + r.id, style: "text-decoration:none"}, modeBadge(r.mode, r.adverse)))));
   const tbody = rows.map(([name, get, fmt, dir]) => {
@@ -304,9 +306,9 @@ function headToHead(runs) {
 function runsTable(runs) {
   const cols = [
     ["Finished", r => when(r.finished_at)],
-    ["Label", r => r.label || "—"],
+    ["Label", r => [r.label || "—", r.imported ? el("span", {class: "note", style: "margin:0 0 0 6px"}, "imported") : null]],
     ["Mode", r => modeBadge(r.mode, r.adverse)],
-    ["Data", r => span(r.data_from, r.data_to)],
+    ["Data", r => dataSpan(r)],
     ["Net P&L", r => usd(r.net_pnl_usd, true), 1],
     ["Annualized", r => r.settled_pairs ? pct(r.annualized, true) : "—", 1],
     ["Win rate", r => r.settled_pairs ? pct(r.win_rate) : "—", 1],
@@ -385,16 +387,18 @@ async function showRun(id) {
     el("h1", {}, run.label || run.id),
     el("div", {class: "meta"},
       modeBadge(run.mode, run.adverse),
-      el("span", {}, el("b", {}, span(run.data_from, run.data_to)), " · ", windowText(run)),
+      el("span", {}, el("b", {}, dataSpan(run)), run.imported_from ? null : " · " + windowText(run)),
       el("span", {}, el("b", {}, count(run.snapshots)), " snapshots · ", el("b", {}, run.markets), " markets"),
-      el("span", {}, "ran ", el("b", {}, dur(run.duration_s)), " on ", run.host || "?", " · ", run.shards + " shards"),
+      run.duration_s ? el("span", {}, "ran ", el("b", {}, dur(run.duration_s)), " on ", run.host || "?", run.shards ? " · " + run.shards + " shards" : "") : null,
+      run.imported_from ? el("span", {}, "finished ", el("b", {}, when(run.finished_at))) : null,
       run.revision ? el("span", {class: "mono"}, "build " + run.revision.slice(0, 7), run.dirty ? el("span", {class: "dirty"}, " (uncommitted changes)") : null) : null),
   ];
 
   const settled = rep.settled_pairs > 0;
   const kpis = el("div", {class: "stats kpis"},
     stat("Net P&L", usd(rep.net_pnl_usd, true), rep.capital_locked_usd ? usd(rep.capital_locked_usd) + " capital locked" : null, true),
-    stat("Annualized return", settled ? pct(rep.annualized, true) : "—", settled ? "avg hold " + Math.round(rep.avg_hold_days) + " days" : "no settled pairs"),
+    stat("Annualized return", settled ? pct(rep.annualized, true) : "—",
+      !settled ? "no settled pairs" : rep.avg_hold_days == null ? "not valid in this run (pre-fix maker dating)" : "avg hold " + Math.round(rep.avg_hold_days) + " days"),
     stat("vs idle-balance hurdle", settled ? pct(rep.excess_annualized, true) : "—", "hurdle " + pct(rep.idle_yield)),
     stat("Win rate", settled ? pct(rep.win_rate) : "—", "of " + rep.settled_pairs + " settled pairs"),
     stat("Max drawdown", rep.max_drawdown_usd ? usd(-rep.max_drawdown_usd) : "$0.00", "cumulative net, in entry order"),
@@ -406,13 +410,20 @@ async function showRun(id) {
     stat("Legged", rep.pairs_legged, "filled unevenly"),
     stat("Faded", rep.pairs_faded, "gone within latency"),
     d.maker ? stat("Maker rests filled", d.maker.rests_filled + " / " + d.maker.rests_placed, fillRate(d.maker) == null ? null : pct(fillRate(d.maker))) : null,
-    stat("Opportunities", d.opportunities, "gap-open episodes"),
+    stat("Opportunities", d.opportunities == null ? "—" : d.opportunities, d.opportunities == null ? "not in text reports" : "gap-open episodes"),
     stat("Intra-venue crossings", rep.intra_crossings, "feed-consistency check"));
 
+  const imported = !!run.imported_from;
+  const notRecorded = what => el("div", {class: "card"}, el("p", {class: "empty"},
+    what + " isn't available: this run was imported from its text report (", el("code", {}, run.imported_from),
+    "), which doesn't list individual pairs. Runs made with ", el("code", {}, "-report-json"), " have it."));
   const body = [
+    imported ? el("p", {class: "note", style: "margin-top:14px"}, "Imported from the text report ", el("code", {}, run.imported_from),
+      ": headline numbers only, rounded as printed.") : null,
     kpis,
     el("h2", {}, "Equity curve"),
     el("p", {class: "h2note"}, "Cumulative net P&L as each pair is entered. Hold-to-resolution arbs enter each market once, so each step is one market."),
+    imported ? notRecorded("The equity curve") :
     el("div", {class: "card"}, d.pairs.length ? equityChart(d.pairs) : el("p", {class: "empty"}, "No settled pairs in this run."),
       d.pairs.length ? el("details", {}, el("summary", {}, "Table view (" + d.pairs.length + " pairs)"), pairsTable(d.pairs)) : null),
     el("div", {class: "two"},
@@ -422,12 +433,13 @@ async function showRun(id) {
       el("div", {}, el("h2", {}, "Pairs"), el("p", {class: "h2note"}, "What happened to every attempt."), pairsTiles)),
     el("h2", {}, "P&L by market"),
     el("p", {class: "h2note"}, "Net P&L per market, best to worst." + (d.markets.length > 24 ? " Showing the 12 best and 12 worst; the table has all " + d.markets.length + "." : "")),
+    imported ? notRecorded("P&L by market") :
     el("div", {class: "card"}, d.markets.length ? marketBars(d.markets) : el("p", {class: "empty"}, "No market-level results."),
       d.markets.length ? el("details", {}, el("summary", {}, "Table view (" + d.markets.length + " markets)"), marketsTable(d.markets)) : null),
-    el("h2", {}, "Command"),
-    el("div", {class: "args"}, "backtest " + (run.args || []).join(" ")),
+    imported ? null : el("h2", {}, "Command"),
+    imported ? null : el("div", {class: "args"}, "backtest " + (run.args || []).join(" ")),
   ];
-  app.replaceChildren(...head, ...body);
+  app.replaceChildren(...head.filter(Boolean), ...body.filter(Boolean));
 }
 
 function stat(label, value, sub, hero) {

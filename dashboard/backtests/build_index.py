@@ -28,6 +28,8 @@ def summary(d):
         "window_hours": run.get("window_hours", 0),
         "data_from": run["data_from"],
         "data_to": run["data_to"],
+        "span_s": run.get("span_s"),
+        "imported": bool(run.get("imported_from")),
         "snapshots": run["snapshots"],
         "markets": run["markets"],
         "finished_at": run["finished_at"],
