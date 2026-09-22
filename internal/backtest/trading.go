@@ -280,6 +280,14 @@ const (
 	shardQueue = 64
 )
 
+// TradingShards is how many sim shards RunTrading will use for opts.
+func TradingShards(opts TradingOpts) int {
+	if opts.Adverse != nil {
+		return 1
+	}
+	return simShards()
+}
+
 // simShards is the trading replay's shard count: one per usable CPU, overridden
 // by PREDBOT_SIM_SHARDS (1 = serial).
 func simShards() int {

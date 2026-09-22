@@ -293,6 +293,9 @@ func (r *snapReader) close() {
 // parseBatch is how many lines a parse worker takes at once.
 const parseBatch = 256
 
+// ParseWorkers is how many goroutines parse each normalized file.
+func ParseWorkers() int { return parseWorkers() }
+
 // parseWorkers is how many goroutines parse each normalized file: GOMAXPROCS,
 // or PREDBOT_PARSE_WORKERS (1 = parse inline, the old serial path).
 func parseWorkers() int {

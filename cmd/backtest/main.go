@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"sync/atomic"
 	"time"
 
@@ -40,8 +41,11 @@ func main() {
 	maker := flag.Bool("maker", false, "use the MAKER strategy: rest one leg (earns the Poly rebate) and take the other")
 	exportPath := flag.String("export", "", "write detected opportunities to this JSON file")
 	spreadPath := flag.String("export-spread", "", "write sampled cross-venue spread to this JSON file")
+	reportJSON := flag.String("report-json", "", "also write the report as JSON (for the backtest runs page) to this file")
+	label := flag.String("label", "", "free-text label for this run in -report-json, e.g. \"full archive\"")
 	showProgress := flag.Bool("progress", true, "show progress on stderr: a live bar on a terminal, a status line every 15s when redirected")
 	flag.Parse()
+	started := time.Now()
 
 	cfg, err := config.Load(*cfgPath)
 	if err != nil {
@@ -243,6 +247,37 @@ func main() {
 
 	rep.Finalize(opts.Resolution, cfg.Backtest.IdleYield)
 
+	if *reportJSON != "" {
+		mode := "taker"
+		if *maker {
+			mode = "maker"
+		}
+		finished := time.Now()
+		meta := backtest.RunMeta{
+			ID:           started.UTC().Format("20060102T150405Z") + "-" + mode,
+			Label:        *label,
+			Mode:         mode,
+			Adverse:      *adverse,
+			WindowHours:  window,
+			DataFrom:     time.Unix(0, firstTs).UTC(),
+			DataTo:       time.Unix(0, lastTs).UTC(),
+			Snapshots:    nSnaps,
+			Markets:      len(bm.Canonicals()),
+			StartedAt:    started.UTC(),
+			FinishedAt:   finished.UTC(),
+			DurationS:    finished.Sub(started).Seconds(),
+			Shards:       backtest.TradingShards(opts),
+			ParseWorkers: backtest.ParseWorkers(),
+			Args:         os.Args[1:],
+		}
+		meta.Host, _ = os.Hostname()
+		meta.Revision, meta.Dirty = buildRevision()
+		if err := writeJSON(*reportJSON, backtest.NewRunReport(meta, res, *maker)); err != nil {
+			slog.Error("report json write failed", "err", err, "path", *reportJSON)
+			os.Exit(1)
+		}
+	}
+
 	span := time.Duration(lastTs-firstTs) * time.Nanosecond
 	fmt.Printf("Replayed %d snapshots (streaming) over %s across %d markets\n\n",
 		nSnaps, span.Round(time.Minute), len(bm.Canonicals()))
@@ -290,6 +325,38 @@ func loadOutcomes(path string) (map[string]int, error) {
 		out[r.Venue+"|"+r.VenueID] = y
 	}
 	return out, sc.Err()
+}
+
+// buildRevision returns the git commit the binary was built from, if the build
+// recorded one.
+func buildRevision() (rev string, dirty bool) {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "", false
+	}
+	for _, kv := range info.Settings {
+		switch kv.Key {
+		case "vcs.revision":
+			rev = kv.Value
+		case "vcs.modified":
+			dirty = kv.Value == "true"
+		}
+	}
+	return rev, dirty
+}
+
+// writeJSON writes v to path via a temp file and rename, so a reader never sees
+// a half-written file.
+func writeJSON(path string, v any) error {
+	b, err := json.MarshalIndent(v, "", " ")
+	if err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, append(b, '\n'), 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
 }
 
 // scanProgress tracks the id-scan pass. Its snapshot count isn't known until
