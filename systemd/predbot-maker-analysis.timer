@@ -1,8 +1,8 @@
 [Unit]
-Description=Run the predbot maker analysis Friday 02:00 (local time)
+Description=Run the predbot maker analysis Friday 06:00 (local time)
 
 [Timer]
-OnCalendar=Fri *-*-* 02:00:00
+OnCalendar=Fri *-*-* 06:00:00
 Persistent=true
 
 [Install]
