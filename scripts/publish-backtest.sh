@@ -12,6 +12,18 @@ set -euo pipefail
 REPO="$(cd "$(dirname "$0")/.."; pwd)"
 WEB="${WEB:-/home/santiago/home-frontend/backtests}"
 
+# Replace dst with a copy of src by renaming a fresh temp file over it. The web
+# root is shared through the dev group, so dst may belong to another user:
+# writing through it works, but install's chmod would fail on a file we don't
+# own, and set -e would then skip the reindex.
+put() {
+  local tmp
+  tmp="$(mktemp "$2.XXXXXX")"
+  cp "$1" "$tmp"
+  chmod 0664 "$tmp"
+  mv -f "$tmp" "$2"
+}
+
 mkdir -p "$WEB/runs"
 for f in "$@"; do
   id="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["run"]["id"])' "$f")"
@@ -19,8 +31,8 @@ for f in "$@"; do
     echo "refusing $f: unsafe run id '$id'" >&2
     exit 1
   fi
-  install -m 0664 "$f" "$WEB/runs/$id.json"
+  put "$f" "$WEB/runs/$id.json"
   echo "published $id"
 done
-install -m 0664 "$REPO/dashboard/backtests/index.html" "$WEB/index.html"
+put "$REPO/dashboard/backtests/index.html" "$WEB/index.html"
 python3 "$REPO/dashboard/backtests/build_index.py" "$WEB/runs"
