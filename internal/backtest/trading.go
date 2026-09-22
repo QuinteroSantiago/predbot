@@ -2,6 +2,7 @@ package backtest
 
 import (
 	"os"
+	"runtime"
 	"sort"
 	"strconv"
 	"sync"
@@ -266,9 +267,10 @@ const (
 	shardQueue = 64
 )
 
-// simShards is the trading replay's shard count: PREDBOT_SIM_SHARDS, else 1.
+// simShards is the trading replay's shard count: one per usable CPU, overridden
+// by PREDBOT_SIM_SHARDS (1 = serial).
 func simShards() int {
-	n := 1
+	n := runtime.GOMAXPROCS(0)
 	if v, err := strconv.Atoi(os.Getenv("PREDBOT_SIM_SHARDS")); err == nil && v > 0 {
 		n = v
 	}
