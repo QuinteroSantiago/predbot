@@ -22,7 +22,6 @@ import (
 	"predbot/internal/core"
 	"predbot/internal/sports"
 	"predbot/internal/strategy"
-	"predbot/internal/venue"
 )
 
 func main() {
@@ -163,145 +162,53 @@ func main() {
 	}
 
 	fees := backtest.Fees{KalshiMult: cfg.Backtest.KalshiFeeMult}
-	rep := backtest.NewReport()
-	sim := backtest.NewSim(fees, cfg.Backtest.LatencyMS, rep)
-	scfg := strategy.Config{
-		MinEdge: core.Price(cfg.Backtest.MinEdge),
-		MaxClip: core.Qty(cfg.Backtest.MaxClip),
-	}
-	maxAge := cfg.Backtest.MaxBookAgeMS * int64(time.Millisecond)
 	maxSkew := cfg.Backtest.MaxSkewMS * int64(time.Millisecond)
 	if *skewMS >= 0 {
 		maxSkew = *skewMS * int64(time.Millisecond)
 	}
-
-	// These are hold-to-resolution arbs: entering a standing gap locks capital on
-	// both venues until the market resolves (design §10.4), so you enter each
-	// market's gap ONCE and cannot recycle that capital. Model that — enter the
-	// first time a market shows edge, never re-enter (design §9: don't re-emit an
-	// opportunity you're already working). Counting per-tick instead would treat
-	// one persistent mispricing as thousands of independent trades.
-	entered := map[string]bool{}
-	// active tracks whether a gap is currently open per market, so we log one
-	// Opportunity per episode (gap opens) rather than per tick — "every trade we
-	// could have made", distinct from the hold-to-resolution subset `entered`.
-	active := map[string]bool{}
-	var opps []backtest.Opportunity
-	var spread []backtest.SpreadPoint
-	// Maker mode: track resting orders and whether the market ever crossed them.
-	resting := map[string]*backtest.RestingFill{}
-	restTaking := map[string]core.Intent{} // the leg we'll take once the rest fills
-	var restsPlaced, restsFilled int
-	var adv *backtest.AdverseSelection
-	var advTrades []venue.Trade
-	var advIdx int
+	opts := backtest.TradingOpts{
+		Fees:      fees,
+		LatencyMS: cfg.Backtest.LatencyMS,
+		Strategy: strategy.Config{
+			MinEdge: core.Price(cfg.Backtest.MinEdge),
+			MaxClip: core.Qty(cfg.Backtest.MaxClip),
+		},
+		MaxAge:     cfg.Backtest.MaxBookAgeMS * int64(time.Millisecond),
+		MaxSkew:    maxSkew,
+		Resolution: map[string]time.Time{},
+		Maker:      *maker,
+		Spread:     *spreadPath != "",
+	}
 	if *adverse {
-		adv = backtest.NewAdverseSelection()
+		opts.Adverse = backtest.NewAdverseSelection()
 		// Adverse selection is driven by REAL TRADE PRINTS — a book cannot tell a
 		// trade from a cancellation, so books alone cannot answer this.
-		advTrades, err = backtest.LoadTrades(dir, window)
+		opts.Trades, err = backtest.LoadTrades(dir, window)
 		if err != nil {
 			slog.Warn("trade load failed; adverse selection unavailable", "err", err)
 		}
-		if len(advTrades) == 0 {
+		if len(opts.Trades) == 0 {
 			slog.Warn("NO trade prints recorded in this window — adverse selection cannot be measured. " +
 				"The recorder must be running with trade feeds (data/trades/).")
 		}
 	}
-	lastBucket := map[string]int64{} // 5-min sampling per market
 
 	// Resolution dates for the annualized-return calc (§10.4).
-	resolution := map[string]time.Time{}
 	for _, m := range markets {
 		if t, err := time.Parse("2006-01-02", m.ResolutionDate); err == nil {
-			resolution[m.Canonical] = t
+			opts.Resolution[m.Canonical] = t
 		}
 	}
 
 	// Second streaming pass: the actual replay (design §10.1).
-	_ = backtest.StreamReplay(dir, window, func(s core.BookSnapshot) error {
-		now := s.TsRecv
-		sim.Advance(now, bm) // settle fills whose t+Δ has arrived
-		canonical, ok := bm.Update(s)
-		if !ok {
-			return nil // not in markets.yaml (§12)
-		}
-		books, ready := bm.Pair(canonical)
-		if !ready || staleAny(books, now, maxAge) || skewExceeds(books, maxSkew) {
-			return nil
-		}
-		if *spreadPath != "" {
-			if bucket := (now / 1_000_000) / 300_000; lastBucket[canonical] != bucket {
-				if g, ok := backtest.CrossGrossCents(books); ok {
-					spread = append(spread, backtest.SpreadPoint{
-						TsMs: now / 1_000_000, Canonical: canonical,
-						Category: backtest.Category(canonical), GrossEdgeCents: g})
-				}
-				lastBucket[canonical] = bucket
-			}
-		}
-		if adv != nil {
-			adv.ObserveBook(canonical, s)
-			// Feed any trades that happened up to this snapshot's time.
-			for advIdx < len(advTrades) && advTrades[advIdx].TsRecv <= s.TsRecv {
-				t := advTrades[advIdx]
-				if c, ok2 := bm.Canonical(t.Venue, t.VenueID); ok2 {
-					adv.ObserveTrade(c, t)
-				}
-				advIdx++
-			}
-		}
-
-		// Advance any resting order for this market against the new book.
-		if r, ok := resting[canonical]; ok {
-			if r.Observe(books[r.Intent.Venue]) > 0 && r.Complete() {
-				restsFilled++
-				// The rest actually filled — now book the pair's real economics:
-				// maker fee (a rebate on Poly) on the rest, taker on the hedge.
-				sim.SettleMakerPair(canonical, r.Intent, restTaking[canonical], r.Filled, bm)
-				delete(resting, canonical)
-				delete(restTaking, canonical)
-			}
-		}
-
-		exp := strategy.Exposure{InFlight: entered}
-		var legs []core.Intent
-		if *maker {
-			legs = strategy.MakerCrossVenue(canonical, books, exp, fees, scfg)
-		} else {
-			legs = strategy.CrossVenue(canonical, books, exp, fees, scfg)
-		}
-		switch {
-		case len(legs) > 0:
-			if !active[canonical] { // new episode -> log an opportunity
-				o := backtest.BuildOpportunity(legs[0], legs[1], fees, now, resolution[canonical])
-				o.Canonical, o.Category = canonical, backtest.Category(canonical)
-				opps = append(opps, o)
-				active[canonical] = true
-			}
-			if !entered[canonical] {
-				if ri := strategy.RestingLeg(legs); *maker && ri >= 0 {
-					// The resting leg does NOT fill on submission — it fills only
-					// if the market later crosses it. Track it and count honestly.
-					if _, dup := resting[canonical]; !dup {
-						resting[canonical] = backtest.NewRestingFill(legs[ri], books[legs[ri].Venue])
-						restTaking[canonical] = legs[1-ri] // the other leg is taken on fill
-						restsPlaced++
-					}
-				} else {
-					sim.Submit(canonical, legs, now)
-				}
-				entered[canonical] = true // hold to resolution; never re-enter
-			}
-		default:
-			active[canonical] = false // gap closed; a reopen is a new episode
-		}
-		for _, l := range strategy.IntraVenue(canonical, books, fees, scfg) {
-			sim.Submit(canonical, []core.Intent{l}, now)
-		}
-		return nil
-	})
-	sim.Flush(bm)
+	allMarkets := append(append([]config.Market{}, markets...), sportsMarkets...)
+	res, err := backtest.RunTrading(dir, window, allMarkets, opts)
+	if err != nil {
+		slog.Warn("trading replay stopped early", "err", err)
+	}
+	opps, spread, rep := res.Opps, res.Spread, res.Report
+	adv := opts.Adverse
+	restsPlaced, restsFilled := res.RestsPlaced, res.RestsFilled
 
 	if *exportPath != "" {
 		if err := backtest.WriteOpportunities(*exportPath, opps); err != nil {
@@ -318,7 +225,7 @@ func main() {
 		}
 	}
 
-	rep.Finalize(resolution, cfg.Backtest.IdleYield)
+	rep.Finalize(opts.Resolution, cfg.Backtest.IdleYield)
 
 	span := time.Duration(lastTs-firstTs) * time.Nanosecond
 	fmt.Printf("Replayed %d snapshots (streaming) over %s across %d markets\n\n",
@@ -367,34 +274,6 @@ func loadOutcomes(path string) (map[string]int, error) {
 		out[r.Venue+"|"+r.VenueID] = y
 	}
 	return out, sc.Err()
-}
-
-func staleAny(books map[string]core.BookSnapshot, now, maxAge int64) bool {
-	for _, b := range books {
-		if now-b.TsRecv > maxAge {
-			return true
-		}
-	}
-	return false
-}
-
-// skewExceeds reports whether the venues' snapshots were captured too far apart
-// in time to trust a cross-venue comparison. With independent REST polling the
-// two books can be ~1.5s apart on average, so a gap seen here may be an artifact
-// of comparing a fresh book to a stale one — the very staleness WS would fix.
-func skewExceeds(books map[string]core.BookSnapshot, maxSkew int64) bool {
-	var min, max int64
-	first := true
-	for _, b := range books {
-		if first || b.TsRecv < min {
-			min = b.TsRecv
-		}
-		if first || b.TsRecv > max {
-			max = b.TsRecv
-		}
-		first = false
-	}
-	return max-min > maxSkew
 }
 
 // sportsToMarkets converts reconstructed sports matches into config.Market rows.
