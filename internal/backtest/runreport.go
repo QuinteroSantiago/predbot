@@ -30,12 +30,13 @@ type AnalysisReport struct {
 	LeadLag  *LeadLagResult  `json:"leadlag,omitempty"`
 	Longshot *LongshotResult `json:"longshot,omitempty"`
 	Moves    *MoveResult     `json:"moves,omitempty"`
+	SpreadMR *SpreadMRResult `json:"spreadmr,omitempty"`
 }
 
 // RunMeta describes how a run was made.
 type RunMeta struct {
 	ID           string     `json:"id"`    // unique, sortable: <started UTC>-<mode>
-	Kind         string     `json:"kind"`  // "trading", "leadlag", "longshot" or "moves"
+	Kind         string     `json:"kind"`  // "trading", "leadlag", "longshot", "moves" or "spreadmr"
 	Label        string     `json:"label"` // free text, e.g. "full archive"
 	Mode         string     `json:"mode"`  // trading: "maker" or "taker"; analyses: same as Kind
 	Adverse      bool       `json:"adverse"`

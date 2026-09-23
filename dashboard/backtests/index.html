@@ -430,6 +430,7 @@ async function showRun(id) {
   if (run.kind === "leadlag") return showLeadLag(d);
   if (run.kind === "longshot") return showLongshot(d);
   if (run.kind === "moves") return showMoves(d);
+  if (run.kind === "spreadmr") return showSpreadMR(d);
   const rep = d.report;
   document.title = (run.label || "Run") + " · " + run.mode + " · Backtest runs";
 
@@ -603,7 +604,7 @@ function barRows(rows, opts) {
       svg.append(g);
     });
     for (const v of niceTicks(lo, hi, 4)) if (v >= lo - 1e-9 && v <= hi + 1e-9)
-      svg.append(sv("text", {class: "tick", x: X(v), y: H - 6, "text-anchor": "middle"}, usd(v)));
+      svg.append(sv("text", {class: "tick", x: X(v), y: H - 6, "text-anchor": "middle"}, (opts.tick || usd)(v)));
     box.prepend(svg);
   });
   return box;
@@ -711,11 +712,22 @@ function adverseTable(a) {
 
 // ---------- analyses (lead-lag, longshot) ----------
 const ANALYSIS = {
+  spreadmr: {name: "Spread mean-reversion", q: "When the Kalshi–Polymarket gap stretches, how fast does it snap back — and does trading the snap-back pay after costs?"},
   moves: {name: "Overreaction", q: "After a sharp price move or a burst of one-sided trading, does the price keep going or snap back — and does trading it pay after costs?"},
   leadlag: {name: "Lead-lag", q: "Does one exchange's price move before the other's?"},
   longshot: {name: "Longshot / calibration", q: "Do games resolve as often as their opening price implies?"},
 };
 const analysisBadge = kind => el("span", {class: "badge"}, el("span", {class: "key analysis"}), ANALYSIS[kind].name);
+
+const fmtSecs = s => !s ? "—" : s < 90 ? Math.round(s) + "s" : s < 5400 ? (s / 60).toFixed(1) + " min" : (s / 3600).toFixed(1) + " h";
+
+function spreadmrVerdict(r) {
+  if (!r.markets) return "No market had enough time with both exchanges quoting to fit.";
+  const hl = r.half_life_s ? `A stretched gap closes halfway in about ${fmtSecs(r.half_life_s)}` : "The gap shows no measurable pull-back";
+  const size = r.median_sigma_eq ? `, and typically strays ±${r.median_sigma_eq.toFixed(1)}¢` : "";
+  if (!r.edges) return `${hl}${size}. No trading rule clears zero after paying the spread and four fees — the snap-back is real but too small or too quick to capture.`;
+  return `${hl}${size}. ${r.edges} of ${r.strategies_tested} trading rules clear zero after costs — check they hold across entry thresholds and in each week before trusting them.`;
+}
 
 function movesVerdict(r) {
   if (!r.rows_readable) return "Too little data: no size band and horizon has 10+ games and 30+ events yet.";
@@ -742,14 +754,15 @@ function longshotVerdict(r) {
 function analysesSection(runs) {
   const out = [el("h2", {}, "Analyses"),
     el("p", {class: "h2note"}, "Read-only studies of the same recorded data, for ideas beyond arbitrage. The latest of each, then the history.")];
-  const cards = ["moves", "longshot", "leadlag"].map(kind => {
+  const cards = ["spreadmr", "moves", "longshot", "leadlag"].map(kind => {
     const r = runs.find(x => x.kind === kind);
     if (!r) return null;
     const big = kind === "leadlag"
       ? `${r.kalshi_leads} Kalshi-first · ${r.poly_leads} Poly-first · ${r.contemporaneous} together`
       : kind === "moves" ? `${r.edges} edge${r.edges === 1 ? "" : "s"} after costs · ${count(r.move_events + r.flow_events)} events`
+      : kind === "spreadmr" ? `half-life ${fmtSecs(r.half_life_s)} · ${r.edges} edge${r.edges === 1 ? "" : "s"} after costs`
       : `${r.clear_buckets} of ${r.solid_buckets} solid buckets show a clear edge`;
-    const verdict = kind === "leadlag" ? leadlagVerdict(r) : kind === "moves" ? movesVerdict(r) : longshotVerdict(r);
+    const verdict = kind === "leadlag" ? leadlagVerdict(r) : kind === "moves" ? movesVerdict(r) : kind === "spreadmr" ? spreadmrVerdict(r) : longshotVerdict(r);
     return el("a", {class: "card acard", href: "#run=" + r.id},
       el("h3", {}, ANALYSIS[kind].name), el("div", {class: "big"}, big),
       el("div", {class: "sub"}, verdict),
@@ -764,6 +777,7 @@ function analysesSection(runs) {
       el("td", {}, when(r.finished_at)), el("td", {}, runName(r)), el("td", {}, analysisBadge(r.kind)), el("td", {}, dataSpan(r)),
       el("td", {}, r.kind === "leadlag" ? `${r.kalshi_leads}/${r.poly_leads}/${r.contemporaneous} of ${r.analyzed} (K/P/together)`
         : r.kind === "moves" ? `${r.edges} edge${r.edges === 1 ? "" : "s"} · ${count(r.move_events)} moves, ${count(r.flow_events)} flow bursts`
+        : r.kind === "spreadmr" ? `half-life ${fmtSecs(r.half_life_s)} · ${r.edges}/${r.strategies_tested} rules clear · ${r.markets} markets`
         : `${r.clear_buckets}/${r.solid_buckets} clear · ${r.markets} markets`)))))));
   return out;
 }
@@ -1025,6 +1039,75 @@ function movesTable(rows) {
       el("td", {class: "r num"}, x.events), el("td", {class: "r num"}, x.markets), el("td", {class: "r num"}, ci(x, x.cont, x.cont_se)),
       el("td", {class: "r num" + (e === "follow" ? " better" : "")}, ci(x, x.follow, x.follow_se)), el("td", {class: "r num" + (e === "fade" ? " better" : "")}, ci(x, x.fade, x.fade_se)),
       el("td", {}, e || "—")); }))));
+}
+
+function showSpreadMR(d) {
+  const run = d.run, r = d.spreadmr;
+  document.title = "Spread mean-reversion · " + (run.label || run.id) + " · Backtest runs";
+  const edges = r.strategies.filter(x => x.markets >= 10 && x.trades >= 30 && x.pnl - 1.96 * x.pnl_se > 0);
+  const summary = {...r, edges: edges.length, strategies_tested: r.strategies.length};
+  const hlRange = r.half_life_s ? fmtSecs(r.half_life_lo_s) + " – " + (r.half_life_hi_s ? fmtSecs(r.half_life_hi_s) : "∞") : null;
+  const kpis = el("div", {class: "stats kpis"},
+    stat("Half-life (pooled)", fmtSecs(r.half_life_s), hlRange ? "95% range " + hlRange : "no pull-back measured", true),
+    stat("Typical excursion", r.median_sigma_eq ? "±" + r.median_sigma_eq.toFixed(2) + "¢" : "—", "median σ of the gap"),
+    stat("Persistent offset", r.median_abs_level.toFixed(2) + "¢", "median |average gap|"),
+    stat("Markets fitted", r.markets, r.unfit ? r.unfit + " too thin" : "both exchanges quoting"),
+    stat("Rules with an edge", edges.length + " / " + r.strategies.length, "after spread + 4 fees"));
+  const short = s => s < 60 ? s + "s" : Math.round(s / 60) + "m";
+  const rows = r.strategies.map(x => ({label: x.k + "σ · ≤" + short(x.max_hold_s), v: x.pnl, se: x.pnl_se,
+    edge: x.markets >= 10 && x.trades >= 30 && x.pnl - 1.96 * x.pnl_se > 0,
+    tip: [x.trades + " trades in " + x.markets + " games", pct(x.win_share) + " winners · avg hold " + fmtSecs(x.avg_hold_s)]}));
+  const hist = r.half_life_hist.filter(b => b.n || b.lo_s >= 0);
+  app.replaceChildren(...analysisHeader(run).filter(Boolean),
+    el("p", {class: "verdict"}, spreadmrVerdict(summary)),
+    kpis,
+    el("h2", {}, "How fast gaps close"),
+    el("p", {class: "h2note"}, `Each game's gap (Kalshi mid − Polymarket mid) fitted as a mean-reverting process on a ${r.grid_s}s grid. The half-life is how long a stretched gap takes to close halfway. Gaps that close in seconds leave little time to trade; slow ones tie up capital.`),
+    el("div", {class: "card"}, barRows(hist.map(b => ({label: b.label, from: 0, to: b.n, color: b.lo_s < 0 ? "var(--mark-muted)" : "var(--mark-accent)",
+      valueText: b.n + (b.n === 1 ? " game" : " games"), tip: [b.label, b.n + " games"]})), {labelWidth: 110, aria: "Games by gap half-life", tick: v => String(v)})),
+    el("h2", {}, "Trading the snap-back"),
+    el("p", {class: "h2note"}, `When the gap strays k·σ from its trailing average, sell the rich exchange and buy the cheap one (${r.clip_contracts} contracts, taker on both legs in and out), and close when it's back within 0.5σ or at the max hold. The average and σ use only the past — no look-ahead. Rows read "entry threshold · max hold". Net cents per contract pair; bars are 95% ranges clustered by game; ▲ marks a rule that clears zero.`),
+    el("div", {class: "card"}, valueForest(rows, "net ¢ per pair")),
+    el("h2", {}, "Per game"),
+    el("p", {class: "h2note"}, "Each game's own fit, most samples first. b is the pull-back per step (more negative = faster); level is the gap's average — a persistent offset between the exchanges."),
+    el("div", {class: "tablewrap", style: "max-height:420px; overflow:auto"}, el("table", {},
+      el("thead", {}, el("tr", {}, el("th", {}, "Market"), ["Samples", "b", "Half-life", "Excursion σ", "Level", "Gap sd"].map(h => el("th", {class: "r"}, h)))),
+      el("tbody", {}, r.market_fits.slice(0, 200).map(x => el("tr", {}, el("td", {class: "mono"}, x.canonical), el("td", {class: "r num"}, count(x.n)),
+        el("td", {class: "r num"}, x.b.toFixed(3)), el("td", {class: "r num"}, fmtSecs(x.half_life_s)), el("td", {class: "r num"}, x.sigma_eq ? x.sigma_eq.toFixed(2) + "¢" : "—"),
+        el("td", {class: "r num"}, (x.mean_gap > 0 ? "+" : "") + x.mean_gap.toFixed(2) + "¢"), el("td", {class: "r num"}, x.sd_gap.toFixed(2) + "¢")))))));
+}
+
+// One mark per row: value with its 95% bar against zero. rows: {label, v, se, edge, tip[]}.
+function valueForest(rows, unit) {
+  if (!rows.length) return el("p", {class: "empty"}, "Nothing to show.");
+  const box = el("div", {class: "chart"});
+  const tip = tooltip(box);
+  responsive(box, W => {
+    box.querySelector("svg")?.remove();
+    const fs = W < 600 ? 11 : 12, longest = Math.max(...rows.map(x => x.label.length + 2));
+    const rowH = 26, labW = Math.min(W * 0.5, longest * fs * 0.61 + 6), m = {l: labW + 10, r: 16, t: 6, b: 24}, H = rows.length * rowH + m.t + m.b;
+    const vals = rows.flatMap(x => [x.v - 1.96 * x.se, x.v + 1.96 * x.se]).concat([0]);
+    const xt = niceTicks(Math.min(...vals), Math.max(...vals), 5), x0 = xt[0], x1 = xt[xt.length - 1];
+    const X = v => m.l + (v - x0) / (x1 - x0) * (W - m.l - m.r);
+    const svg = sv("svg", {viewBox: `0 0 ${W} ${H}`, height: H, role: "img", "aria-label": unit + " by rule; the table has the same values"});
+    for (const v of xt) svg.append(sv("line", {class: v === 0 ? "zero" : "gridline", x1: X(v), x2: X(v), y1: m.t, y2: H - m.b}),
+      sv("text", {class: "tick", x: X(v), y: H - 6, "text-anchor": "middle"}, (v > 0 ? "+" : "") + v + "¢"));
+    rows.forEach((x, i) => {
+      const y = m.t + i * rowH + rowH / 2;
+      svg.append(sv("text", {x: labW, y: y + 4, "text-anchor": "end", fill: x.edge ? "var(--ink)" : "var(--ink-2)", "font-size": fs, "font-family": "IBM Plex Mono, monospace", "font-weight": x.edge ? 600 : 400}, (x.edge ? "▲ " : "") + x.label));
+      const g = sv("g", {tabindex: "0", role: "img", "aria-label": `${x.label}: ${x.v.toFixed(2)}¢`});
+      const dot = sv("circle", {cx: X(x.v), cy: y, r: 4.5, fill: "var(--mark-accent)", stroke: "var(--surface)", "stroke-width": 2});
+      g.append(sv("rect", {x: 0, y: y - rowH / 2, width: W, height: rowH, fill: "transparent"}),
+        sv("line", {x1: X(x.v - 1.96 * x.se), x2: X(x.v + 1.96 * x.se), y1: y, y2: y, stroke: "var(--mark-accent)", "stroke-width": 2, "stroke-opacity": .45, "stroke-linecap": "round"}), dot);
+      const show = () => { dot.setAttribute("r", 5.5); tip.show(X(x.v), y, () => [el("strong", {}, (x.v > 0 ? "+" : "") + x.v.toFixed(2) + "¢ ±" + (1.96 * x.se).toFixed(2)), el("div", {}, x.label), ...(x.tip || []).map(t => el("div", {}, t))]); };
+      const hide = () => { dot.setAttribute("r", 4.5); tip.hide(); };
+      g.addEventListener("pointerenter", show); g.addEventListener("pointerleave", hide);
+      g.addEventListener("focus", show); g.addEventListener("blur", hide);
+      svg.append(g);
+    });
+    box.prepend(svg);
+  });
+  return box;
 }
 
 // Columns: how many markets peak at each lag. Poly-first left, Kalshi-first

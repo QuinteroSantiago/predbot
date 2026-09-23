@@ -78,8 +78,19 @@ def moves_summary(d):
             "round_trip_cents": sum(costs) / len(costs) if costs else None}
 
 
+def spreadmr_summary(d):
+    r = d["spreadmr"]
+    edges = [x for x in r["strategies"] if x["markets"] >= 10 and x["trades"] >= 30
+             and x["pnl"] - 1.96 * x["pnl_se"] > 0]
+    return {**base(d["run"]), **{k: r[k] for k in (
+        "markets", "half_life_s", "half_life_lo_s", "half_life_hi_s", "median_sigma_eq", "median_abs_level")},
+        "edges": len(edges), "strategies_tested": len(r["strategies"])}
+
+
 def summary(d):
     kind = d["run"].get("kind", "trading")
+    if kind == "spreadmr":
+        return spreadmr_summary(d)
     if kind == "moves":
         return moves_summary(d)
     if kind == "leadlag":

@@ -38,6 +38,7 @@ func main() {
 	leadlag := flag.Bool("leadlag", false, "read-only: measure whether one venue's mid leads the other (cross-venue lead-lag), no trading")
 	longshot := flag.Bool("longshot", false, "read-only: calibration / favorite-longshot bias from opening price vs settled outcome")
 	outcomesPath := flag.String("outcomes", "", "outcomes.jsonl for -longshot (default: <data>/outcomes.jsonl)")
+	spreadMR := flag.Bool("spreadmr", false, "read-only: model the Kalshi−Poly gap as mean-reverting (half-life, typical excursion) and test trading it after costs")
 	moves := flag.Bool("moves", false, "read-only: overreaction study — after a sharp move or one-sided trading, momentum or reversion, and does trading it pay after costs")
 	adverse := flag.Bool("adverse", false, "measure adverse selection: where price goes AFTER a hypothetical maker fill")
 	maker := flag.Bool("maker", false, "use the MAKER strategy: rest one leg (earns the Poly rebate) and take the other")
@@ -282,6 +283,27 @@ func main() {
 	}
 
 	fees := backtest.Fees{KalshiMult: cfg.Backtest.KalshiFeeMult}
+
+	// Spread mean-reversion: standalone read-only pass over paired markets.
+	if *spreadMR {
+		mr := backtest.NewSpreadMR(fees)
+		bar := countBar(*showProgress, "pass 2/2 spread-mr", nSnaps)
+		_ = backtest.StreamReplay(dir, w, func(s core.BookSnapshot) error {
+			bar.Add(1)
+			if c, ok := bm.Canonical(s.Venue, s.VenueID); ok {
+				mr.Observe(c, s)
+			}
+			return nil
+		})
+		bar.Finish()
+		span := time.Duration(lastTs-firstTs) * time.Nanosecond
+		fmt.Printf("Replayed %d snapshots over %s across %d markets\n\n", nSnaps, span.Round(time.Minute), len(bm.Canonicals()))
+		fmt.Print(mr.Report())
+		res := mr.Result()
+		writeReport(backtest.AnalysisReport{Schema: backtest.RunReportSchema,
+			Run: runMeta("spreadmr", "spreadmr"), SpreadMR: &res})
+		return
+	}
 
 	// Overreaction study: standalone read-only pass. Trade prints drive the
 	// one-sided-flow trigger and outcomes the hold-to-settlement horizon; either
