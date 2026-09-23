@@ -32,6 +32,10 @@ def base(run):
         "finished_at": run["finished_at"],
         "duration_s": run["duration_s"],
         "revision": run.get("revision", ""),
+        "variant": run.get("variant", ""),
+        "from": run.get("from"),
+        "to": run.get("to"),
+        "params": run.get("params"),  # absent before 2026-09-22 builds
     }
 
 
@@ -74,6 +78,8 @@ def summary(d):
         "settled_pairs": rep["settled_pairs"],
         "rests_placed": placed,
         "fill_rate": (maker["rests_filled"] / placed) if placed else None,
+        "adverse_30s_cents": next((h["mean_cents"] for h in (d.get("adverse") or {}).get("horizons", [])
+                                   if h["seconds"] == 30 and h["fills"]), None),
     }
 
 

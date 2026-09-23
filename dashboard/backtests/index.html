@@ -180,7 +180,19 @@ const dataSpan = r => r.data_from && r.data_to ? span(r.data_from, r.data_to)
   : r.span_s ? "≈" + (r.span_s >= 172800 ? Math.round(r.span_s / 86400) + " days" : Math.round(r.span_s / 3600) + " hours") + " of data" : "—";
 const span = (a, b) => { const x = new Date(a), y = new Date(b);
   return x.toDateString() === y.toDateString() ? day(x) + " " + hm(x) + "–" + hm(y) : day(x) + " – " + day(y) + " " + y.getFullYear(); };
-const windowText = r => r.window_hours ? (r.window_hours % 24 === 0 ? r.window_hours / 24 + "d" : r.window_hours + "h") : "all data";
+const windowText = r => {
+  if (r.from || r.to) return (r.from ? day(new Date(r.from)) : "start") + " → " + (r.to ? day(new Date(r.to)) : "end");
+  return r.window_hours ? "last " + (r.window_hours % 24 === 0 ? r.window_hours / 24 + "d" : r.window_hours + "h") : "all data";
+};
+const runName = r => (r.label || "—") + (r.variant ? " · " + r.variant : "");
+// The effective settings a run used. Runs from builds before 2026-09-22 didn't
+// record them — and ran without the liquidity floor.
+function paramsLine(run) {
+  const p = run.params;
+  if (!p) return el("p", {class: "note", style: "margin-top:10px"}, "Settings not recorded: this run's build predates 2026-09-22, when the backtest also ignored the liquidity floor (min depth). Re-run it for comparable numbers.");
+  return el("p", {class: "note mono", style: "margin-top:10px"},
+    `latency ${p.latency_ms}ms · min edge ${p.min_edge_cents}¢ · floor ${p.min_depth_contracts ? p.min_depth_contracts + " contracts" : "off"} · max clip ${p.max_clip_contracts} · Kalshi fee ×${p.kalshi_fee_mult} · skew ≤${p.max_skew_ms}ms · book age ≤${p.max_book_age_ms}ms`);
+}
 const fillRate = m => m && m.rests_placed ? m.rests_filled / m.rests_placed : null;
 const modeBadge = (mode, adverse) => el("span", {class: "badge"}, el("span", {class: "key " + mode}), mode + (adverse ? " + adverse" : ""));
 
@@ -289,9 +301,13 @@ async function showIndex() {
     body.push(el("h2", {}, "Strategy runs"), el("p", {class: "h2note"}, "No maker or taker runs match these filters."));
   } else {
     body.push(headToHead(shown));
-    if (shown.length >= 2) body.push(el("h2", {}, "Net P&L by run"),
+    const isSweep = new Set(shown.map(r => r.variant).filter(Boolean)).size >= 2;
+    if (shown.length >= 2 && !isSweep) body.push(el("h2", {}, "Net P&L by run"),
       el("p", {class: "h2note"}, "Each point is one run, placed by when it finished. Only compare runs over the same kind of window — the label filter above keeps them apples to apples."),
       el("div", {class: "card"}, runsChart(shown)));
+    if (isSweep) body.push(el("h2", {}, "By variant"),
+      el("p", {class: "h2note"}, "Net P&L for each variant in the current filter — one bar per run, newest run per variant and mode. Bars that swing sign or collapse under small setting changes mean the result is fragile."),
+      el("div", {class: "card"}, variantChart(shown)));
     body.push(el("h2", {}, "All strategy runs"), el("p", {class: "h2note"}, "Newest first. Select a row for its detail."), runsTable(shown));
   }
   if (analyses.length) body.push(...analysesSection(analyses));
@@ -329,7 +345,7 @@ function headToHead(runs) {
 function runsTable(runs) {
   const cols = [
     ["Finished", r => when(r.finished_at)],
-    ["Label", r => [r.label || "—", r.imported ? el("span", {class: "note", style: "margin:0 0 0 6px"}, "imported") : null]],
+    ["Label", r => [runName(r), r.imported ? el("span", {class: "note", style: "margin:0 0 0 6px"}, "imported") : null]],
     ["Mode", r => modeBadge(r.mode, r.adverse)],
     ["Data", r => dataSpan(r)],
     ["Net P&L", r => usd(r.net_pnl_usd, true), 1],
@@ -415,11 +431,12 @@ async function showRun(id) {
       modeBadge(run.mode, run.adverse),
       el("span", {}, el("b", {}, dataSpan(run)), run.imported_from ? null : " · " + windowText(run)),
       el("span", {}, el("b", {}, count(run.snapshots)), " snapshots · ", el("b", {}, run.markets), " markets"),
-      run.duration_s ? el("span", {}, "ran ", el("b", {}, dur(run.duration_s)), " on ", run.host || "?", run.shards ? " · " + run.shards + " shards" : "") : null,
+      run.duration_s ? el("span", {}, "ran ", el("b", {}, dur(run.duration_s)), " on ", run.host || "?", run.shards ? " · " + run.shards + (run.shards === 1 ? " shard" : " shards") : "") : null,
       run.imported_from ? el("span", {}, "finished ", el("b", {}, when(run.finished_at))) : null,
       run.revision ? el("span", {class: "mono"}, "build " + run.revision.slice(0, 7), run.dirty ? el("span", {class: "dirty"}, " (uncommitted changes)") : null) : null),
   ];
 
+  head.push(paramsLine(run));
   const settled = rep.settled_pairs > 0;
   const kpis = el("div", {class: "stats kpis"},
     stat("Net P&L", usd(rep.net_pnl_usd, true), rep.capital_locked_usd ? usd(rep.capital_locked_usd) + " capital locked" : null, true),
@@ -457,6 +474,9 @@ async function showRun(id) {
         el("p", {class: "h2note"}, "Gross gap captured, less fees and legging exits, is net P&L."),
         el("div", {class: "card"}, waterfall(rep))),
       el("div", {}, el("h2", {}, "Pairs"), el("p", {class: "h2note"}, "What happened to every attempt."), pairsTiles)),
+    d.adverse ? el("h2", {}, "Adverse selection") : null,
+    d.adverse ? el("p", {class: "h2note"}, `After each real trade print, how far the price moved against the maker who was filled, measured ${d.adverse.horizons.map(h => h.seconds + "s").join(", ")} later (${count(d.adverse.trades)} prints). Maker resting only pays if this stays below the ~${d.adverse.rebate_cents}¢ rebate plus the spread it captures. Bars are rough 95% ranges.`) : null,
+    d.adverse ? el("div", {class: "card"}, adverseChart(d.adverse), adverseTable(d.adverse)) : null,
     el("h2", {}, "P&L by market"),
     el("p", {class: "h2note"}, "Net P&L per market, best to worst." + (d.markets.length > 24 ? " Showing the 12 best and 12 worst; the table has all " + d.markets.length + "." : "")),
     imported ? notRecorded("P&L by market") :
@@ -556,7 +576,8 @@ function barRows(rows, opts) {
     svg.append(sv("line", {class: "zero", x1: X(0), x2: X(0), y1: 0, y2: rows.length * rowH}));
     rows.forEach((r, i) => {
       const y = i * rowH + (rowH - barH) / 2, g = sv("g", {tabindex: "0", role: "img", "aria-label": r.label + ": " + r.valueText});
-      const label = r.label.length > 26 ? r.label.slice(0, 25) + "…" : r.label;
+      const maxChars = Math.max(8, Math.floor(labW / 7.4));
+      const label = r.label.length > maxChars ? r.label.slice(0, maxChars - 1) + "…" : r.label;
       const bar = sv("path", {d: hbar(X(r.from), X(r.to), y, barH), fill: r.color});
       g.append(sv("rect", {x: 0, y: i * rowH, width: W, height: rowH, fill: "transparent"}),
         sv("text", {x: labW, y: y + barH / 2 + 4, "text-anchor": "end", fill: r.strong ? "var(--ink)" : "var(--ink-2)", "font-size": 12,
@@ -618,6 +639,66 @@ function marketsTable(markets) {
       el("td", {class: "r num"}, usd(m.net_usd, true)), el("td", {class: "r num"}, usd(m.capital_usd)), el("td", {class: "r num"}, m.pairs), el("td", {class: "r num"}, m.attempts))))));
 }
 
+function variantChart(runs) {
+  const seen = new Set(), pick = [];
+  for (const r of runs) { const k = r.variant + "|" + r.mode; if (r.variant && !seen.has(k)) { seen.add(k); pick.push(r); } }
+  // The sweep's own order (baseline first), not alphabetical.
+  pick.sort((a, b) => a.finished_at.localeCompare(b.finished_at));
+  const name = r => r.variant.includes(r.mode) ? r.variant : r.variant + " · " + r.mode;
+  return barRows(pick.map(r => ({label: name(r), from: 0, to: r.net_pnl_usd,
+    color: r.net_pnl_usd >= 0 ? "var(--gain)" : "var(--loss)", valueText: usd(r.net_pnl_usd, true),
+    tip: [name(r), r.pairs_completed + "/" + r.pairs_attempted + " pairs completed", when(r.finished_at)]})),
+    {labelWidth: 260, aria: "Net P&L by variant; the runs table below has the same values"});
+}
+
+// Mean adverse drift per horizon with 95% bars, against the rebate line.
+function adverseChart(a) {
+  const box = el("div", {class: "chart"});
+  const tip = tooltip(box);
+  const hs = a.horizons.filter(h => h.fills);
+  if (!hs.length) return el("p", {class: "empty"}, "No fills measured — this window had no trade prints.");
+  responsive(box, W => {
+    box.querySelector("svg")?.remove();
+    const H = 220, m = {l: 56, r: 18, t: 14, b: 28};
+    const vals = hs.flatMap(h => [h.mean_cents - 1.96 * h.stderr_cents, h.mean_cents + 1.96 * h.stderr_cents]).concat([0, a.rebate_cents]);
+    const yt = niceTicks(Math.min(...vals), Math.max(...vals), 4), y0 = yt[0], y1 = yt[yt.length - 1];
+    const X = i => m.l + (i + 0.5) / hs.length * (W - m.l - m.r), Y = v => m.t + (1 - (v - y0) / (y1 - y0)) * (H - m.t - m.b);
+    const svg = sv("svg", {viewBox: `0 0 ${W} ${H}`, height: H, role: "img", "aria-label": "Adverse drift by horizon; the table below has the same values"});
+    for (const v of yt) svg.append(sv("line", {class: v === 0 ? "zero" : "gridline", x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v)}),
+      sv("text", {class: "tick", x: m.l - 8, y: Y(v) + 4, "text-anchor": "end"}, v.toFixed(2) + "¢"));
+    svg.append(sv("line", {x1: m.l, x2: W - m.r, y1: Y(a.rebate_cents), y2: Y(a.rebate_cents), stroke: "var(--loss)", "stroke-width": 1.5}),
+      sv("text", {class: "tick", x: W - m.r, y: Y(a.rebate_cents) - 6, "text-anchor": "end"}, "rebate " + a.rebate_cents + "¢ — above this, resting loses"));
+    hs.forEach((h, i) => {
+      const x = X(i), ci = 1.96 * h.stderr_cents;
+      const g = sv("g", {tabindex: "0", role: "img", "aria-label": `${h.seconds}s: ${h.mean_cents.toFixed(3)}¢ over ${h.fills} fills`});
+      const dot = sv("circle", {cx: x, cy: Y(h.mean_cents), r: 5, fill: "var(--mark-accent)", stroke: "var(--surface)", "stroke-width": 2});
+      g.append(sv("rect", {x: x - 24, y: m.t, width: 48, height: H - m.t - m.b, fill: "transparent"}),
+        sv("line", {x1: x, x2: x, y1: Y(h.mean_cents + ci), y2: Y(h.mean_cents - ci), stroke: "var(--mark-accent)", "stroke-width": 2, "stroke-opacity": .45, "stroke-linecap": "round"}), dot,
+        sv("text", {class: "tick", x, y: H - 8, "text-anchor": "middle"}, h.seconds >= 60 ? h.seconds / 60 + " min" : h.seconds + "s"));
+      const show = () => { dot.setAttribute("r", 6); tip.show(x, Y(h.mean_cents), () => [el("strong", {}, (h.mean_cents > 0 ? "+" : "") + h.mean_cents.toFixed(3) + "¢ drift"),
+        el("div", {}, "±" + ci.toFixed(3) + "¢ · " + count(h.fills) + " fills"), el("div", {}, pct(h.against_share) + " moved against the maker")]); };
+      const hide = () => { dot.setAttribute("r", 5); tip.hide(); };
+      g.addEventListener("pointerenter", show); g.addEventListener("pointerleave", hide);
+      g.addEventListener("focus", show); g.addEventListener("blur", hide);
+      svg.append(g);
+    });
+    box.prepend(svg);
+  });
+  return box;
+}
+
+function adverseTable(a) {
+  return el("div", {class: "tablewrap", style: "margin-top:12px"}, el("table", {},
+    el("thead", {}, el("tr", {}, el("th", {}, "After"), ["Fills", "Mean drift", "±95%", "Moved against", "vs rebate"].map(h => el("th", {class: "r"}, h)))),
+    el("tbody", {}, a.horizons.map(h => {
+      const ci = 1.96 * h.stderr_cents;
+      const vs = !h.fills ? "—" : h.mean_cents - ci > a.rebate_cents ? "clearly above" : h.mean_cents + ci < a.rebate_cents ? "clearly below" : "can't tell";
+      return el("tr", {}, el("td", {}, h.seconds >= 60 ? h.seconds / 60 + " min" : h.seconds + "s"), el("td", {class: "r num"}, count(h.fills)),
+        el("td", {class: "r num"}, h.fills ? (h.mean_cents > 0 ? "+" : "") + h.mean_cents.toFixed(3) + "¢" : "—"),
+        el("td", {class: "r num"}, h.fills ? "±" + ci.toFixed(3) + "¢" : "—"), el("td", {class: "r num"}, h.fills ? pct(h.against_share) : "—"), el("td", {class: "r"}, vs));
+    }))));
+}
+
 // ---------- analyses (lead-lag, longshot) ----------
 const ANALYSIS = {
   leadlag: {name: "Lead-lag", q: "Does one exchange's price move before the other's?"},
@@ -660,7 +741,7 @@ function analysesSection(runs) {
     el("thead", {}, el("tr", {}, ["Finished", "Label", "Analysis", "Data", "Result"].map(h => el("th", {}, h)))),
     el("tbody", {}, runs.map(r => el("tr", {class: "link", tabindex: "0", "aria-label": "Open run " + r.id,
       onclick: () => open(r), onkeydown: e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(r); } }},
-      el("td", {}, when(r.finished_at)), el("td", {}, r.label || "—"), el("td", {}, analysisBadge(r.kind)), el("td", {}, dataSpan(r)),
+      el("td", {}, when(r.finished_at)), el("td", {}, runName(r)), el("td", {}, analysisBadge(r.kind)), el("td", {}, dataSpan(r)),
       el("td", {}, r.kind === "leadlag" ? `${r.kalshi_leads}/${r.poly_leads}/${r.contemporaneous} of ${r.analyzed} (K/P/together)`
         : `${r.clear_buckets}/${r.solid_buckets} clear · ${r.markets} markets`)))))));
   return out;
