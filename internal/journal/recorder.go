@@ -185,3 +185,56 @@ func (r *Recorder) WriteTrade(venue string, line []byte, ts time.Time) error {
 	}
 	return f.writeLine(line)
 }
+
+// Stream is one extra hourly-rotated gzip JSONL stream under dir/<name>/, one
+// file per prefix per hour ("<prefix>-<YYYY-MM-DDTHH>.jsonl.gz"), for feeds
+// recorded beside the venues' (e.g. live game events). Safe for concurrent use.
+type Stream struct {
+	dir   string
+	mu    sync.Mutex
+	files map[string]*rotFile
+}
+
+// NewStream creates dir/name eagerly, so a permissions problem fails at startup.
+func NewStream(dir, name string) (*Stream, error) {
+	d := filepath.Join(dir, name)
+	if err := os.MkdirAll(d, 0o750); err != nil {
+		return nil, err
+	}
+	return &Stream{dir: d, files: map[string]*rotFile{}}, nil
+}
+
+// Write appends one JSON line to prefix's file for ts's hour.
+func (s *Stream) Write(prefix string, line []byte, ts time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	hour := ts.UTC().Truncate(time.Hour)
+	f := s.files[prefix]
+	if f == nil || !f.hour.Equal(hour) {
+		if f != nil {
+			if err := f.close(); err != nil {
+				return err
+			}
+		}
+		nf, err := openRot(filepath.Join(s.dir, fmt.Sprintf("%s-%s.jsonl.gz", prefix, hour.Format("2006-01-02T15"))), hour)
+		if err != nil {
+			return err
+		}
+		s.files[prefix], f = nf, nf
+	}
+	return f.writeLine(line)
+}
+
+// Close flushes and closes every open file. Idempotent.
+func (s *Stream) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var firstErr error
+	for k, f := range s.files {
+		if err := f.close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+		delete(s.files, k)
+	}
+	return firstErr
+}

@@ -1,0 +1,45 @@
+# Records live MLB game events beside the predbot market data, for price studies:
+# schedule/status, in-game state, every completed play, and MLB's per-at-bat
+# win probability -> <data>/games/mlb-<YYYY-MM-DDTHH>.jsonl.gz. Reads MLB's
+# public Stats API only; never touches a venue or the live trader.
+#
+# Runs on the PI (not the VM): the data lands in the backup tree, so the nightly
+# VM->Pi rsync and the Pi->arch rsync carry it with everything else.
+# Install (santiago shell):
+#   go build -o /home/santiago/gomu-apps/predbot/games ./cmd/games   (from the repo)
+#   mkdir -p /home/santiago/backups/predbot/data/games
+#   sudo cp systemd/predbot-games.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now predbot-games.service
+[Unit]
+Description=Record live MLB game events for predbot price studies
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=santiago
+Group=santiago
+WorkingDirectory=/home/santiago/gomu-apps/predbot
+ExecStart=/home/santiago/gomu-apps/predbot/games -data /home/santiago/backups/predbot/data
+Restart=on-failure
+RestartSec=30
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=false
+# Must exist before start (else 226/NAMESPACE); see the install steps above.
+ReadWritePaths=/home/santiago/backups/predbot/data/games
+InaccessiblePaths=-/home/santiago/.ssh
+InaccessiblePaths=-/home/santiago/.claude
+InaccessiblePaths=-/home/santiago/.config
+InaccessiblePaths=-/home/santiago/.gnupg
+InaccessiblePaths=-/home/santiago/.aws
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictRealtime=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

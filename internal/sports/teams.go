@@ -14,7 +14,7 @@ import "strings"
 // abbreviations, city names) to a single canonical abbreviation. Keys are
 // lower-cased. Add NFL/NBA tables the same way when those seasons matter.
 var mlbCanon = map[string]string{
-	"ari": "ARI", "arizona": "ARI", "diamondbacks": "ARI", "dbacks": "ARI",
+	"ari": "ARI", "az": "ARI", "arizona": "ARI", "diamondbacks": "ARI", "dbacks": "ARI",
 	"atl": "ATL", "atlanta": "ATL", "braves": "ATL",
 	"bal": "BAL", "baltimore": "BAL", "orioles": "BAL",
 	"bos": "BOS", "boston": "BOS", "red sox": "BOS",
@@ -94,6 +94,11 @@ var canonByLeague = map[string]map[string]string{
 
 // canonTeam normalizes a raw team code or name to its canonical abbreviation for
 // the league. Returns "" if the league is unknown or the team can't be matched.
+// CanonTeam maps a team code or name (any source's spelling) to the code used
+// in canonical market ids, or "" if unknown. MLB's Stats API writes Arizona as
+// "AZ" and the Athletics as "ATH"; both resolve here.
+func CanonTeam(league, raw string) string { return canonTeam(league, raw) }
+
 func canonTeam(league, raw string) string {
 	table, ok := canonByLeague[strings.ToLower(league)]
 	if !ok {
