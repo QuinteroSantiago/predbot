@@ -26,7 +26,11 @@ type TradingOpts struct {
 	MaxSkew    int64                // ns; skip a pair if the books are further apart
 	Resolution map[string]time.Time // canonical -> resolution date (§10.4)
 	Maker      bool                 // rest one leg instead of taking both
-	Spread     bool                 // sample cross-venue spread every 5 min per market
+	// RestWait cancels a maker rest that hasn't filled after this long, as the
+	// live trader does (-rest-wait); a partial fill by then is hedged, and an
+	// unfilled rest frees the market to be tried again. 0 = rests never expire.
+	RestWait time.Duration
+	Spread   bool // sample cross-venue spread every 5 min per market
 
 	// Adverse, when set, is fed every paired book plus the trade prints up to
 	// each snapshot's time. Trades must be sorted by TsRecv. The trade cursor is
@@ -42,11 +46,13 @@ type TradingOpts struct {
 // TradingResult is everything the trading replay produces. Report is not yet
 // finalized; the caller runs Finalize with the resolution dates and hurdle.
 type TradingResult struct {
-	Report      *Report
-	Opps        []Opportunity
-	Spread      []SpreadPoint
-	RestsPlaced int
-	RestsFilled int
+	Report         *Report
+	Opps           []Opportunity
+	Spread         []SpreadPoint
+	RestsPlaced    int
+	RestsFilled    int // filled in full before any timeout
+	RestsPartial   int // timed out part-filled; the filled part was hedged
+	RestsCancelled int // timed out with nothing filled
 }
 
 // shard holds the replay state for a set of markets. Every field that changes
@@ -71,12 +77,23 @@ type shard struct {
 	// Maker mode: track resting orders and whether the market ever crossed them.
 	resting    map[string]*RestingFill
 	restTaking map[string]core.Intent // the leg we'll take once the rest fills
-	lastBucket map[string]int64       // 5-min spread sampling per market
+	restAt     map[string]int64       // when each rest was placed (ns)
+	// hedges waiting out the latency between a rest filling and the taking leg
+	// landing; settled against the books as they are when it's due.
+	hedges     map[string]*pendingHedge
+	lastBucket map[string]int64 // 5-min spread sampling per market
 	advIdx     int
 
-	opps                     []Opportunity
-	spread                   []SpreadPoint
-	restsPlaced, restsFilled int
+	opps                                                   []Opportunity
+	spread                                                 []SpreadPoint
+	restsPlaced, restsFilled, restsPartial, restsCancelled int
+}
+
+type pendingHedge struct {
+	rest, take core.Intent
+	qty        core.Qty
+	filledAt   int64 // ns: dates the pair
+	due        int64 // ns: when the hedge lands
 }
 
 func newShard(markets []config.Market, opts TradingOpts) *shard {
@@ -90,6 +107,8 @@ func newShard(markets []config.Market, opts TradingOpts) *shard {
 		active:     map[string]bool{},
 		resting:    map[string]*RestingFill{},
 		restTaking: map[string]core.Intent{},
+		restAt:     map[string]int64{},
+		hedges:     map[string]*pendingHedge{},
 		lastBucket: map[string]int64{},
 	}
 }
@@ -99,6 +118,12 @@ func (sh *shard) tick(s core.BookSnapshot) {
 	o := &sh.opts
 	now := s.TsRecv
 	sh.sim.Advance(now, sh.bm) // settle fills whose t+Δ has arrived
+	// Like Advance, these run before this snapshot's book update: a market's
+	// book only changes on its own snapshots, so whichever tick first passes a
+	// deadline sees the same book — and a shard's result doesn't depend on
+	// which other markets share it.
+	sh.settleHedges(now)
+	sh.expireRests(now)
 	canonical, ok := sh.bm.Update(s)
 	if !ok {
 		return // not in markets.yaml (§12)
@@ -133,11 +158,10 @@ func (sh *shard) tick(s core.BookSnapshot) {
 	if r, ok := sh.resting[canonical]; ok {
 		if r.Observe(books[r.Intent.Venue]) > 0 && r.Complete() {
 			sh.restsFilled++
-			// The rest actually filled — now book the pair's real economics:
-			// maker fee (a rebate on Poly) on the rest, taker on the hedge.
-			sh.sim.SettleMakerPair(canonical, r.Intent, sh.restTaking[canonical], r.Filled, now, sh.bm)
-			delete(sh.resting, canonical)
-			delete(sh.restTaking, canonical)
+			// The rest actually filled — hedge it: maker fee (a rebate on Poly)
+			// on the rest, taker on the hedge, once the latency has passed.
+			sh.hedge(canonical, r.Intent, sh.restTaking[canonical], r.Filled, now)
+			sh.clearRest(canonical)
 		}
 	}
 
@@ -163,6 +187,7 @@ func (sh *shard) tick(s core.BookSnapshot) {
 				if _, dup := sh.resting[canonical]; !dup {
 					sh.resting[canonical] = NewRestingFill(legs[ri], books[legs[ri].Venue])
 					sh.restTaking[canonical] = legs[1-ri] // the other leg is taken on fill
+					sh.restAt[canonical] = now
 					sh.restsPlaced++
 				}
 			} else {
@@ -178,8 +203,64 @@ func (sh *shard) tick(s core.BookSnapshot) {
 	}
 }
 
+// hedge books the taking leg of a rest filled at time at: at once with no
+// latency (the original model), else when the latency has passed.
+func (sh *shard) hedge(canonical string, rest, take core.Intent, qty core.Qty, at int64) {
+	lat := int64(sh.opts.LatencyMS) * int64(time.Millisecond)
+	if lat == 0 {
+		sh.sim.SettleMakerPair(canonical, rest, take, qty, at, sh.bm)
+		return
+	}
+	sh.hedges[canonical] = &pendingHedge{rest: rest, take: take, qty: qty, filledAt: at, due: at + lat}
+}
+
+func (sh *shard) settleHedges(now int64) {
+	for c, h := range sh.hedges {
+		if now >= h.due {
+			sh.sim.SettleMakerPair(c, h.rest, h.take, h.qty, h.filledAt, sh.bm)
+			delete(sh.hedges, c)
+		}
+	}
+}
+
+// expireRests cancels rests older than RestWait, as the live trader does.
+func (sh *shard) expireRests(now int64) {
+	wait := int64(sh.opts.RestWait)
+	if wait <= 0 {
+		return
+	}
+	for c, r := range sh.resting {
+		if now-sh.restAt[c] < wait {
+			continue
+		}
+		if r.Filled > 0 {
+			// Dated at the deadline, not at whichever tick noticed it: that tick
+			// depends on which other markets share the shard.
+			sh.restsPartial++
+			sh.hedge(c, r.Intent, sh.restTaking[c], r.Filled, sh.restAt[c]+wait)
+		} else {
+			sh.restsCancelled++
+			// Abandoned cleanly with no position: the market may be tried again.
+			delete(sh.entered, c)
+		}
+		sh.clearRest(c)
+	}
+}
+
+func (sh *shard) clearRest(c string) {
+	delete(sh.resting, c)
+	delete(sh.restTaking, c)
+	delete(sh.restAt, c)
+}
+
 // finish settles anything still pending at end of replay.
-func (sh *shard) finish() { sh.sim.Flush(sh.bm) }
+func (sh *shard) finish() {
+	for c, h := range sh.hedges {
+		sh.sim.SettleMakerPair(c, h.rest, h.take, h.qty, h.filledAt, sh.bm)
+		delete(sh.hedges, c)
+	}
+	sh.sim.Flush(sh.bm)
+}
 
 // RunTrading makes the trading pass over the recorded archive: every snapshot
 // goes through the Book Manager, the strategy and the SimExecutor in TsRecv
@@ -308,6 +389,8 @@ func mergeShards(shards []*shard) *TradingResult {
 		res.Spread = append(res.Spread, sh.spread...)
 		res.RestsPlaced += sh.restsPlaced
 		res.RestsFilled += sh.restsFilled
+		res.RestsPartial += sh.restsPartial
+		res.RestsCancelled += sh.restsCancelled
 	}
 	sort.SliceStable(res.Opps, func(i, j int) bool {
 		a, b := res.Opps[i], res.Opps[j]

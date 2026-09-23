@@ -172,3 +172,49 @@ func TestShardedTradingMatchesSerial(t *testing.T) {
 		}
 	}
 }
+
+// Rest expiry, as the live trader does it: every rest ends filled, part-filled
+// (hedged), cancelled (market retried) or still open at the end; a short wait
+// means more rests (cancelled markets are retried); no wait means no expiry;
+// and sharding still changes nothing.
+func TestMakerRestWait(t *testing.T) {
+	dir, markets := writeTradingArchive(t, 30, 15_000) // 5ms steps: 75s of data
+	res := map[string]time.Time{}
+	for _, m := range markets {
+		res[m.Canonical], _ = time.Parse("2006-01-02", m.ResolutionDate)
+	}
+	run := func(wait time.Duration, shards int) *TradingResult {
+		t.Helper()
+		r, err := runTrading(dir, Window{}, markets, TradingOpts{
+			Fees: Fees{KalshiMult: 0.07}, LatencyMS: 150,
+			Strategy: strategy.Config{MinEdge: 100, MaxClip: 5000},
+			MaxAge:   int64(5 * time.Second), MaxSkew: int64(time.Second),
+			Resolution: res, Maker: true, RestWait: wait,
+		}, shards)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Report.Finalize(res, 0.04)
+		return r
+	}
+	never, short := run(0, 1), run(2*time.Second, 1)
+	if never.RestsCancelled != 0 || never.RestsPartial != 0 {
+		t.Errorf("no rest wait, yet %d cancelled / %d partial", never.RestsCancelled, never.RestsPartial)
+	}
+	if short.RestsCancelled == 0 {
+		t.Fatalf("2s rest wait cancelled nothing (placed %d, filled %d)", short.RestsPlaced, short.RestsFilled)
+	}
+	if short.RestsPlaced <= never.RestsPlaced {
+		t.Errorf("cancelled markets weren't retried: %d rests with a 2s wait vs %d with none", short.RestsPlaced, never.RestsPlaced)
+	}
+	// Every rest is accounted for: at most one per market can still be open.
+	if open := short.RestsPlaced - short.RestsFilled - short.RestsPartial - short.RestsCancelled; open < 0 || open > len(markets) {
+		t.Errorf("rest bookkeeping off: placed %d = filled %d + partial %d + cancelled %d + %d open",
+			short.RestsPlaced, short.RestsFilled, short.RestsPartial, short.RestsCancelled, open)
+	}
+	for _, n := range []int{2, 5, 16} {
+		if got := run(2*time.Second, n); !reflect.DeepEqual(got, short) {
+			t.Errorf("rest wait, shards=%d differs from serial\n got %s\nwant %s", n, got.Report, short.Report)
+		}
+	}
+}

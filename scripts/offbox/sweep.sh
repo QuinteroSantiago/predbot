@@ -3,6 +3,7 @@
 #
 #   ./sweep.sh sensitivity [maker|taker]   # baseline + one setting pushed at a time
 #   ./sweep.sh weekly                      # maker and taker, one run per week of data
+#   ./sweep.sh restwait                    # maker: how long should a rest sit before cancel?
 #   ./sweep.sh status <preset>             # what's done, what's running
 #
 # Each run writes sweep-<preset>/<name>.{txt,log,json}; publish the JSONs from
@@ -43,6 +44,19 @@ plan() {
       echo "$mode floor 20 contracts|$base -min-depth 20"
       echo "$mode Kalshi fees +50%|$base -kalshi-fee-mult 0.105"
       ;;
+    restwait)
+      # How long a maker rest should sit (-rest-wait), with the hedge landing
+      # -latency-ms after the fill. The first run is the old model — rests never
+      # expire and the hedge is instant — as the reference the others are
+      # measured against. Clips follow backtest.max_clip (50, the live cap).
+      echo "old model: rest forever, instant hedge|-maker -rest-wait 0 -latency-ms 0"
+      echo "rest 30s (live today)|-maker -rest-wait 30s"
+      echo "rest 2m|-maker -rest-wait 2m"
+      echo "rest 10m|-maker -rest-wait 10m"
+      echo "rest until filled|-maker -rest-wait 0"
+      echo "rest 30s, hedge 1s late|-maker -rest-wait 30s -latency-ms 1000"
+      echo "rest 2m, hedge 1s late|-maker -rest-wait 2m -latency-ms 1000"
+      ;;
     weekly)
       # Week boundaries from the recorded hour stamps (UTC days).
       local first last
@@ -59,7 +73,7 @@ plan() {
         from="$to"; n=$((n + 1))
       done
       ;;
-    *) echo "usage: $0 sensitivity [maker|taker] | weekly | status <preset>" >&2; exit 2 ;;
+    *) echo "usage: $0 sensitivity [maker|taker] | weekly | restwait | status <preset>" >&2; exit 2 ;;
   esac
 }
 
@@ -67,6 +81,7 @@ label_for() {
   case "$preset" in
     sensitivity) echo "robustness sweep" ;;
     weekly) echo "weekly split" ;;
+    restwait) echo "rest-wait sweep" ;;
   esac
 }
 

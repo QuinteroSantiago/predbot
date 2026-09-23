@@ -73,6 +73,7 @@ type RunParams struct {
 	KalshiFeeMult     float64 `json:"kalshi_fee_mult"`
 	MaxSkewMS         int64   `json:"max_skew_ms"`
 	MaxBookAgeMS      int64   `json:"max_book_age_ms"`
+	RestWaitS         float64 `json:"rest_wait_s"` // maker rest timeout; 0 = none
 }
 
 // ReportSummary is Report in JSON units.
@@ -101,8 +102,10 @@ type ReportSummary struct {
 
 // MakerSummary is the maker-mode rest accounting.
 type MakerSummary struct {
-	RestsPlaced int `json:"rests_placed"`
-	RestsFilled int `json:"rests_filled"`
+	RestsPlaced    int `json:"rests_placed"`
+	RestsFilled    int `json:"rests_filled"`
+	RestsPartial   int `json:"rests_partial"`   // timed out part-filled; hedged
+	RestsCancelled int `json:"rests_cancelled"` // timed out unfilled
 }
 
 // PairOutcome is one settled pair.
@@ -164,7 +167,8 @@ func NewRunReport(meta RunMeta, res *TradingResult, maker bool) RunReport {
 		Pairs:         make([]PairOutcome, 0, len(r.pairs)),
 	}
 	if maker {
-		out.Maker = &MakerSummary{RestsPlaced: res.RestsPlaced, RestsFilled: res.RestsFilled}
+		out.Maker = &MakerSummary{RestsPlaced: res.RestsPlaced, RestsFilled: res.RestsFilled,
+			RestsPartial: res.RestsPartial, RestsCancelled: res.RestsCancelled}
 	}
 
 	byMarket := map[string]*MarketOutcome{}

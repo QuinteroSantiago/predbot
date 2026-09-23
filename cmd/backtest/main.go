@@ -49,7 +49,8 @@ func main() {
 	spreadPath := flag.String("export-spread", "", "write sampled cross-venue spread to this JSON file")
 	from := flag.String("from", "", "replay from this time on (UTC; 2006-01-02 or RFC 3339); combines with -days/-hours")
 	to := flag.String("to", "", "replay up to, not including, this time (UTC; same formats)")
-	latencyMS := flag.Int("latency-ms", -1, "override backtest.latency_ms, the simulated fill delay (-1 = config)")
+	latencyMS := flag.Int("latency-ms", -1, "override backtest.latency_ms, the simulated fill delay; in maker mode also the delay before the hedge lands (-1 = config)")
+	restWait := flag.Duration("rest-wait", 30*time.Second, "maker: cancel a rest that hasn't filled after this long, as the live trader does (0 = never)")
 	minEdge := flag.Float64("min-edge", -1, "override backtest.min_edge, in cents per contract (-1 = config)")
 	minDepth := flag.Float64("min-depth", -1, "override backtest.min_depth, in contracts on each leg's top of book (0 = off, -1 = config)")
 	feeMult := flag.Float64("kalshi-fee-mult", -1, "override backtest.kalshi_fee_mult (-1 = config)")
@@ -182,6 +183,7 @@ func main() {
 				KalshiFeeMult:     b.KalshiFeeMult,
 				MaxSkewMS:         b.MaxSkewMS,
 				MaxBookAgeMS:      b.MaxBookAgeMS,
+				RestWaitS:         restWait.Seconds(),
 			},
 			DataFrom:   time.Unix(0, firstTs).UTC(),
 			DataTo:     time.Unix(0, lastTs).UTC(),
@@ -442,6 +444,7 @@ func main() {
 		Resolution: map[string]time.Time{},
 		Maker:      *maker,
 		Spread:     *spreadPath != "",
+		RestWait:   *restWait,
 	}
 	if *adverse {
 		opts.Adverse = backtest.NewAdverseSelection()
@@ -522,8 +525,15 @@ func main() {
 			pct = 100 * float64(restsFilled) / float64(restsPlaced)
 		}
 		fmt.Printf("MAKER MODE: rests placed %d, rests FILLED %d (%.1f%%)\n"+
-			"  (a rest only fills when the market crosses it; unfilled rests earn nothing)\n\n",
+			"  (a rest only fills when the market crosses it; unfilled rests earn nothing)\n",
 			restsPlaced, restsFilled, pct)
+		if *restWait > 0 {
+			fmt.Printf("  rest wait %s: %d cancelled unfilled (market retried later), %d part-filled and hedged\n",
+				*restWait, res.RestsCancelled, res.RestsPartial)
+		} else {
+			fmt.Printf("  rest wait: none — rests stay until filled\n")
+		}
+		fmt.Println()
 	}
 	fmt.Print(rep.String())
 }
