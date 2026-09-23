@@ -13,7 +13,6 @@ import (
 	"predbot/internal/config"
 	"predbot/internal/core"
 	"predbot/internal/strategy"
-	"predbot/internal/venue"
 )
 
 // TradingOpts configures the trading replay (design §10.1): the cross-venue
@@ -33,10 +32,10 @@ type TradingOpts struct {
 	Spread   bool // sample cross-venue spread every 5 min per market
 
 	// Adverse, when set, is fed every paired book plus the trade prints up to
-	// each snapshot's time. Trades must be sorted by TsRecv. The trade cursor is
+	// each snapshot's time, from Trades (in TsRecv order). The trade cursor is
 	// global across markets, so adverse runs need the whole stream in one place.
 	Adverse *AdverseSelection
-	Trades  []venue.Trade
+	Trades  *TradeStream
 
 	// Progress, when set, is incremented once per replayed snapshot (mapped or
 	// not), so it counts toward the same total as the id-scan pass.
@@ -82,7 +81,6 @@ type shard struct {
 	// landing; settled against the books as they are when it's due.
 	hedges     map[string]*pendingHedge
 	lastBucket map[string]int64 // 5-min spread sampling per market
-	advIdx     int
 
 	opps                                                   []Opportunity
 	spread                                                 []SpreadPoint
@@ -145,12 +143,15 @@ func (sh *shard) tick(s core.BookSnapshot) {
 	if o.Adverse != nil {
 		o.Adverse.ObserveBook(canonical, s)
 		// Feed any trades that happened up to this snapshot's time.
-		for sh.advIdx < len(o.Trades) && o.Trades[sh.advIdx].TsRecv <= s.TsRecv {
-			t := o.Trades[sh.advIdx]
+		for o.Trades != nil {
+			t, more := o.Trades.Peek()
+			if !more || t.TsRecv > s.TsRecv {
+				break
+			}
 			if c, ok2 := sh.bm.Canonical(t.Venue, t.VenueID); ok2 {
 				o.Adverse.ObserveTrade(c, t)
 			}
-			sh.advIdx++
+			o.Trades.Next()
 		}
 	}
 

@@ -401,18 +401,23 @@ func main() {
 		if err != nil {
 			slog.Warn("no outcomes; skipping the hold-to-settlement horizon", "err", err, "path", op)
 		}
-		trades, err := backtest.LoadTrades(dir, w)
-		if err != nil || len(trades) == 0 {
+		trades, err := backtest.OpenTradeStream(dir, w)
+		if err != nil || trades.Empty() {
 			slog.Warn("no trade prints in this window; only the price-move trigger will run", "err", err)
 		}
 		ms := backtest.NewMoveStudy(fees, outcomes)
 		bar := countBar(*showProgress, "pass 2/2 moves", nSnaps)
-		next := 0
+		nTrades := 0
 		_ = backtest.StreamReplay(dir, w, func(s core.BookSnapshot) error {
 			bar.Add(1)
-			for next < len(trades) && trades[next].TsRecv <= s.TsRecv {
-				ms.ObserveTrade(trades[next])
-				next++
+			for trades != nil {
+				t, more := trades.Peek()
+				if !more || t.TsRecv > s.TsRecv {
+					break
+				}
+				ms.ObserveTrade(t)
+				trades.Next()
+				nTrades++
 			}
 			ms.ObserveBook(s)
 			return nil
@@ -420,7 +425,7 @@ func main() {
 		bar.Finish()
 		span := time.Duration(lastTs-firstTs) * time.Nanosecond
 		fmt.Printf("Replayed %d snapshots and %d trade prints over %s across %d markets\n\n",
-			nSnaps, len(trades), span.Round(time.Minute), len(bm.Canonicals()))
+			nSnaps, nTrades, span.Round(time.Minute), len(bm.Canonicals()))
 		fmt.Print(ms.Report())
 		res := ms.Result()
 		writeReport(backtest.AnalysisReport{Schema: backtest.RunReportSchema,
@@ -450,11 +455,11 @@ func main() {
 		opts.Adverse = backtest.NewAdverseSelection()
 		// Adverse selection is driven by REAL TRADE PRINTS — a book cannot tell a
 		// trade from a cancellation, so books alone cannot answer this.
-		opts.Trades, err = backtest.LoadTrades(dir, w)
+		opts.Trades, err = backtest.OpenTradeStream(dir, w)
 		if err != nil {
-			slog.Warn("trade load failed; adverse selection unavailable", "err", err)
+			slog.Warn("trade prints unreadable; adverse selection unavailable", "err", err)
 		}
-		if len(opts.Trades) == 0 {
+		if opts.Trades == nil || opts.Trades.Empty() {
 			slog.Warn("NO trade prints recorded in this window — adverse selection cannot be measured. " +
 				"The recorder must be running with trade feeds (data/trades/).")
 		}

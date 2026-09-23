@@ -33,7 +33,7 @@ type AdverseSelection struct {
 	Horizons []int64 // seconds
 
 	open   map[string][]*probe // per market, in time order
-	closed map[int64][]float64 // horizon -> adverse drift samples, cents
+	closed map[int64]driftAcc  // horizon -> running totals of adverse drift, cents
 	mids   map[string]float64  // latest mid per market, cents
 	trades int
 	minH   int64
@@ -59,7 +59,7 @@ func NewAdverseSelection(horizons ...int64) *AdverseSelection {
 	return &AdverseSelection{
 		Horizons: horizons,
 		open:     map[string][]*probe{},
-		closed:   map[int64][]float64{},
+		closed:   map[int64]driftAcc{},
 		mids:     map[string]float64{},
 		minH:     minH,
 	}
@@ -104,7 +104,14 @@ func (a *AdverseSelection) ObserveBook(canonical string, b core.BookSnapshot) {
 				if p.side == core.SellYes {
 					d = m - p.midAtFill
 				}
-				a.closed[h] = append(a.closed[h], d)
+				c := a.closed[h]
+				c.n++
+				c.sum += d
+				c.sumSq += d * d
+				if d > 0 {
+					c.worse++
+				}
+				a.closed[h] = c
 				p.remaining[h] = false
 			}
 			if p.remaining[h] {
@@ -170,30 +177,29 @@ type AdverseHorizon struct {
 	AgainstShare float64 `json:"against_share"` // fraction of fills the price moved against
 }
 
+// driftAcc keeps running totals rather than every sample: a month of prints
+// produces tens of millions of samples, and mean, standard error and the
+// against-share need only these.
+type driftAcc struct {
+	n, worse   int
+	sum, sumSq float64
+}
+
 // Result computes the adverse-selection summary.
 func (a *AdverseSelection) Result() AdverseResult {
 	res := AdverseResult{Trades: a.trades, RebateCents: AdverseRebateCents}
 	hs := append([]int64{}, a.Horizons...)
 	sort.Slice(hs, func(i, j int) bool { return hs[i] < hs[j] })
 	for _, h := range hs {
-		xs := a.closed[h]
-		hr := AdverseHorizon{Seconds: h, Fills: len(xs)}
-		if len(xs) > 0 {
-			var sum, worse float64
-			for _, x := range xs {
-				sum += x
-				if x > 0 {
-					worse++
-				}
-			}
-			n := float64(len(xs))
-			hr.MeanCents, hr.AgainstShare = sum/n, worse/n
-			if len(xs) > 1 {
-				var ss float64
-				for _, x := range xs {
-					ss += (x - hr.MeanCents) * (x - hr.MeanCents)
-				}
-				hr.StdErrCents = math.Sqrt(ss/(n-1)) / math.Sqrt(n)
+		c := a.closed[h]
+		hr := AdverseHorizon{Seconds: h, Fills: c.n}
+		if c.n > 0 {
+			n := float64(c.n)
+			hr.MeanCents, hr.AgainstShare = c.sum/n, float64(c.worse)/n
+			if c.n > 1 {
+				// Sample variance from the totals: (Σx² − n·mean²)/(n−1).
+				v := math.Max((c.sumSq-n*hr.MeanCents*hr.MeanCents)/(n-1), 0)
+				hr.StdErrCents = math.Sqrt(v) / math.Sqrt(n)
 			}
 		}
 		res.Horizons = append(res.Horizons, hr)
