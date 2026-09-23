@@ -12,6 +12,7 @@
 #   ./run-backtest.sh outcomereg # logistic regression of who won; out-of-sample vs the market
 #   ./run-backtest.sh fairvalue  # fair value from both prices; bet where one strays, out of sample
 #   ./run-backtest.sh analyses   # every read-only analysis above, one after another
+#   ./run-backtest.sh all        # maker, taker, adverse, then every analysis, one after another
 #   ./run-backtest.sh stop       # stop EVERYTHING: the analyses chain, sweeps, and any run
 #
 # Lives in scripts/offbox/ in the predbot repo; copy it next to the bt-new binary
@@ -42,7 +43,7 @@ if [[ "$mode" == stop ]]; then
     rm -f "$f"
   done
   # An analyses chain started before pid files existed has no analyses.pid.
-  if pkill -f '^bash -c for m in leadlag longshot' 2>/dev/null; then
+  if pkill -f '^bash -c for m in (leadlag longshot|\$LIST)' 2>/dev/null; then
     echo "stopped analyses chain"
     stopped=1
   fi
@@ -56,13 +57,21 @@ if [[ "$mode" == stop ]]; then
   exit 0
 fi
 
-# All the read-only analyses in sequence (each uses every core), detached.
-if [[ "$mode" == analyses ]]; then
-  setsid nohup bash -c 'for m in leadlag longshot moves spreadmr autocorr outcomereg fairvalue; do
+# A chain of runs in sequence (each uses every core), detached: "analyses" is
+# the read-only studies, "all" adds the three strategy replays in front.
+if [[ "$mode" == analyses || "$mode" == all ]]; then
+  if [[ -f analyses.pid ]] && kill -0 "$(cat analyses.pid)" 2>/dev/null; then
+    echo "a chain is already running (pid $(cat analyses.pid)); ./run-backtest.sh stop first"
+    exit 1
+  fi
+  list="leadlag longshot moves spreadmr autocorr outcomereg fairvalue"
+  [[ "$mode" == all ]] && list="maker taker adverse $list"
+  LIST="$list" setsid nohup bash -c 'for m in $LIST; do
       echo "== $m $(date -u +%FT%TZ)"; RUN_FOREGROUND=1 ./run-backtest.sh "$m" || echo "   $m failed or skipped"
     done; echo "ALL DONE $(date -u +%FT%TZ)"; rm -f analyses.pid' > analyses.log 2>&1 < /dev/null &
   echo $! > analyses.pid
-  echo "running all analyses in sequence (pid $!); progress: tail -f $PWD/analyses.log"
+  echo "running $(wc -w <<< "$list") runs in sequence (pid $!): $list"
+  echo "progress: tail -f $PWD/analyses.log   (the current run: tail -F $PWD/*-full.log)"
   exit 0
 fi
 case "$mode" in
@@ -101,7 +110,7 @@ case "$mode" in
       exit 1
     fi
     ;;
-  *) echo "usage: $0 maker|taker|longshot|leadlag|adverse|moves|spreadmr|autocorr|outcomereg|fairvalue|analyses|stop" >&2; exit 2 ;;
+  *) echo "usage: $0 maker|taker|longshot|leadlag|adverse|moves|spreadmr|autocorr|outcomereg|fairvalue|analyses|all|stop" >&2; exit 2 ;;
 esac
 
 pidfile="$mode-full.pid"
