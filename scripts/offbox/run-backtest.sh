@@ -10,6 +10,8 @@
 #   ./run-backtest.sh spreadmr   # Kalshi−Poly gap as mean-reverting: half-life, and trading it
 #   ./run-backtest.sh autocorr   # per venue: do price changes continue or undo, 5s–10m?
 #   ./run-backtest.sh outcomereg # logistic regression of who won; out-of-sample vs the market
+#   ./run-backtest.sh fairvalue  # fair value from both prices; bet where one strays, out of sample
+#   ./run-backtest.sh analyses   # every read-only analysis above, one after another
 #
 # Lives in scripts/offbox/ in the predbot repo; copy it next to the bt-new binary
 # and the data/ directory on the compute box (see sweep.sh for batches).
@@ -23,10 +25,23 @@ cd "$(dirname "$0")"
 
 mode="${1:-}"
 json=()
+
+# All the read-only analyses in sequence (each uses every core), detached.
+if [[ "$mode" == analyses ]]; then
+  setsid nohup bash -c 'for m in leadlag longshot moves spreadmr autocorr outcomereg fairvalue; do
+      echo "== $m $(date -u +%FT%TZ)"; RUN_FOREGROUND=1 ./run-backtest.sh "$m" || echo "   $m failed or skipped"
+    done; echo "ALL DONE $(date -u +%FT%TZ)"' > analyses.log 2>&1 < /dev/null &
+  echo "running all analyses in sequence (pid $!); progress: tail -f $PWD/analyses.log"
+  exit 0
+fi
 case "$mode" in
   maker)    flags=(-maker); json=(-label "full archive" -report-json "$mode-full.json") ;;
   taker)    flags=();       json=(-label "full archive" -report-json "$mode-full.json") ;;
   leadlag)  flags=(-leadlag); json=(-label "full archive" -report-json "$mode-full.json") ;;
+  fairvalue)
+    flags=(-fairvalue); json=(-label "full archive" -report-json "$mode-full.json")
+    [[ -s data/outcomes.jsonl ]] || { echo "fairvalue needs data/outcomes.jsonl; re-rsync the Pi's ~/backups/predbot/data/." >&2; exit 1; }
+    ;;
   outcomereg)
     flags=(-outcomereg); json=(-label "full archive" -report-json "$mode-full.json")
     [[ -s data/outcomes.jsonl ]] || { echo "outcomereg needs data/outcomes.jsonl; re-rsync the Pi's ~/backups/predbot/data/." >&2; exit 1; }
@@ -55,10 +70,14 @@ case "$mode" in
       exit 1
     fi
     ;;
-  *) echo "usage: $0 maker|taker|longshot|leadlag|adverse|moves|spreadmr|autocorr|outcomereg" >&2; exit 2 ;;
+  *) echo "usage: $0 maker|taker|longshot|leadlag|adverse|moves|spreadmr|autocorr|outcomereg|fairvalue|analyses" >&2; exit 2 ;;
 esac
 
 pidfile="$mode-full.pid"
+if [[ "${RUN_FOREGROUND:-}" == 1 ]]; then
+  exec ./bt-new -config config.yaml -markets markets.yaml -data data "${flags[@]}" "${json[@]}" \
+    > "$mode-full.txt" 2> "$mode-full.log" < /dev/null
+fi
 if [[ -f "$pidfile" ]] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
   echo "a $mode run is already going (pid $(cat "$pidfile")); tail -f $PWD/$mode-full.log"
   exit 1

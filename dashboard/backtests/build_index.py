@@ -118,8 +118,21 @@ def outcomereg_summary(d):
             "cv_diff": diff, "cv_diff_se": se, "cv_n": cv.get("n", 0), "cv_verdict": beats}
 
 
+def fairvalue_summary(d):
+    r = d["fairvalue"]
+    edges = [x for x in r.get("trades") or [] if x["markets"] >= 10 and x["trades"] >= 30 and x["pnl"] - 1.96 * x["pnl_se"] > 0]
+    gain, se = r.get("gain_vs_best", 0), r.get("gain_se", 0)
+    verdict = "beats" if r.get("cv_n") and gain - 1.96 * se > 0 else "worse" if r.get("cv_n") and gain + 1.96 * se < 0 else "ties"
+    return {**base(d["run"]), "note": r.get("note", ""), "markets": r["markets"], "cv_n": r.get("cv_n", 0),
+            "gain_vs_best": gain, "gain_se": se, "best_single": r.get("best_single", ""), "cv_verdict": verdict,
+            "w_kalshi": r.get("w_kalshi", 0), "w_poly": r.get("w_poly", 0), "edges": len(edges),
+            "rules": len(r.get("trades") or [])}
+
+
 def summary(d):
     kind = d["run"].get("kind", "trading")
+    if kind == "fairvalue":
+        return fairvalue_summary(d)
     if kind == "outcomereg":
         return outcomereg_summary(d)
     if kind == "autocorr":

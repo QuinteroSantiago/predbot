@@ -433,6 +433,7 @@ async function showRun(id) {
   if (run.kind === "spreadmr") return showSpreadMR(d);
   if (run.kind === "autocorr") return showAutocorr(d);
   if (run.kind === "outcomereg") return showOutcomeReg(d);
+  if (run.kind === "fairvalue") return showFairValue(d);
   const rep = d.report;
   document.title = (run.label || "Run") + " · " + run.mode + " · Backtest runs";
 
@@ -714,6 +715,7 @@ function adverseTable(a) {
 
 // ---------- analyses (lead-lag, longshot) ----------
 const ANALYSIS = {
+  fairvalue: {name: "Fair value", q: "Combining both exchanges' prices into one fair chance — does it beat either price alone, and does betting where an exchange strays from it pay, on days the model never saw?"},
   outcomereg: {name: "Outcome regression", q: "Does anything — the price itself, the exchange, the league, the spread — predict who wins better than the market's own price, on days the model never saw?"},
   autocorr: {name: "Price momentum / reversion", q: "On one exchange, does a price change predict the next one — does it keep going or undo itself — and does trading that pay after costs?"},
   spreadmr: {name: "Spread mean-reversion", q: "When the Kalshi–Polymarket gap stretches, how fast does it snap back — and does trading the snap-back pay after costs?"},
@@ -726,6 +728,17 @@ const analysisBadge = kind => el("span", {class: "badge"}, el("span", {class: "k
 const fmtSecs = s => !s ? "—" : s < 90 ? Math.round(s) + "s" : s < 5400 ? (s / 60).toFixed(1) + " min" : (s / 3600).toFixed(1) + " h";
 
 const calibRead = c => c.slope - 1.96 * c.slope_se > 1 ? "favorites underpriced" : c.slope + 1.96 * c.slope_se < 1 ? "favorites overpriced" : "calibrated";
+function fairvalueVerdict(r) {
+  if (r.note && !r.cv_n) return r.note.charAt(0).toUpperCase() + r.note.slice(1) + ".";
+  const best = venueName(r.best_single);
+  const lead = r.cv_verdict === "beats" ? `Combining both prices predicts unseen days better than ${best} alone`
+    : r.cv_verdict === "worse" ? `Combining both prices predicts unseen days worse than ${best} alone — the fit doesn't generalize`
+    : `Combining both prices predicts unseen days no better than ${best} alone`;
+  const trade = r.edges ? `${r.edges} of ${r.rules} betting rules clear zero after fees, held to settlement — check they hold across margins and weeks.`
+    : "No betting rule clears zero after fees on held-out days.";
+  return `${lead}. ${trade}`;
+}
+
 function outcomeregVerdict(r) {
   if (r.note && !r.cv_n) return r.note.charAt(0).toUpperCase() + r.note.slice(1) + ".";
   const calib = r.calibration || [];
@@ -780,7 +793,7 @@ function longshotVerdict(r) {
 function analysesSection(runs) {
   const out = [el("h2", {}, "Analyses"),
     el("p", {class: "h2note"}, "Read-only studies of the same recorded data, for ideas beyond arbitrage. The latest of each, then the history.")];
-  const cards = ["outcomereg", "spreadmr", "autocorr", "moves", "longshot", "leadlag"].map(kind => {
+  const cards = ["fairvalue", "outcomereg", "spreadmr", "autocorr", "moves", "longshot", "leadlag"].map(kind => {
     const r = runs.find(x => x.kind === kind);
     if (!r) return null;
     const big = kind === "leadlag"
@@ -789,8 +802,9 @@ function analysesSection(runs) {
       : kind === "spreadmr" ? `half-life ${fmtSecs(r.half_life_s)} · ${r.edges} edge${r.edges === 1 ? "" : "s"} after costs`
       : kind === "autocorr" ? `${r.reversion} reversion · ${r.momentum} momentum · ${r.flat} flat · ${r.edges} edge${r.edges === 1 ? "" : "s"}`
       : kind === "outcomereg" ? (r.cv_n ? `model ${r.cv_verdict === "beats" ? "beats" : r.cv_verdict === "worse" ? "loses to" : "ties"} the market out of sample` : "not enough data")
+      : kind === "fairvalue" ? (r.cv_n ? `fair value ${r.cv_verdict === "beats" ? "beats" : r.cv_verdict === "worse" ? "loses to" : "ties"} the best exchange · ${r.edges} edge${r.edges === 1 ? "" : "s"}` : "not enough data")
       : `${r.clear_buckets} of ${r.solid_buckets} solid buckets show a clear edge`;
-    const verdict = kind === "leadlag" ? leadlagVerdict(r) : kind === "moves" ? movesVerdict(r) : kind === "spreadmr" ? spreadmrVerdict(r) : kind === "autocorr" ? autocorrVerdict(r) : kind === "outcomereg" ? outcomeregVerdict(r) : longshotVerdict(r);
+    const verdict = kind === "leadlag" ? leadlagVerdict(r) : kind === "moves" ? movesVerdict(r) : kind === "spreadmr" ? spreadmrVerdict(r) : kind === "autocorr" ? autocorrVerdict(r) : kind === "outcomereg" ? outcomeregVerdict(r) : kind === "fairvalue" ? fairvalueVerdict(r) : longshotVerdict(r);
     return el("a", {class: "card acard", href: "#run=" + r.id},
       el("h3", {}, ANALYSIS[kind].name), el("div", {class: "big"}, big),
       el("div", {class: "sub"}, verdict),
@@ -808,6 +822,7 @@ function analysesSection(runs) {
         : r.kind === "spreadmr" ? `half-life ${fmtSecs(r.half_life_s)} · ${r.edges}/${r.strategies_tested} rules clear · ${r.markets} markets`
         : r.kind === "autocorr" ? `${r.reversion}/${r.momentum}/${r.flat} of ${r.fits} (rev/mom/flat) · ${r.edges} edges`
         : r.kind === "outcomereg" ? `${r.obs} markets · out of sample: ${r.cv_verdict}`
+        : r.kind === "fairvalue" ? `${r.markets} markets · vs best exchange: ${r.cv_verdict} · ${r.edges}/${r.rules} rules clear`
         : `${r.clear_buckets}/${r.solid_buckets} clear · ${r.markets} markets`)))))));
   return out;
 }
@@ -1137,6 +1152,43 @@ function showAutocorr(d) {
       el("tbody", {}, r.fits.map((f, i) => el("tr", {}, el("td", {}, venueName(f.venue)), el("td", {}, hLabel(f.horizon_s)), el("td", {class: "r num"}, count(f.pairs)),
         el("td", {class: "r num"}, f.markets), el("td", {class: "r num"}, (f.beta > 0 ? "+" : "") + f.beta.toFixed(3)), el("td", {class: "r num"}, "±" + (1.96 * f.beta_se).toFixed(3)),
         el("td", {class: "r num"}, f.past_sd.toFixed(2) + "¢"), el("td", {}, verdicts[i] === "none" ? "no clear pattern" : verdicts[i])))))));
+}
+
+function showFairValue(d) {
+  const run = d.run, r = d.fairvalue;
+  document.title = "Fair value · " + (run.label || run.id) + " · Backtest runs";
+  const edges = (r.trades || []).filter(x => x.markets >= 10 && x.trades >= 30 && x.pnl - 1.96 * x.pnl_se > 0);
+  const verdict = r.cv_n ? (r.gain_vs_best - 1.96 * r.gain_se > 0 ? "beats" : r.gain_vs_best + 1.96 * r.gain_se < 0 ? "worse" : "ties") : "ties";
+  const summary = {note: r.note, cv_n: r.cv_n, cv_verdict: verdict, best_single: r.best_single, edges: edges.length, rules: (r.trades || []).length};
+  const head = [...analysisHeader(run).filter(Boolean), el("p", {class: "verdict"}, fairvalueVerdict(summary))];
+  if (r.note) { app.replaceChildren(...head); return; }
+  const kpis = el("div", {class: "stats kpis"},
+    stat("vs " + venueName(r.best_single) + " alone", (r.gain_vs_best > 0 ? "+" : "") + r.gain_vs_best.toFixed(4), `log-loss gain per sample, ±${(1.96 * r.gain_se).toFixed(4)} out of sample`, true),
+    stat("Kalshi weight", r.w_kalshi.toFixed(2), "±" + (1.96 * r.w_kalshi_se).toFixed(2)),
+    stat("Polymarket weight", r.w_poly.toFixed(2), "±" + (1.96 * r.w_poly_se).toFixed(2)),
+    stat("Rules with an edge", edges.length + " / " + r.trades.length, "held to settlement, after fees"),
+    stat("Markets", r.markets, count(r.samples) + " samples · " + r.clusters + " league-days"));
+  const rows = r.trades.map(x => ({label: `≥${x.margin_cents}¢ · ${x.venue === "polymarketus" ? "Poly" : venueName(x.venue)}`, v: x.pnl, se: x.pnl_se,
+    edge: x.markets >= 10 && x.trades >= 30 && x.pnl - 1.96 * x.pnl_se > 0,
+    tip: [x.trades + " bets in " + x.markets + " games", "model expected +" + x.avg_edge.toFixed(2) + "¢ · " + pct(x.win_share) + " won"]}));
+  const score = (name, v) => el("tr", {}, el("td", {}, name), el("td", {class: "r num"}, v.toFixed(4)),
+    el("td", {class: "r num"}, (v - r.ll_fair > 0 ? "+" : "") + (v - r.ll_fair).toFixed(4)));
+  app.replaceChildren(...head, kpis,
+    el("h2", {}, "Does combining the prices help?"),
+    el("p", {class: "h2note"}, `Fair value P(yes) = σ(a + wK·logit(Kalshi) + wP·logit(Polymarket)), fitted on settled games from prices sampled every ${fmtSecs(r.grid_s)}. Scored on days the fit never saw (5 folds by day); lower log-loss is better. The last column is how much worse each alternative did than fair value — negative means it did better.`),
+    el("div", {class: "tablewrap"}, el("table", {},
+      el("thead", {}, el("tr", {}, el("th", {}, "Predictor"), el("th", {class: "r"}, "Log-loss"), el("th", {class: "r"}, "vs fair value"))),
+      el("tbody", {}, el("tr", {}, el("td", {}, el("b", {}, "Fair value (model)")), el("td", {class: "r num"}, r.ll_fair.toFixed(4)), el("td", {class: "r num"}, "—")),
+        score("Kalshi price alone", r.ll_kalshi), score("Polymarket price alone", r.ll_poly), score("Average of the two", r.ll_average)))),
+    el("h2", {}, "Betting where an exchange strays"),
+    el("p", {class: "h2note"}, `On held-out days, when an exchange's price is off fair value by more than its fee plus the margin, buy (or sell) YES there at the touch and hold to the result — at most one bet per game, exchange and margin. Net cents per contract (${r.clip_contracts}-contract fees); bars are 95% ranges clustered by league-day. Hover for what the model expected: a big gap between expected and realized means the model is overconfident.`),
+    el("div", {class: "card"}, valueForest(rows, "net ¢ per contract")),
+    el("h2", {}, "Weights"),
+    el("p", {class: "h2note"}, "How much each exchange's price (as log-odds) counts toward fair value. Equal weights that sum to about 1 mean both are equally informative; a weight near zero means that exchange adds nothing once you know the other."),
+    el("div", {class: "tablewrap"}, el("table", {},
+      el("thead", {}, el("tr", {}, el("th", {}, "Term"), el("th", {class: "r"}, "Estimate"), el("th", {class: "r"}, "±95%"))),
+      el("tbody", {}, [["Kalshi weight", r.w_kalshi, r.w_kalshi_se], ["Polymarket weight", r.w_poly, r.w_poly_se], ["Intercept", r.a, r.a_se]].map(([n, v, se]) =>
+        el("tr", {}, el("td", {}, n), el("td", {class: "r num"}, (v > 0 ? "+" : "") + v.toFixed(3)), el("td", {class: "r num"}, "±" + (1.96 * se).toFixed(3))))))));
 }
 
 function showOutcomeReg(d) {
