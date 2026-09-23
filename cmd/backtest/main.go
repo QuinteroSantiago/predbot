@@ -52,6 +52,7 @@ func main() {
 	latencyMS := flag.Int("latency-ms", -1, "override backtest.latency_ms, the simulated fill delay; in maker mode also the delay before the hedge lands (-1 = config)")
 	restWait := flag.Duration("rest-wait", 30*time.Second, "maker: cancel a rest that hasn't filled after this long, as the live trader does (0 = never)")
 	minEdge := flag.Float64("min-edge", -1, "override backtest.min_edge, in cents per contract (-1 = config)")
+	maxClip := flag.Float64("max-clip", -1, "override backtest.max_clip, the most contracts per trade (0 = unlimited: take whatever depth the book shows; -1 = config)")
 	minDepth := flag.Float64("min-depth", -1, "override backtest.min_depth, in contracts on each leg's top of book (0 = off, -1 = config)")
 	feeMult := flag.Float64("kalshi-fee-mult", -1, "override backtest.kalshi_fee_mult (-1 = config)")
 	variant := flag.String("variant", "", "free-text variant within -label for sweeps, e.g. \"latency 300ms\"")
@@ -74,6 +75,9 @@ func main() {
 	}
 	if *minEdge >= 0 {
 		b.MinEdge = int64(math.Round(*minEdge * 100)) // cents -> $0.0001
+	}
+	if *maxClip >= 0 {
+		b.MaxClip = int64(math.Round(*maxClip * 100)) // contracts -> 0.01-contract Qty; 0 = no cap
 	}
 	if *minDepth >= 0 {
 		b.MinDepth = int64(math.Round(*minDepth * 100)) // contracts -> 0.01-contract Qty

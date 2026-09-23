@@ -100,7 +100,7 @@ select{font:inherit; font-size:14px; color:var(--ink); background:var(--surface)
 .stat .l{font-size:12px; color:var(--muted); margin-top:3px; letter-spacing:.02em}
 .stat .s{font-size:12px; color:var(--ink-2); margin-top:2px}
 /* KPI row: a wide hero column, then as many standard tiles per row as fit. */
-.stats.kpis{grid-template-columns:minmax(230px,1.7fr) repeat(auto-fit,minmax(135px,1fr))}
+.stats.kpis{grid-template-columns:minmax(230px,1.7fr) repeat(auto-fit,minmax(118px,1fr))}
 @media (max-width:640px){ .stats.kpis{grid-template-columns:repeat(2,minmax(0,1fr))} .stat.hero{grid-column:1/-1} }
 .stat.hero .v{font-size:clamp(40px,7vw,52px); line-height:1.05}
 
@@ -200,7 +200,7 @@ function paramsLine(run) {
   const p = run.params;
   if (!p) return el("p", {class: "note", style: "margin-top:10px"}, "Settings not recorded: this run's build predates 2026-09-22, when the backtest also ignored the liquidity floor (min depth). Re-run it for comparable numbers.");
   return el("p", {class: "note mono", style: "margin-top:10px"},
-    `latency ${p.latency_ms}ms · min edge ${p.min_edge_cents}¢ · floor ${p.min_depth_contracts ? p.min_depth_contracts + " contracts" : "off"} · max clip ${p.max_clip_contracts} · Kalshi fee ×${p.kalshi_fee_mult} · skew ≤${p.max_skew_ms}ms · book age ≤${p.max_book_age_ms}ms` +
+    `latency ${p.latency_ms}ms · min edge ${p.min_edge_cents}¢ · floor ${p.min_depth_contracts ? p.min_depth_contracts + " contracts" : "off"} · max clip ${p.max_clip_contracts || "unlimited"} · Kalshi fee ×${p.kalshi_fee_mult} · skew ≤${p.max_skew_ms}ms · book age ≤${p.max_book_age_ms}ms` +
     (run.mode === "maker" && p.rest_wait_s != null ? ` · rest ${p.rest_wait_s ? "≤" + fmtSecs(p.rest_wait_s) : "until filled"}` : ""));
 }
 const fillRate = m => m && m.rests_placed ? m.rests_filled / m.rests_placed : null;
@@ -336,6 +336,8 @@ function headToHead(runs) {
     ["Win rate", r => r.settled_pairs ? r.win_rate : null, v => pct(v), 1],
     ["Max drawdown", r => r.max_drawdown_usd, v => v ? usd(-v) : "$0.00", -1],
     ["Pairs completed / attempted", r => r.pairs_attempted ? r.pairs_completed / r.pairs_attempted : null, (v, r) => r.pairs_completed + " / " + r.pairs_attempted, 1],
+    ["Peak capital at once", r => r.peak_capital_usd, v => v == null ? "—" : usd(v), 0],
+    ["Return on peak capital", r => r.return_on_peak, v => v == null ? "—" : pct(v, true), 1],
     ["Maker rests filled", r => r.fill_rate, (v, r) => v == null ? "—" : pct(v) + " of " + r.rests_placed, 0],
     ["Data", r => null, (v, r) => dataSpan(r), 0],
     ["Snapshots", r => r.snapshots, v => count(v), 0],
@@ -454,7 +456,11 @@ async function showRun(id) {
   head.push(paramsLine(run));
   const settled = rep.settled_pairs > 0;
   const kpis = el("div", {class: "stats kpis"},
-    stat("Net P&L", usd(rep.net_pnl_usd, true), rep.capital_locked_usd ? usd(rep.capital_locked_usd) + " capital locked" : null, true),
+    stat("Net P&L", usd(rep.net_pnl_usd, true), rep.capital_locked_usd ? usd(rep.capital_locked_usd) + " staked over the run" : null, true),
+    rep.peak_capital_usd && Object.keys(rep.peak_capital_usd).length ? stat("Peak capital at once",
+      usd(Object.values(rep.peak_capital_usd).reduce((a, b) => a + b, 0)),
+      Object.entries(rep.peak_capital_usd).sort().map(([v, c]) => (v === "polymarketus" ? "Poly" : venueName(v)) + " " + usd(c)).join(" · ") +
+      (rep.return_on_peak != null ? " · return " + pct(rep.return_on_peak, true) : "")) : null,
     stat("Annualized return", settled ? pct(rep.annualized, true) : "—",
       !settled ? "no settled pairs" : rep.avg_hold_days == null ? "not valid in this run (pre-fix maker dating)" : "avg hold " + Math.round(rep.avg_hold_days) + " days"),
     stat("vs idle-balance hurdle", settled ? pct(rep.excess_annualized, true) : "—", "hurdle " + pct(rep.idle_yield)),
@@ -667,7 +673,9 @@ function variantChart(runs) {
   const name = r => !mixed || r.variant.includes(r.mode) ? r.variant : r.variant + " · " + r.mode;
   return barRows(pick.map(r => ({label: name(r), from: 0, to: r.net_pnl_usd,
     color: r.net_pnl_usd >= 0 ? "var(--gain)" : "var(--loss)", valueText: usd(r.net_pnl_usd, true),
-    tip: [name(r), r.pairs_completed + "/" + r.pairs_attempted + " pairs completed", when(r.finished_at)]})),
+    tip: [name(r), r.pairs_completed + "/" + r.pairs_attempted + " pairs completed",
+      r.peak_capital_usd != null ? "peak capital " + usd(r.peak_capital_usd) + " · return on it " + pct(r.return_on_peak, true) : null,
+      when(r.finished_at)].filter(Boolean)})),
     {labelWidth: 260, aria: "Net P&L by variant; the runs table below has the same values"});
 }
 

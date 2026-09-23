@@ -36,22 +36,47 @@ type Report struct {
 	WinRate          float64 // fraction of pairs with net > 0
 	MaxDrawdown      int64   // worst peak-to-trough of cumulative net P&L
 
-	byCanonical map[string]int // opportunities per canonical (receipts)
-	pairs       []pairResult   // per-pair outcomes, for the derived stats
+	// PeakCapital is the most capital held at once on each venue ($0.0001),
+	// filled by Finalize: a pair holds its legs' capital from entry until its
+	// market's last recorded update (the stand-in for resolution, which sports
+	// markets don't record). What a bankroll has to cover, unlike CapitalLocked,
+	// which sums every pair's capital over the whole run.
+	PeakCapital map[string]int64
+
+	byCanonical map[string]int   // opportunities per canonical (receipts)
+	pairs       []pairResult     // per-pair outcomes, for the derived stats
+	lastSeen    map[string]int64 // canonical -> last update (ns)
 }
 
 type pairResult struct {
 	canonical              string
 	net, capital, entryTs  int64
+	legs                   []legCapital
+}
+
+// legCapital is the capital one leg of a pair ties up on its venue.
+type legCapital struct {
+	venue   string
+	capital int64
 }
 
 func NewReport() *Report {
-	return &Report{FeesByVenue: map[string]int64{}, byCanonical: map[string]int{}}
+	return &Report{FeesByVenue: map[string]int64{}, byCanonical: map[string]int{},
+		PeakCapital: map[string]int64{}, lastSeen: map[string]int64{}}
 }
 
-// addPair records one settled pair's outcome for the derived stats.
-func (r *Report) addPair(canonical string, net, capital, entryTs int64) {
-	r.pairs = append(r.pairs, pairResult{canonical, net, capital, entryTs})
+// addPair records one settled pair's outcome for the derived stats; legs say
+// which venue each leg's capital sits on, for PeakCapital.
+func (r *Report) addPair(canonical string, net, capital, entryTs int64, legs ...legCapital) {
+	r.pairs = append(r.pairs, pairResult{canonical, net, capital, entryTs, legs})
+}
+
+// seen records a market's latest update; its last one stands in for when the
+// market resolved and freed the capital held in it.
+func (r *Report) seen(canonical string, ts int64) {
+	if ts > r.lastSeen[canonical] {
+		r.lastSeen[canonical] = ts
+	}
 }
 
 // Merge folds o's raw tallies into r. It is for combining reports built over
@@ -75,6 +100,9 @@ func (r *Report) Merge(o *Report) {
 		r.byCanonical[c] += n
 	}
 	r.pairs = append(r.pairs, o.pairs...)
+	for c, ts := range o.lastSeen {
+		r.seen(c, ts)
+	}
 }
 
 // Finalize computes the §10.4/§10.5 return and risk stats. resolution maps a
@@ -136,6 +164,46 @@ func (r *Report) Finalize(resolution map[string]time.Time, idleYield float64) {
 	if len(rets) >= 2 {
 		r.SharpePerTrade = sharpe(rets)
 	}
+	r.PeakCapital = r.peakCapital()
+}
+
+// peakCapital sweeps each venue's capital over time: every leg adds its
+// capital at entry and releases it at its market's last update.
+func (r *Report) peakCapital() map[string]int64 {
+	type ev struct {
+		ts    int64
+		delta int64
+	}
+	evs := map[string][]ev{}
+	for _, p := range r.pairs {
+		release := r.lastSeen[p.canonical]
+		if release < p.entryTs {
+			release = p.entryTs
+		}
+		for _, l := range p.legs {
+			if l.capital <= 0 {
+				continue
+			}
+			evs[l.venue] = append(evs[l.venue], ev{p.entryTs, l.capital}, ev{release, -l.capital})
+		}
+	}
+	peaks := map[string]int64{}
+	for v, es := range evs {
+		// At equal times release first: capital freed at t can back an entry at t.
+		sort.Slice(es, func(i, j int) bool {
+			if es[i].ts != es[j].ts {
+				return es[i].ts < es[j].ts
+			}
+			return es[i].delta < es[j].delta
+		})
+		var held, peak int64
+		for _, e := range es {
+			held += e.delta
+			peak = max(peak, held)
+		}
+		peaks[v] = peak
+	}
+	return peaks
 }
 
 // sharpe returns mean/stddev of the returns (sample stddev), unitless.
@@ -175,7 +243,14 @@ func (r *Report) String() string {
 	fmt.Fprintf(&b, "Slippage (fill vs top)    %s   (informational; already in gross)\n", d(-r.Slippage))
 	fmt.Fprintf(&b, "Legging cost              %s\n", d(-r.LeggingCost))
 	fmt.Fprintf(&b, "Net P&L                   %s\n", d(r.NetPnL))
-	fmt.Fprintf(&b, "Capital locked            %s\n", d(r.CapitalLocked))
+	fmt.Fprintf(&b, "Capital locked            %s   (summed over every pair)\n", d(r.CapitalLocked))
+	if len(r.PeakCapital) > 0 {
+		fmt.Fprintf(&b, "Peak capital at once     ")
+		for _, v := range sortedKeys(r.PeakCapital) {
+			fmt.Fprintf(&b, " %s %s", v, d(r.PeakCapital[v]))
+		}
+		fmt.Fprintf(&b, "   (held from entry to the market's last update)\n")
+	}
 	fmt.Fprintln(&b, "---")
 	fmt.Fprintf(&b, "Pairs attempted/completed/legged/faded  %d / %d / %d / %d\n",
 		r.PairsAttempted, r.PairsCompleted, r.PairsLegged, r.PairsFaded)

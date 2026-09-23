@@ -84,7 +84,12 @@ type ReportSummary struct {
 	SlippageUSD      float64            `json:"slippage_usd"`
 	LeggingCostUSD   float64            `json:"legging_cost_usd"`
 	NetPnLUSD        float64            `json:"net_pnl_usd"`
-	CapitalLockedUSD float64            `json:"capital_locked_usd"`
+	CapitalLockedUSD float64            `json:"capital_locked_usd"` // summed over every pair
+	// Most capital held at once per venue (a pair holds from entry to its
+	// market's last update) — what a bankroll has to cover — and net P&L as a
+	// fraction of the two venues' peaks together.
+	PeakCapitalUSD   map[string]float64 `json:"peak_capital_usd"`
+	ReturnOnPeak     float64            `json:"return_on_peak"`
 	PairsAttempted   int                `json:"pairs_attempted"`
 	PairsCompleted   int                `json:"pairs_completed"`
 	PairsLegged      int                `json:"pairs_legged"`
@@ -151,6 +156,15 @@ func NewRunReport(meta RunMeta, res *TradingResult, maker bool) RunReport {
 		WinRate:          r.WinRate,
 		MaxDrawdownUSD:   usd(r.MaxDrawdown),
 		SettledPairs:     len(r.pairs),
+	}
+	sum.PeakCapitalUSD = map[string]float64{}
+	var peak int64
+	for v, c := range r.PeakCapital {
+		sum.PeakCapitalUSD[v] = usd(c)
+		peak += c
+	}
+	if peak > 0 {
+		sum.ReturnOnPeak = float64(r.NetPnL) / float64(peak)
 	}
 	var fees int64
 	for v, f := range r.FeesByVenue {

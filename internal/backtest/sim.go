@@ -112,7 +112,9 @@ func (s *Sim) settle(p pendingPair, bm *book.Manager) {
 	s.rep.CapitalLocked += capital
 	s.rep.GrossCaptured += gross
 	s.rep.NetPnL += net
-	s.rep.addPair(p.canonical, net, capital, p.at)
+	s.rep.addPair(p.canonical, net, capital, p.at,
+		legCapital{buy.Venue, int64(float64(buyPx) * c)},
+		legCapital{sell.Venue, int64(float64(int64(core.OneDollar)-int64(sellPx)) * c)})
 	if buyQty == sellQty {
 		s.rep.PairsCompleted++
 	} else {
@@ -250,7 +252,9 @@ func (s *Sim) SettleMakerPair(canonical string, rested, taking core.Intent, rest
 	s.rep.CapitalLocked += capital
 	s.rep.GrossCaptured += gross
 	s.rep.NetPnL += net
-	s.rep.addPair(canonical, net, capital, now)
+	s.rep.addPair(canonical, net, capital, now,
+		legCapital{buyVenue, int64(float64(buyPx) * c)},
+		legCapital{sellVenue, int64(float64(int64(core.OneDollar)-int64(sellPx)) * c)})
 	if takeQty >= restedQty {
 		s.rep.PairsCompleted++
 	} else {

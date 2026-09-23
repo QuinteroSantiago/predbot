@@ -161,6 +161,8 @@ def summary(d):
         "settled_pairs": rep["settled_pairs"],
         "rests_placed": placed,
         "fill_rate": (maker["rests_filled"] / placed) if placed else None,
+        "peak_capital_usd": sum((rep.get("peak_capital_usd") or {}).values()) or None,
+        "return_on_peak": rep.get("return_on_peak"),
         "adverse_30s_cents": next((h["mean_cents"] for h in (d.get("adverse") or {}).get("horizons", [])
                                    if h["seconds"] == 30 and h["fills"]), None),
     }

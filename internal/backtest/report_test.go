@@ -66,3 +66,25 @@ func TestMergeMatchesSinglePass(t *testing.T) {
 		t.Fatalf("merged report differs from single pass\nsingle %+v\nmerged %+v", single, merged)
 	}
 }
+
+// Peak capital sweeps each venue's holds: a pair holds its legs from entry to
+// its market's last update. Worked by hand: on Kalshi, A holds 100 over [10,50]
+// and B 60 over [30,70] — overlapping, peak 160; C holds 90 from 50, the
+// instant A frees its 100, so it reuses that and the peak stays 160. On Poly,
+// A's 40 and B's 30 overlap over [30,50]: peak 70.
+func TestPeakCapital(t *testing.T) {
+	r := NewReport()
+	r.addPair("A", 5, 140, 10, legCapital{"kalshi", 100}, legCapital{"polymarketus", 40})
+	r.addPair("B", 5, 90, 30, legCapital{"kalshi", 60}, legCapital{"polymarketus", 30})
+	r.addPair("C", 5, 90, 50, legCapital{"kalshi", 90})
+	for c, ts := range map[string]int64{"A": 50, "B": 70, "C": 90} {
+		r.seen(c, ts)
+	}
+	r.Finalize(nil, 0)
+	if got := r.PeakCapital["kalshi"]; got != 160 {
+		t.Errorf("kalshi peak = %d, want 160", got)
+	}
+	if got := r.PeakCapital["polymarketus"]; got != 70 {
+		t.Errorf("polymarketus peak = %d, want 70 (40 + 30 overlapping over [30,50])", got)
+	}
+}

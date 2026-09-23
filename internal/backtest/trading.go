@@ -126,6 +126,7 @@ func (sh *shard) tick(s core.BookSnapshot) {
 	if !ok {
 		return // not in markets.yaml (§12)
 	}
+	sh.rep.seen(canonical, now)
 	books, ready := sh.bm.Pair(canonical)
 	if !ready || staleAny(books, now, o.MaxAge) || skewExceeds(books, o.MaxSkew) {
 		return

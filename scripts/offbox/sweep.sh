@@ -4,6 +4,7 @@
 #   ./sweep.sh sensitivity [maker|taker]   # baseline + one setting pushed at a time
 #   ./sweep.sh weekly                      # maker and taker, one run per week of data
 #   ./sweep.sh restwait                    # maker: how long should a rest sit before cancel?
+#   ./sweep.sh capacity [maker|taker]      # how P&L and capital need scale with trade size
 #   ./sweep.sh status <preset>             # what's done, what's running
 #
 # Each run writes sweep-<preset>/<name>.{txt,log,json}; publish the JSONs from
@@ -57,6 +58,19 @@ plan() {
       echo "rest 30s, hedge 1s late|-maker -rest-wait 30s -latency-ms 1000"
       echo "rest 2m, hedge 1s late|-maker -rest-wait 2m -latency-ms 1000"
       ;;
+    capacity)
+      # Does more size buy more profit, and how much capital does it tie up?
+      # Clips from 10 contracts to unlimited (whatever depth the book shows);
+      # compare net P&L with peak capital at once and return on that peak.
+      local mode="${1:-maker}" m=""
+      [[ "$mode" == maker ]] && m="-maker"
+      [[ "$mode" == maker || "$mode" == taker ]] || { echo "mode must be maker or taker" >&2; exit 2; }
+      for c in 10 50 100 250 500; do
+        local note=""; [[ $c == 50 ]] && note=" (live cap)"
+        echo "$mode clip $c$note|$m -max-clip $c"
+      done
+      echo "$mode clip unlimited|$m -max-clip 0"
+      ;;
     weekly)
       # Week boundaries from the recorded hour stamps (UTC days).
       local first last
@@ -73,7 +87,7 @@ plan() {
         from="$to"; n=$((n + 1))
       done
       ;;
-    *) echo "usage: $0 sensitivity [maker|taker] | weekly | restwait | status <preset>" >&2; exit 2 ;;
+    *) echo "usage: $0 sensitivity [maker|taker] | weekly | restwait | capacity [maker|taker] | status <preset>" >&2; exit 2 ;;
   esac
 }
 
@@ -82,6 +96,7 @@ label_for() {
     sensitivity) echo "robustness sweep" ;;
     weekly) echo "weekly split" ;;
     restwait) echo "rest-wait sweep" ;;
+    capacity) echo "capacity sweep" ;;
   esac
 }
 
