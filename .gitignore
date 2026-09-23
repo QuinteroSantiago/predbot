@@ -12,6 +12,7 @@
 /preflight
 /record
 /testorder
+/bt-amd64
 
 # Recorded market data and local state.
 /data/
