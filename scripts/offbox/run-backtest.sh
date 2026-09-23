@@ -8,6 +8,7 @@
 #   ./run-backtest.sh adverse    # maker replay + where prices go after each real fill
 #   ./run-backtest.sh moves      # overreaction: fade or follow sharp moves / one-sided trading?
 #   ./run-backtest.sh spreadmr   # Kalshi−Poly gap as mean-reverting: half-life, and trading it
+#   ./run-backtest.sh autocorr   # per venue: do price changes continue or undo, 5s–10m?
 #
 # Lives in scripts/offbox/ in the predbot repo; copy it next to the bt-new binary
 # and the data/ directory on the compute box (see sweep.sh for batches).
@@ -25,6 +26,7 @@ case "$mode" in
   maker)    flags=(-maker); json=(-label "full archive" -report-json "$mode-full.json") ;;
   taker)    flags=();       json=(-label "full archive" -report-json "$mode-full.json") ;;
   leadlag)  flags=(-leadlag); json=(-label "full archive" -report-json "$mode-full.json") ;;
+  autocorr) flags=(-autocorr); json=(-label "full archive" -report-json "$mode-full.json") ;;
   spreadmr) flags=(-spreadmr); json=(-label "full archive" -report-json "$mode-full.json") ;;
   moves)    flags=(-moves); json=(-label "full archive" -report-json "$mode-full.json")
     compgen -G "data/trades/*.jsonl.gz" >/dev/null ||
@@ -48,7 +50,7 @@ case "$mode" in
       exit 1
     fi
     ;;
-  *) echo "usage: $0 maker|taker|longshot|leadlag|adverse|moves|spreadmr" >&2; exit 2 ;;
+  *) echo "usage: $0 maker|taker|longshot|leadlag|adverse|moves|spreadmr|autocorr" >&2; exit 2 ;;
 esac
 
 pidfile="$mode-full.pid"

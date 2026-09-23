@@ -431,6 +431,7 @@ async function showRun(id) {
   if (run.kind === "longshot") return showLongshot(d);
   if (run.kind === "moves") return showMoves(d);
   if (run.kind === "spreadmr") return showSpreadMR(d);
+  if (run.kind === "autocorr") return showAutocorr(d);
   const rep = d.report;
   document.title = (run.label || "Run") + " · " + run.mode + " · Backtest runs";
 
@@ -712,6 +713,7 @@ function adverseTable(a) {
 
 // ---------- analyses (lead-lag, longshot) ----------
 const ANALYSIS = {
+  autocorr: {name: "Price momentum / reversion", q: "On one exchange, does a price change predict the next one — does it keep going or undo itself — and does trading that pay after costs?"},
   spreadmr: {name: "Spread mean-reversion", q: "When the Kalshi–Polymarket gap stretches, how fast does it snap back — and does trading the snap-back pay after costs?"},
   moves: {name: "Overreaction", q: "After a sharp price move or a burst of one-sided trading, does the price keep going or snap back — and does trading it pay after costs?"},
   leadlag: {name: "Lead-lag", q: "Does one exchange's price move before the other's?"},
@@ -720,6 +722,15 @@ const ANALYSIS = {
 const analysisBadge = kind => el("span", {class: "badge"}, el("span", {class: "key analysis"}), ANALYSIS[kind].name);
 
 const fmtSecs = s => !s ? "—" : s < 90 ? Math.round(s) + "s" : s < 5400 ? (s / 60).toFixed(1) + " min" : (s / 3600).toFixed(1) + " h";
+
+function autocorrVerdict(r) {
+  if (!r.fits) return "No series had enough continuous prices to fit.";
+  const s = r.strongest, shape = r.reversion > r.momentum ? "reversion — a change tends to be partly undone" : r.momentum > r.reversion ? "momentum — a change tends to continue" : "no consistent pattern";
+  const lead = r.reversion + r.momentum ? `Mostly ${shape}` : "Price changes don't predict the next ones";
+  const str = s && (r.reversion + r.momentum) ? ` (strongest: ${venueName(s.venue)} over ${hLabel(s.horizon_s)}, β ${s.beta > 0 ? "+" : ""}${s.beta.toFixed(2)})` : "";
+  if (!r.edges) return `${lead}${str}. But no follow-or-fade rule clears zero once you pay the spread and fees — the pattern is too small to trade.`;
+  return `${lead}${str}. ${r.edges} of ${r.rules_readable} trading rules clear zero after costs — check they hold across horizons and in each week.`;
+}
 
 function spreadmrVerdict(r) {
   if (!r.markets) return "No market had enough time with both exchanges quoting to fit.";
@@ -754,15 +765,16 @@ function longshotVerdict(r) {
 function analysesSection(runs) {
   const out = [el("h2", {}, "Analyses"),
     el("p", {class: "h2note"}, "Read-only studies of the same recorded data, for ideas beyond arbitrage. The latest of each, then the history.")];
-  const cards = ["spreadmr", "moves", "longshot", "leadlag"].map(kind => {
+  const cards = ["spreadmr", "autocorr", "moves", "longshot", "leadlag"].map(kind => {
     const r = runs.find(x => x.kind === kind);
     if (!r) return null;
     const big = kind === "leadlag"
       ? `${r.kalshi_leads} Kalshi-first · ${r.poly_leads} Poly-first · ${r.contemporaneous} together`
       : kind === "moves" ? `${r.edges} edge${r.edges === 1 ? "" : "s"} after costs · ${count(r.move_events + r.flow_events)} events`
       : kind === "spreadmr" ? `half-life ${fmtSecs(r.half_life_s)} · ${r.edges} edge${r.edges === 1 ? "" : "s"} after costs`
+      : kind === "autocorr" ? `${r.reversion} reversion · ${r.momentum} momentum · ${r.flat} flat · ${r.edges} edge${r.edges === 1 ? "" : "s"}`
       : `${r.clear_buckets} of ${r.solid_buckets} solid buckets show a clear edge`;
-    const verdict = kind === "leadlag" ? leadlagVerdict(r) : kind === "moves" ? movesVerdict(r) : kind === "spreadmr" ? spreadmrVerdict(r) : longshotVerdict(r);
+    const verdict = kind === "leadlag" ? leadlagVerdict(r) : kind === "moves" ? movesVerdict(r) : kind === "spreadmr" ? spreadmrVerdict(r) : kind === "autocorr" ? autocorrVerdict(r) : longshotVerdict(r);
     return el("a", {class: "card acard", href: "#run=" + r.id},
       el("h3", {}, ANALYSIS[kind].name), el("div", {class: "big"}, big),
       el("div", {class: "sub"}, verdict),
@@ -778,6 +790,7 @@ function analysesSection(runs) {
       el("td", {}, r.kind === "leadlag" ? `${r.kalshi_leads}/${r.poly_leads}/${r.contemporaneous} of ${r.analyzed} (K/P/together)`
         : r.kind === "moves" ? `${r.edges} edge${r.edges === 1 ? "" : "s"} · ${count(r.move_events)} moves, ${count(r.flow_events)} flow bursts`
         : r.kind === "spreadmr" ? `half-life ${fmtSecs(r.half_life_s)} · ${r.edges}/${r.strategies_tested} rules clear · ${r.markets} markets`
+        : r.kind === "autocorr" ? `${r.reversion}/${r.momentum}/${r.flat} of ${r.fits} (rev/mom/flat) · ${r.edges} edges`
         : `${r.clear_buckets}/${r.solid_buckets} clear · ${r.markets} markets`)))))));
   return out;
 }
@@ -1075,6 +1088,82 @@ function showSpreadMR(d) {
       el("tbody", {}, r.market_fits.slice(0, 200).map(x => el("tr", {}, el("td", {class: "mono"}, x.canonical), el("td", {class: "r num"}, count(x.n)),
         el("td", {class: "r num"}, x.b.toFixed(3)), el("td", {class: "r num"}, fmtSecs(x.half_life_s)), el("td", {class: "r num"}, x.sigma_eq ? x.sigma_eq.toFixed(2) + "¢" : "—"),
         el("td", {class: "r num"}, (x.mean_gap > 0 ? "+" : "") + x.mean_gap.toFixed(2) + "¢"), el("td", {class: "r num"}, x.sd_gap.toFixed(2) + "¢")))))));
+}
+
+function showAutocorr(d) {
+  const run = d.run, r = d.autocorr;
+  document.title = "Momentum / reversion · " + (run.label || run.id) + " · Backtest runs";
+  const verdictOf = f => f.markets < 10 ? "none" : f.beta - 1.96 * f.beta_se > 0 ? "momentum" : f.beta + 1.96 * f.beta_se < 0 ? "reversion" : "none";
+  const verdicts = r.fits.map(verdictOf);
+  const readable = r.trades.filter(x => x.markets >= 10 && x.events >= 30);
+  const edges = readable.filter(isEdge);
+  const strongest = r.fits.reduce((b, f) => !b || (f.beta_se && Math.abs(f.beta) / f.beta_se > Math.abs(b.beta) / b.beta_se) ? f : b, null);
+  const summary = {fits: r.fits.length, reversion: verdicts.filter(v => v === "reversion").length, momentum: verdicts.filter(v => v === "momentum").length,
+    flat: verdicts.filter(v => v === "none").length, edges: edges.length, rules_readable: readable.length, strongest};
+  const kpis = el("div", {class: "stats kpis"},
+    stat("Edges after costs", edges.length + " / " + readable.length, "follow/fade rules with 10+ games", true),
+    stat("Reversion", summary.reversion + " / " + r.fits.length, "exchange × horizon fits"),
+    stat("Momentum", summary.momentum + " / " + r.fits.length, "exchange × horizon fits"),
+    stat("Strongest", strongest ? (strongest.beta > 0 ? "+" : "") + strongest.beta.toFixed(2) : "—", strongest ? venueName(strongest.venue) + " · " + hLabel(strongest.horizon_s) : null));
+  app.replaceChildren(...analysisHeader(run).filter(Boolean),
+    el("p", {class: "verdict"}, autocorrVerdict(summary)),
+    kpis,
+    el("h2", {}, "Does a change predict the next one?"),
+    el("p", {class: "h2note"}, `For each horizon, the slope β of the next change on the last one, pooled across games (${r.grid_s}s price grid). Above zero, moves continue (momentum); below, they're partly undone (reversion) — β −0.2 means a 5¢ move is followed on average by a 1¢ undo. Bars are 95% ranges clustered by game.`),
+    el("div", {class: "card"}, betaChart(r.fits)),
+    el("h2", {}, "Trading it"),
+    el("p", {class: "h2note"}, `After a move of at least 2¢ or 5¢ over the horizon, trade with it (follow) or against it (fade), hold one horizon, taker in and out with fees (${r.clip_contracts} contracts). Only rules with 10+ games and 30+ trades are shown; ▲ marks one whose 95% range clears zero.`),
+    el("div", {class: "card"}, forestPlot(readable)),
+    el("h2", {}, "All fits"),
+    el("div", {class: "tablewrap"}, el("table", {},
+      el("thead", {}, el("tr", {}, ["Exchange", "Horizon"].map(h => el("th", {}, h)), ["Pairs", "Games", "β", "±95%", "Typical |Δ|"].map(h => el("th", {class: "r"}, h)), el("th", {}, "Reads as"))),
+      el("tbody", {}, r.fits.map((f, i) => el("tr", {}, el("td", {}, venueName(f.venue)), el("td", {}, hLabel(f.horizon_s)), el("td", {class: "r num"}, count(f.pairs)),
+        el("td", {class: "r num"}, f.markets), el("td", {class: "r num"}, (f.beta > 0 ? "+" : "") + f.beta.toFixed(3)), el("td", {class: "r num"}, "±" + (1.96 * f.beta_se).toFixed(3)),
+        el("td", {class: "r num"}, f.past_sd.toFixed(2) + "¢"), el("td", {}, verdicts[i] === "none" ? "no clear pattern" : verdicts[i])))))));
+}
+
+// β by horizon, one series per exchange (Kalshi blue, Polymarket amber; the
+// legend and shapes back up the color), with 95% bars and a zero line.
+function betaChart(fits) {
+  const venues = ["kalshi", "polymarketus"].filter(v => fits.some(f => f.venue === v));
+  const hs = [...new Set(fits.map(f => f.horizon_s))].sort((a, b) => a - b);
+  const box = el("div", {class: "chart"});
+  // Keys mirror the marks: Kalshi circle, Polymarket square.
+  const legend = el("div", {class: "legend"}, venues.map(v => el("span", {}, el("span", {class: "key " + (v === "kalshi" ? "kalshi" : "poly"), style: v === "kalshi" ? "border-radius:50%" : null}), venueName(v))));
+  const tip = tooltip(box);
+  responsive(box, W => {
+    box.querySelector("svg")?.remove();
+    const H = 240, m = {l: 52, r: 16, t: 12, b: 28};
+    const vals = fits.flatMap(f => [f.beta - 1.96 * f.beta_se, f.beta + 1.96 * f.beta_se]).concat([0]);
+    const yt = niceTicks(Math.min(...vals), Math.max(...vals), 4), y0 = yt[0], y1 = yt[yt.length - 1];
+    const slot = (W - m.l - m.r) / hs.length, X = (i, vi) => m.l + (i + 0.5) * slot + (vi - (venues.length - 1) / 2) * 16;
+    const Y = v => m.t + (1 - (v - y0) / (y1 - y0)) * (H - m.t - m.b);
+    const svg = sv("svg", {viewBox: `0 0 ${W} ${H}`, height: H, role: "img", "aria-label": "β by horizon and exchange; the table below has the same values"});
+    for (const v of yt) svg.append(sv("line", {class: v === 0 ? "zero" : "gridline", x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v)}),
+      sv("text", {class: "tick", x: m.l - 6, y: Y(v) + 4, "text-anchor": "end"}, (v > 0 ? "+" : "") + v));
+    hs.forEach((h, i) => svg.append(sv("text", {class: "tick", x: m.l + (i + 0.5) * slot, y: H - 6, "text-anchor": "middle"}, hLabel(h))));
+    svg.append(sv("text", {class: "tick", x: m.l + 4, y: m.t + 10}, "momentum ↑"), sv("text", {class: "tick", x: m.l + 4, y: H - m.b - 4}, "reversion ↓"));
+    venues.forEach((v, vi) => {
+      const color = v === "kalshi" ? "var(--kalshi)" : "var(--poly)";
+      hs.forEach((h, i) => {
+        const f = fits.find(x => x.venue === v && x.horizon_s === h);
+        if (!f) return;
+        const x = X(i, vi), y = Y(f.beta), ci = 1.96 * f.beta_se;
+        const g = sv("g", {tabindex: "0", role: "img", "aria-label": `${venueName(v)} ${hLabel(h)}: β ${f.beta.toFixed(3)}`});
+        const mark = v === "kalshi" ? sv("circle", {cx: x, cy: y, r: 4.5, fill: color, stroke: "var(--surface)", "stroke-width": 2})
+          : sv("rect", {x: x - 4.5, y: y - 4.5, width: 9, height: 9, rx: 1.5, fill: color, stroke: "var(--surface)", "stroke-width": 2});
+        g.append(sv("rect", {x: x - 12, y: m.t, width: 24, height: H - m.t - m.b, fill: "transparent"}),
+          sv("line", {x1: x, x2: x, y1: Y(f.beta + ci), y2: Y(f.beta - ci), stroke: color, "stroke-width": 2, "stroke-opacity": .5, "stroke-linecap": "round"}), mark);
+        const show = () => tip.show(x, y, () => [el("strong", {}, "β " + (f.beta > 0 ? "+" : "") + f.beta.toFixed(3) + " ±" + ci.toFixed(3)),
+          tipLine(color, venueName(v) + " · " + hLabel(h)), el("div", {}, count(f.pairs) + " pairs in " + f.markets + " games")]);
+        g.addEventListener("pointerenter", show); g.addEventListener("pointerleave", () => tip.hide());
+        g.addEventListener("focus", show); g.addEventListener("blur", () => tip.hide());
+        svg.append(g);
+      });
+    });
+    box.prepend(svg);
+  });
+  return el("div", {}, legend, box);
 }
 
 // One mark per row: value with its 95% bar against zero. rows: {label, v, se, edge, tip[]}.

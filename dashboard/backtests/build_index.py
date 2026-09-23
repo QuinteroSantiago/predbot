@@ -87,8 +87,31 @@ def spreadmr_summary(d):
         "edges": len(edges), "strategies_tested": len(r["strategies"])}
 
 
+def autocorr_verdict(f):
+    if f["markets"] < 10:
+        return "none"
+    if f["beta"] - 1.96 * f["beta_se"] > 0:
+        return "momentum"
+    if f["beta"] + 1.96 * f["beta_se"] < 0:
+        return "reversion"
+    return "none"
+
+
+def autocorr_summary(d):
+    r = d["autocorr"]
+    verdicts = [autocorr_verdict(f) for f in r["fits"]]
+    readable = [x for x in r["trades"] if x["markets"] >= 10 and x["events"] >= 30]
+    edges = [x for x in readable if move_edge(x)]
+    strongest = max(r["fits"], key=lambda f: abs(f["beta"]) / f["beta_se"] if f["beta_se"] else 0, default=None)
+    return {**base(d["run"]), "momentum": verdicts.count("momentum"), "reversion": verdicts.count("reversion"),
+            "flat": verdicts.count("none"), "fits": len(verdicts), "edges": len(edges), "rules_readable": len(readable),
+            "strongest": {k: strongest[k] for k in ("venue", "horizon_s", "beta", "beta_se")} if strongest else None}
+
+
 def summary(d):
     kind = d["run"].get("kind", "trading")
+    if kind == "autocorr":
+        return autocorr_summary(d)
     if kind == "spreadmr":
         return spreadmr_summary(d)
     if kind == "moves":

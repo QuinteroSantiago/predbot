@@ -38,6 +38,7 @@ func main() {
 	leadlag := flag.Bool("leadlag", false, "read-only: measure whether one venue's mid leads the other (cross-venue lead-lag), no trading")
 	longshot := flag.Bool("longshot", false, "read-only: calibration / favorite-longshot bias from opening price vs settled outcome")
 	outcomesPath := flag.String("outcomes", "", "outcomes.jsonl for -longshot (default: <data>/outcomes.jsonl)")
+	autocorr := flag.Bool("autocorr", false, "read-only: does a price change predict the next one (momentum vs reversion, 5s–10m), and does trading it pay after costs")
 	spreadMR := flag.Bool("spreadmr", false, "read-only: model the Kalshi−Poly gap as mean-reverting (half-life, typical excursion) and test trading it after costs")
 	moves := flag.Bool("moves", false, "read-only: overreaction study — after a sharp move or one-sided trading, momentum or reversion, and does trading it pay after costs")
 	adverse := flag.Bool("adverse", false, "measure adverse selection: where price goes AFTER a hypothetical maker fill")
@@ -283,6 +284,27 @@ func main() {
 	}
 
 	fees := backtest.Fees{KalshiMult: cfg.Backtest.KalshiFeeMult}
+
+	// Price momentum/reversion: standalone read-only pass, per venue.
+	if *autocorr {
+		ac := backtest.NewAutocorr(fees)
+		bar := countBar(*showProgress, "pass 2/2 autocorr", nSnaps)
+		_ = backtest.StreamReplay(dir, w, func(s core.BookSnapshot) error {
+			bar.Add(1)
+			if c, ok := bm.Canonical(s.Venue, s.VenueID); ok {
+				ac.Observe(c, s)
+			}
+			return nil
+		})
+		bar.Finish()
+		span := time.Duration(lastTs-firstTs) * time.Nanosecond
+		fmt.Printf("Replayed %d snapshots over %s across %d markets\n\n", nSnaps, span.Round(time.Minute), len(bm.Canonicals()))
+		fmt.Print(ac.Report())
+		res := ac.Result()
+		writeReport(backtest.AnalysisReport{Schema: backtest.RunReportSchema,
+			Run: runMeta("autocorr", "autocorr"), Autocorr: &res})
+		return
+	}
 
 	// Spread mean-reversion: standalone read-only pass over paired markets.
 	if *spreadMR {
