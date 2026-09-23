@@ -56,8 +56,32 @@ def longshot_summary(d):
         "solid_buckets": sum(1 for b in r["buckets"] if b["n"] >= 30)}
 
 
+def move_edge(r):
+    """Mirrors backtest.MoveEdge: 10+ markets, 30+ events, 95% range clears zero."""
+    if r["markets"] < 10 or r["events"] < 30:
+        return None
+    if r["fade"] - 1.96 * r["fade_se"] > 0:
+        return "fade"
+    if r["follow"] - 1.96 * r["follow_se"] > 0:
+        return "follow"
+    return None
+
+
+def moves_summary(d):
+    r = d["moves"]
+    readable = [x for x in r["rows"] if x["markets"] >= 10 and x["events"] >= 30]
+    edges = [x for x in readable if move_edge(x)]
+    # What a taker round trip costs on average: follow + fade pays it twice.
+    costs = [-(x["follow"] + x["fade"]) / 2 for x in readable if x["horizon_s"]]
+    return {**base(d["run"]), **{k: r[k] for k in ("move_events", "flow_events", "settlement")},
+            "rows_readable": len(readable), "edges": len(edges),
+            "round_trip_cents": sum(costs) / len(costs) if costs else None}
+
+
 def summary(d):
     kind = d["run"].get("kind", "trading")
+    if kind == "moves":
+        return moves_summary(d)
     if kind == "leadlag":
         return leadlag_summary(d)
     if kind == "longshot":

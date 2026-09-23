@@ -19,6 +19,7 @@
   --accent:#9a6a12; --mark-accent:#9a6a12; --mark-muted:#8a94a0;
   --gain:#2a78d6; --loss:#c0463f; --grid:#ece7db;
   --kalshi:#2a78d6; --poly:#9a6a12;
+  --size1:#d0a04a; --size2:#9a6a12; --size3:#5c3d05;
   --shadow: 0 1px 2px rgba(20,24,28,.05), 0 8px 24px rgba(20,24,28,.06);
 }
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
@@ -28,6 +29,7 @@
   --accent:#e0a95e; --mark-accent:#c08433; --mark-muted:#78828e;
   --gain:#3987e5; --loss:#e0685f; --grid:#1f2831;
   --kalshi:#3987e5; --poly:#c08433;
+  --size1:#7a5319; --size2:#c08433; --size3:#efc583;
   --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
 }}
 :root[data-theme="dark"]{
@@ -37,6 +39,7 @@
   --accent:#e0a95e; --mark-accent:#c08433; --mark-muted:#78828e;
   --gain:#3987e5; --loss:#e0685f; --grid:#1f2831;
   --kalshi:#3987e5; --poly:#c08433;
+  --size1:#7a5319; --size2:#c08433; --size3:#efc583;
   --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
 }
 *{box-sizing:border-box}
@@ -64,6 +67,12 @@ h2{font-family:"IBM Plex Mono",monospace; font-size:13px; letter-spacing:.14em; 
 .key.kalshi{background:var(--kalshi); border-radius:2px}
 .key.poly{background:var(--poly); border-radius:2px}
 .key.together{background:var(--mark-muted); border-radius:2px}
+.key.fade{background:var(--mark-accent); border-radius:50%}
+.key.follow{background:var(--mark-muted); border-radius:2px}
+.lk.s1{background:var(--size1)} .lk.s2{background:var(--size2)} .lk.s3{background:var(--size3)}
+.multi{display:grid; grid-template-columns:1fr; gap:18px}
+@media (min-width:860px){ .multi{grid-template-columns:1fr 1fr} }
+.multi h3{font-family:"IBM Plex Mono",monospace; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-2); margin:0 0 6px; font-weight:600}
 .key.analysis{background:var(--ink-2); border-radius:2px; transform:rotate(45deg); width:8px; height:8px}
 .acards{display:grid; grid-template-columns:1fr; gap:16px}
 @media (min-width:760px){ .acards{grid-template-columns:1fr 1fr} }
@@ -420,6 +429,7 @@ async function showRun(id) {
   const run = d.run;
   if (run.kind === "leadlag") return showLeadLag(d);
   if (run.kind === "longshot") return showLongshot(d);
+  if (run.kind === "moves") return showMoves(d);
   const rep = d.report;
   document.title = (run.label || "Run") + " · " + run.mode + " · Backtest runs";
 
@@ -701,10 +711,18 @@ function adverseTable(a) {
 
 // ---------- analyses (lead-lag, longshot) ----------
 const ANALYSIS = {
+  moves: {name: "Overreaction", q: "After a sharp price move or a burst of one-sided trading, does the price keep going or snap back — and does trading it pay after costs?"},
   leadlag: {name: "Lead-lag", q: "Does one exchange's price move before the other's?"},
   longshot: {name: "Longshot / calibration", q: "Do games resolve as often as their opening price implies?"},
 };
 const analysisBadge = kind => el("span", {class: "badge"}, el("span", {class: "key analysis"}), ANALYSIS[kind].name);
+
+function movesVerdict(r) {
+  if (!r.rows_readable) return "Too little data: no size band and horizon has 10+ games and 30+ events yet.";
+  const cost = r.round_trip_cents != null ? ` A taker round trip costs about ${r.round_trip_cents.toFixed(1)}¢ in spread and fees.` : "";
+  if (!r.edges) return `No edge after costs: across ${r.rows_readable} readable size/horizon combinations, neither fading nor following a move clears zero once you pay to trade it.` + cost;
+  return `${r.edges} of ${r.rows_readable} combinations clear zero after costs. With this many tested, some will by chance — look for a pattern that holds across neighbouring sizes and horizons, and in each week.` + cost;
+}
 
 function leadlagVerdict(r) {
   const lagged = r.kalshi_leads + r.poly_leads;
@@ -724,15 +742,17 @@ function longshotVerdict(r) {
 function analysesSection(runs) {
   const out = [el("h2", {}, "Analyses"),
     el("p", {class: "h2note"}, "Read-only studies of the same recorded data, for ideas beyond arbitrage. The latest of each, then the history.")];
-  const cards = ["longshot", "leadlag"].map(kind => {
+  const cards = ["moves", "longshot", "leadlag"].map(kind => {
     const r = runs.find(x => x.kind === kind);
     if (!r) return null;
     const big = kind === "leadlag"
       ? `${r.kalshi_leads} Kalshi-first · ${r.poly_leads} Poly-first · ${r.contemporaneous} together`
+      : kind === "moves" ? `${r.edges} edge${r.edges === 1 ? "" : "s"} after costs · ${count(r.move_events + r.flow_events)} events`
       : `${r.clear_buckets} of ${r.solid_buckets} solid buckets show a clear edge`;
+    const verdict = kind === "leadlag" ? leadlagVerdict(r) : kind === "moves" ? movesVerdict(r) : longshotVerdict(r);
     return el("a", {class: "card acard", href: "#run=" + r.id},
       el("h3", {}, ANALYSIS[kind].name), el("div", {class: "big"}, big),
-      el("div", {class: "sub"}, (kind === "leadlag" ? leadlagVerdict(r) : longshotVerdict(r))),
+      el("div", {class: "sub"}, verdict),
       el("div", {class: "sub"}, (r.label ? r.label + " · " : "") + dataSpan(r) + " · finished " + when(r.finished_at)));
   }).filter(Boolean);
   out.push(el("div", {class: "acards"}, cards));
@@ -743,6 +763,7 @@ function analysesSection(runs) {
       onclick: () => open(r), onkeydown: e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(r); } }},
       el("td", {}, when(r.finished_at)), el("td", {}, runName(r)), el("td", {}, analysisBadge(r.kind)), el("td", {}, dataSpan(r)),
       el("td", {}, r.kind === "leadlag" ? `${r.kalshi_leads}/${r.poly_leads}/${r.contemporaneous} of ${r.analyzed} (K/P/together)`
+        : r.kind === "moves" ? `${r.edges} edge${r.edges === 1 ? "" : "s"} · ${count(r.move_events)} moves, ${count(r.flow_events)} flow bursts`
         : `${r.clear_buckets}/${r.solid_buckets} clear · ${r.markets} markets`)))))));
   return out;
 }
@@ -863,6 +884,147 @@ function showLeadLag(d) {
       el("tbody", {}, signal.map(m => el("tr", {}, el("td", {class: "mono"}, m.canonical),
         el("td", {class: "r num"}, (m.peak_lag_s > 0 ? "+" : "") + m.peak_lag_s + "s"), el("td", {class: "r num"}, m.peak_corr.toFixed(3)),
         el("td", {class: "r num"}, m.lag0_corr.toFixed(3)), el("td", {class: "r num"}, count(m.n))))))) : null);
+}
+
+const hLabel = h => h === 0 ? "settle" : h >= 60 ? h / 60 + " min" : h + "s";
+const isEdge = r => r.markets >= 10 && r.events >= 30 && (r.fade - 1.96 * r.fade_se > 0 ? "fade" : r.follow - 1.96 * r.follow_se > 0 ? "follow" : null);
+const venueName = v => v === "polymarketus" ? "Polymarket" : v === "kalshi" ? "Kalshi" : v;
+
+function showMoves(d) {
+  const run = d.run, r = d.moves;
+  document.title = "Overreaction · " + (run.label || run.id) + " · Backtest runs";
+  const readable = r.rows.filter(x => x.markets >= 10 && x.events >= 30);
+  const edges = readable.filter(isEdge);
+  const costs = readable.filter(x => x.horizon_s).map(x => -(x.follow + x.fade) / 2);
+  const summary = {rows_readable: readable.length, edges: edges.length, round_trip_cents: costs.length ? costs.reduce((a, b) => a + b, 0) / costs.length : null};
+  const kpis = el("div", {class: "stats kpis"},
+    stat("Edges after costs", edges.length + " / " + readable.length, "readable size × horizon combinations", true),
+    stat("Price moves", count(r.move_events), `≥${r.move_cents}¢ within ${r.lookback_s}s`),
+    stat("Flow bursts", count(r.flow_events), `≥${r.flow_contracts} contracts net within ${r.flow_window_s}s`),
+    stat("Round-trip cost", summary.round_trip_cents != null ? summary.round_trip_cents.toFixed(1) + "¢" : "—", "spread + both fees, avg"),
+    stat("Hold to settlement", r.settlement ? "included" : "—", r.settlement ? "from recorded outcomes" : "no outcomes loaded"));
+  const triggers = [["move", "After a sharp price move", `The mid moved at least ${r.move_cents}¢ within ${r.lookback_s} seconds. Did it keep going, or snap back?`],
+    ["flow", "After one-sided trading", `Takers bought (or sold) at least ${r.flow_contracts} contracts more than the other side within ${r.flow_window_s} seconds — the closest thing in this data to "the public" piling in. Did the price keep going, or reverse?`]];
+  const sections = triggers.flatMap(([trig, title, note]) => {
+    const rows = r.rows.filter(x => x.trigger === trig);
+    if (!rows.length) return [el("h2", {}, title), el("p", {class: "empty"}, trig === "flow" ? "No trade prints in this window, so no flow events." : "No events.")];
+    return [el("h2", {}, title), el("p", {class: "h2note"}, note + " Size bands with fewer than 10 games are left off the charts; they're in the table."),
+      el("div", {class: "card"}, el("div", {class: "multi"}, ["kalshi", "polymarketus"].filter(v => rows.some(x => x.venue === v)).map(v =>
+        el("div", {}, el("h3", {}, venueName(v)), continuationChart(rows.filter(x => x.venue === v), trig))))),
+      el("p", {class: "h2note", style: "margin-top:14px"}, "Net profit per contract of actually trading it — with the move (follow) or against it (fade) — entering and exiting at the real bid/ask and paying both fees. Only combinations with 10+ games and 30+ events are shown; ▲ marks one whose 95% range clears zero."),
+      el("div", {class: "card"}, forestPlot(rows.filter(x => x.markets >= 10 && x.events >= 30)))];
+  });
+  app.replaceChildren(...analysisHeader(run).filter(Boolean),
+    el("p", {class: "verdict"}, movesVerdict(summary)),
+    kpis, ...sections,
+    el("h2", {}, "All combinations"),
+    el("p", {class: "h2note"}, "Every trigger, exchange, size band and horizon. Continuation is before costs (+ kept going, − snapped back); follow and fade are after costs. ± is a 95% range clustered by game; n/a means one game, where no honest range exists."),
+    movesTable(r.rows));
+}
+
+// Mid continuation (before costs) by horizon, one line per size band.
+function continuationChart(rows, trig) {
+  // Same bar as the forest plot: a band backed by a handful of games swings
+  // enough to look like a pattern. Those stay in the table.
+  rows = rows.filter(x => x.markets >= 10 && x.events >= 30);
+  if (!rows.some(x => x.horizon_s)) return el("p", {class: "empty"}, "No size band has 10+ games and 30+ events here yet.");
+  const bands = [...new Map(rows.map(x => [x.bucket, x.bucket_lo])).entries()].sort((a, b) => a[1] - b[1]).map(e => e[0]);
+  const hs = [...new Set(rows.filter(x => x.horizon_s).map(x => x.horizon_s))].sort((a, b) => a - b);
+  const box = el("div", {class: "chart"});
+  const legend = el("div", {class: "legend"}, bands.map((b, i) => el("span", {}, el("span", {class: "lk s" + Math.min(3, i + 1), style: "display:inline-block;width:14px;height:2px"}), b + (trig === "flow" ? " contracts" : ""))));
+  const tip = tooltip(box);
+  responsive(box, W => {
+    box.querySelector("svg")?.remove();
+    const H = 200, m = {l: 48, r: 14, t: 10, b: 26};
+    const pts = rows.filter(x => x.horizon_s);
+    const vals = pts.map(x => x.cont).concat([0]);
+    const yt = niceTicks(Math.min(...vals), Math.max(...vals), 4), y0 = yt[0], y1 = yt[yt.length - 1];
+    const X = i => m.l + (hs.length === 1 ? 0.5 : i / (hs.length - 1)) * (W - m.l - m.r), Y = v => m.t + (1 - (v - y0) / (y1 - y0)) * (H - m.t - m.b);
+    const svg = sv("svg", {viewBox: `0 0 ${W} ${H}`, height: H, role: "img", "aria-label": "Price continuation by horizon; the table below has the same values"});
+    for (const v of yt) svg.append(sv("line", {class: v === 0 ? "zero" : "gridline", x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v)}),
+      sv("text", {class: "tick", x: m.l - 6, y: Y(v) + 4, "text-anchor": "end"}, (v > 0 ? "+" : "") + v + "¢"));
+    hs.forEach((h, i) => svg.append(sv("text", {class: "tick", x: X(i), y: H - 6, "text-anchor": "middle"}, hLabel(h))));
+    svg.append(sv("text", {class: "tick", x: m.l + 4, y: m.t + 10}, "kept going ↑"), sv("text", {class: "tick", x: m.l + 4, y: H - m.b - 4}, "snapped back ↓"));
+    bands.forEach((b, bi) => {
+      const color = `var(--size${Math.min(3, bi + 1)})`;
+      const series = hs.map((h, i) => ({i, row: pts.find(x => x.bucket === b && x.horizon_s === h)})).filter(p => p.row);
+      if (!series.length) return;
+      svg.append(sv("path", {d: series.map((p, k) => (k ? "L" : "M") + X(p.i) + "," + Y(p.row.cont)).join(""), fill: "none", stroke: color, "stroke-width": 2, "stroke-linejoin": "round"}));
+      for (const p of series) {
+        const x = X(p.i), y = Y(p.row.cont);
+        const g = sv("g", {tabindex: "0", role: "img", "aria-label": `${b}, ${hLabel(p.row.horizon_s)}: ${p.row.cont.toFixed(2)}¢`});
+        const dot = sv("circle", {cx: x, cy: y, r: 4, fill: color, stroke: "var(--surface)", "stroke-width": 2});
+        g.append(sv("circle", {cx: x, cy: y, r: 12, fill: "transparent"}), dot);
+        const show = () => { dot.setAttribute("r", 5); tip.show(x, y, () => [el("strong", {}, (p.row.cont > 0 ? "+" : "") + p.row.cont.toFixed(2) + "¢ " + (p.row.cont >= 0 ? "kept going" : "snapped back")),
+          el("div", {}, b + " · after " + hLabel(p.row.horizon_s)), el("div", {}, "±" + (1.96 * p.row.cont_se).toFixed(2) + "¢ · " + p.row.events + " events in " + p.row.markets + " games")]); };
+        const hide = () => { dot.setAttribute("r", 4); tip.hide(); };
+        g.addEventListener("pointerenter", show); g.addEventListener("pointerleave", hide);
+        g.addEventListener("focus", show); g.addEventListener("blur", hide);
+        svg.append(g);
+      }
+    });
+    box.prepend(svg);
+  });
+  return el("div", {}, legend, box);
+}
+
+// One row per exchange × size × horizon: fade (accent circle) and follow (gray
+// square) net P&L with 95% bars, against zero.
+function forestPlot(rows) {
+  if (!rows.length) return el("p", {class: "empty"}, "No combination has 10+ games and 30+ events yet.");
+  const box = el("div", {class: "chart"});
+  const legend = el("div", {class: "legend"}, el("span", {}, el("span", {class: "key fade"}), "fade (trade against it)"), el("span", {}, el("span", {class: "key follow"}), "follow (trade with it)"));
+  const tip = tooltip(box);
+  responsive(box, W => {
+    box.querySelector("svg")?.remove();
+    const narrow = W < 600, fs = narrow ? 11 : 12;
+    const labelOf = x => narrow
+      ? ({polymarketus: "Poly", kalshi: "Kal"}[x.venue] || x.venue) + " · " + x.bucket + " · " + hLabel(x.horizon_s).replace(" min", "m")
+      : venueName(x.venue) + " · " + x.bucket + " · " + hLabel(x.horizon_s);
+    // Size the label column to the longest label (mono: ~0.61em per char, +2 for "▲ ").
+    const longest = Math.max(...rows.map(x => labelOf(x).length + 2));
+    const rowH = 26, labW = Math.min(W * 0.5, longest * fs * 0.61 + 6), m = {l: labW + 10, r: 16, t: 6, b: 24}, H = rows.length * rowH + m.t + m.b;
+    const vals = rows.flatMap(x => [x.fade - 1.96 * x.fade_se, x.fade + 1.96 * x.fade_se, x.follow - 1.96 * x.follow_se, x.follow + 1.96 * x.follow_se]).concat([0]);
+    const xt = niceTicks(Math.min(...vals), Math.max(...vals), 5), x0 = xt[0], x1 = xt[xt.length - 1];
+    const X = v => m.l + (v - x0) / (x1 - x0) * (W - m.l - m.r);
+    const svg = sv("svg", {viewBox: `0 0 ${W} ${H}`, height: H, role: "img", "aria-label": "Net P&L after costs, fade vs follow; the table below has the same values"});
+    for (const v of xt) svg.append(sv("line", {class: v === 0 ? "zero" : "gridline", x1: X(v), x2: X(v), y1: m.t, y2: H - m.b}),
+      sv("text", {class: "tick", x: X(v), y: H - 6, "text-anchor": "middle"}, (v > 0 ? "+" : "") + v + "¢"));
+    rows.forEach((x, i) => {
+      const y = m.t + i * rowH + rowH / 2, edge = isEdge(x);
+      const label = labelOf(x);
+      svg.append(sv("text", {x: labW, y: y + 4, "text-anchor": "end", fill: edge ? "var(--ink)" : "var(--ink-2)", "font-size": fs, "font-family": "IBM Plex Mono, monospace", "font-weight": edge ? 600 : 400}, (edge ? "▲ " : "") + label));
+      const g = sv("g", {tabindex: "0", role: "img", "aria-label": `${label}: fade ${x.fade.toFixed(2)}¢, follow ${x.follow.toFixed(2)}¢`});
+      g.append(sv("rect", {x: 0, y: y - rowH / 2, width: W, height: rowH, fill: "transparent"}));
+      const mark = (v, se, dy, fade) => {
+        const cy = y + dy;
+        g.append(sv("line", {x1: X(v - 1.96 * se), x2: X(v + 1.96 * se), y1: cy, y2: cy, stroke: fade ? "var(--mark-accent)" : "var(--mark-muted)", "stroke-width": 2, "stroke-opacity": .45, "stroke-linecap": "round"}));
+        g.append(fade ? sv("circle", {cx: X(v), cy, r: 4, fill: "var(--mark-accent)", stroke: "var(--surface)", "stroke-width": 2})
+          : sv("rect", {x: X(v) - 4, y: cy - 4, width: 8, height: 8, rx: 1.5, fill: "var(--mark-muted)", stroke: "var(--surface)", "stroke-width": 2}));
+      };
+      mark(x.fade, x.fade_se, -4, true); mark(x.follow, x.follow_se, 4, false);
+      const show = () => tip.show(X(Math.max(x.fade, x.follow)), y, () => [el("strong", {}, label),
+        tipLine("var(--mark-accent)", "fade " + (x.fade > 0 ? "+" : "") + x.fade.toFixed(2) + "¢ ±" + (1.96 * x.fade_se).toFixed(2)),
+        tipLine("var(--mark-muted)", "follow " + (x.follow > 0 ? "+" : "") + x.follow.toFixed(2) + "¢ ±" + (1.96 * x.follow_se).toFixed(2)),
+        el("div", {}, x.events + " events in " + x.markets + " games" + (edge ? " · " + edge + " clears zero" : ""))]);
+      g.addEventListener("pointerenter", show); g.addEventListener("pointerleave", () => tip.hide());
+      g.addEventListener("focus", show); g.addEventListener("blur", () => tip.hide());
+      svg.append(g);
+    });
+    box.prepend(svg);
+  });
+  return el("div", {}, legend, box);
+}
+
+function movesTable(rows) {
+  const ci = (x, v, se) => x.markets < 2 ? (v > 0 ? "+" : "") + v.toFixed(2) + " n/a" : (v > 0 ? "+" : "") + v.toFixed(2) + " ±" + (1.96 * se).toFixed(2);
+  return el("div", {class: "tablewrap", style: "max-height:460px; overflow:auto"}, el("table", {},
+    el("thead", {}, el("tr", {}, ["Trigger", "Exchange", "Size", "After"].map(h => el("th", {}, h)), ["Events", "Games", "Continuation", "Follow", "Fade"].map(h => el("th", {class: "r"}, h)), el("th", {}, "Edge"))),
+    el("tbody", {}, rows.map(x => { const e = isEdge(x); return el("tr", {},
+      el("td", {}, x.trigger === "move" ? "price move" : "flow burst"), el("td", {}, venueName(x.venue)), el("td", {class: "num"}, x.bucket), el("td", {}, hLabel(x.horizon_s)),
+      el("td", {class: "r num"}, x.events), el("td", {class: "r num"}, x.markets), el("td", {class: "r num"}, ci(x, x.cont, x.cont_se)),
+      el("td", {class: "r num" + (e === "follow" ? " better" : "")}, ci(x, x.follow, x.follow_se)), el("td", {class: "r num" + (e === "fade" ? " better" : "")}, ci(x, x.fade, x.fade_se)),
+      el("td", {}, e || "—")); }))));
 }
 
 // Columns: how many markets peak at each lag. Poly-first left, Kalshi-first
