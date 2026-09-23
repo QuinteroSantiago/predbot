@@ -6,6 +6,7 @@ import (
 	"container/heap"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -13,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"predbot/internal/core"
@@ -45,6 +47,14 @@ import (
 // order, so fn needs no locking and sees byte-identical output to the serial
 // walk.
 func StreamReplay(dir string, w Window, fn func(core.BookSnapshot) error) error {
+	return StreamReplayCounting(dir, w, nil, fn)
+}
+
+// StreamReplayCounting is StreamReplay that also adds every compressed byte it
+// reads from disk to *bytes (when non-nil). Against ArchiveBytes that makes a
+// steady progress measure: an hour's file takes about as long to decode per
+// byte whatever date it's from, where snapshots per day vary a lot.
+func StreamReplayCounting(dir string, w Window, bytes *atomic.Int64, fn func(core.BookSnapshot) error) error {
 	byHour, err := hourlyFiles(dir, w)
 	if err != nil {
 		return err
@@ -59,7 +69,36 @@ func StreamReplay(dir string, w Window, fn func(core.BookSnapshot) error) error 
 			return inner(s)
 		}
 	}
-	return streamHours(byHour, sortedHours(byHour), replayWorkers(), fn)
+	return streamHours(byHour, sortedHours(byHour), replayWorkers(), bytes, fn)
+}
+
+// ArchiveBytes is the compressed size of the files StreamReplay(dir, w) reads.
+func ArchiveBytes(dir string, w Window) (int64, error) {
+	byHour, err := hourlyFiles(dir, w)
+	if err != nil {
+		return 0, err
+	}
+	var n int64
+	for _, files := range byHour {
+		for _, f := range files {
+			if fi, err := os.Stat(f); err == nil {
+				n += fi.Size()
+			}
+		}
+	}
+	return n, nil
+}
+
+// countingReader adds the bytes read through it to n.
+type countingReader struct {
+	r io.Reader
+	n *atomic.Int64
+}
+
+func (c countingReader) Read(p []byte) (int, error) {
+	k, err := c.r.Read(p)
+	c.n.Add(int64(k))
+	return k, err
 }
 
 // ArchiveSpan returns the time range StreamReplay(dir, w) will cover, from the
@@ -126,13 +165,13 @@ type hourBatch struct {
 
 // streamHours walks hours in order, decoding up to workers of them ahead of the
 // consumer. With workers == 1 it is the plain serial walk.
-func streamHours(byHour map[string][]string, hours []string, workers int, fn func(core.BookSnapshot) error) error {
+func streamHours(byHour map[string][]string, hours []string, workers int, bytes *atomic.Int64, fn func(core.BookSnapshot) error) error {
 	if workers > len(hours) {
 		workers = len(hours)
 	}
 	if workers <= 1 {
 		for _, hour := range hours {
-			if err := streamHour(byHour[hour], fn); err != nil {
+			if err := streamHour(byHour[hour], bytes, fn); err != nil {
 				return err
 			}
 		}
@@ -156,7 +195,7 @@ func streamHours(byHour map[string][]string, hours []string, workers int, fn fun
 			case <-done:
 				return
 			}
-			go decodeHour(byHour[hour], out, done)
+			go decodeHour(byHour[hour], bytes, out, done)
 		}
 	}()
 
@@ -176,7 +215,7 @@ func streamHours(byHour map[string][]string, hours []string, workers int, fn fun
 }
 
 // decodeHour merges one hour and ships it in batches. It owns out and closes it.
-func decodeHour(files []string, out chan<- hourBatch, done <-chan struct{}) {
+func decodeHour(files []string, bytes *atomic.Int64, out chan<- hourBatch, done <-chan struct{}) {
 	defer close(out)
 	batch := make([]core.BookSnapshot, 0, batchSize)
 	// A fresh slice per send: the consumer owns what it receives.
@@ -192,7 +231,7 @@ func decodeHour(files []string, out chan<- hourBatch, done <-chan struct{}) {
 			return false
 		}
 	}
-	err := streamHour(files, func(s core.BookSnapshot) error {
+	err := streamHour(files, bytes, func(s core.BookSnapshot) error {
 		batch = append(batch, s)
 		if len(batch) >= batchSize && !flush() {
 			return errCanceled
@@ -274,12 +313,16 @@ type snapReader struct {
 	wg     sync.WaitGroup
 }
 
-func openSnapReader(path string) (*snapReader, error) {
+func openSnapReader(path string, bytes *atomic.Int64) (*snapReader, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
-	gz, err := gzip.NewReader(f)
+	var src io.Reader = f
+	if bytes != nil {
+		src = countingReader{f, bytes}
+	}
+	gz, err := gzip.NewReader(src)
 	if err != nil {
 		f.Close()
 		return nil, err
@@ -492,7 +535,7 @@ func (h *snapHeap) Pop() any {
 
 // streamHour merges one hour's files in receive-time order, buffering a single
 // snapshot per file plus a small reorder window.
-func streamHour(files []string, fn func(core.BookSnapshot) error) error {
+func streamHour(files []string, bytes *atomic.Int64, fn func(core.BookSnapshot) error) error {
 	h := &readerHeap{}
 	defer func() {
 		for _, r := range *h {
@@ -500,7 +543,7 @@ func streamHour(files []string, fn func(core.BookSnapshot) error) error {
 		}
 	}()
 	for _, f := range files {
-		r, err := openSnapReader(f)
+		r, err := openSnapReader(f, bytes)
 		if err != nil {
 			continue // a torn current-hour file is expected
 		}

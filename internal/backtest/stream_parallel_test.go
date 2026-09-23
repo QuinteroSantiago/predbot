@@ -78,7 +78,7 @@ func writeSyntheticArchive(t testing.TB, hours, perHour int) string {
 func collect(t testing.TB, byHour map[string][]string, hours []string, workers int) []core.BookSnapshot {
 	t.Helper()
 	var got []core.BookSnapshot
-	if err := streamHours(byHour, hours, workers, func(s core.BookSnapshot) error {
+	if err := streamHours(byHour, hours, workers, nil, func(s core.BookSnapshot) error {
 		got = append(got, s)
 		return nil
 	}); err != nil {
@@ -138,7 +138,7 @@ func TestParallelDecodeStopsOnCallbackError(t *testing.T) {
 	sentinel := errors.New("stop here")
 	for _, workers := range []int{1, 4, 16} {
 		n := 0
-		err := streamHours(byHour, sortedHours(byHour), workers, func(core.BookSnapshot) error {
+		err := streamHours(byHour, sortedHours(byHour), workers, nil, func(core.BookSnapshot) error {
 			n++
 			if n == 2_500 {
 				return sentinel
@@ -191,7 +191,7 @@ func BenchmarkReplayWorkers(b *testing.B) {
 		b.Run(fmt.Sprintf("workers=%d", workers), func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				n := 0
-				if err := streamHours(byHour, hours, workers, func(core.BookSnapshot) error {
+				if err := streamHours(byHour, hours, workers, nil, func(core.BookSnapshot) error {
 					n++
 					return nil
 				}); err != nil {

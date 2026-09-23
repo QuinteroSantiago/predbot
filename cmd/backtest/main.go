@@ -125,7 +125,7 @@ func main() {
 	var nSnaps int
 	var firstTs, lastTs int64
 	scan := scanBar(*showProgress, dir, w)
-	if err := backtest.StreamReplay(dir, w, func(s core.BookSnapshot) error {
+	if err := backtest.StreamReplayCounting(dir, w, scan.bar.Counter(), func(s core.BookSnapshot) error {
 		scan.observe(s.TsRecv)
 		nSnaps++
 		if firstTs == 0 {
@@ -599,12 +599,13 @@ func writeJSON(path string, v any) error {
 }
 
 // scanProgress tracks the id-scan pass. Its snapshot count isn't known until
-// the pass ends, so the bar measures how far through the archive's time span
-// the replay has got.
+// the pass ends, so the bar counts compressed bytes read against the archive's
+// size — steady, unlike dates (a busy game night packs far more snapshots into
+// a day than a quiet morning). The date reached is still shown.
 type scanProgress struct {
 	bar    *progress.Bar
-	fromNs int64
 	seen   atomic.Int64
+	lastTs atomic.Int64
 }
 
 func scanBar(on bool, dir string, w backtest.Window) *scanProgress {
@@ -612,18 +613,29 @@ func scanBar(on bool, dir string, w backtest.Window) *scanProgress {
 	if !on {
 		return sp
 	}
-	from, to, ok, err := backtest.ArchiveSpan(dir, w)
-	if err != nil || !ok {
+	total, err := backtest.ArchiveBytes(dir, w)
+	if err != nil || total == 0 {
 		return sp
 	}
-	sp.fromNs = from.UnixNano()
-	sp.bar = progress.Start("pass 1/2 scan  ", to.UnixNano()-sp.fromNs, func(done, _ int64, elapsed time.Duration) string {
-		n := sp.seen.Load()
-		return fmt.Sprintf("through %s  %s snapshots  %s/s",
-			time.Unix(0, sp.fromNs+done).UTC().Format("2006-01-02 15:04"),
-			progress.Count(n), progress.Count(int64(float64(n)/elapsed.Seconds())))
+	sp.bar = progress.Start("pass 1/2 scan  ", total, func(done, total int64, elapsed time.Duration) string {
+		n, ts := sp.seen.Load(), sp.lastTs.Load()
+		through := "—"
+		if ts > 0 {
+			through = time.Unix(0, ts).UTC().Format("2006-01-02 15:04")
+		}
+		return fmt.Sprintf("through %s  %s snapshots  %s/s  %s of %s",
+			through, progress.Count(n), progress.Count(int64(float64(n)/elapsed.Seconds())),
+			sizeOf(done), sizeOf(total))
 	})
 	return sp
+}
+
+// sizeOf formats a byte count: 950 MB, 5.52 GB.
+func sizeOf(n int64) string {
+	if n >= 1e9 {
+		return fmt.Sprintf("%.2f GB", float64(n)/1e9)
+	}
+	return fmt.Sprintf("%.0f MB", float64(n)/1e6)
 }
 
 func (sp *scanProgress) observe(tsRecv int64) {
@@ -631,7 +643,7 @@ func (sp *scanProgress) observe(tsRecv int64) {
 		return
 	}
 	sp.seen.Add(1)
-	sp.bar.Set(tsRecv - sp.fromNs)
+	sp.lastTs.Store(tsRecv)
 }
 
 // countBar shows a pass over a known number of snapshots; nil when off.
