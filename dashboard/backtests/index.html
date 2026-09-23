@@ -432,6 +432,7 @@ async function showRun(id) {
   if (run.kind === "moves") return showMoves(d);
   if (run.kind === "spreadmr") return showSpreadMR(d);
   if (run.kind === "autocorr") return showAutocorr(d);
+  if (run.kind === "outcomereg") return showOutcomeReg(d);
   const rep = d.report;
   document.title = (run.label || "Run") + " · " + run.mode + " · Backtest runs";
 
@@ -713,6 +714,7 @@ function adverseTable(a) {
 
 // ---------- analyses (lead-lag, longshot) ----------
 const ANALYSIS = {
+  outcomereg: {name: "Outcome regression", q: "Does anything — the price itself, the exchange, the league, the spread — predict who wins better than the market's own price, on days the model never saw?"},
   autocorr: {name: "Price momentum / reversion", q: "On one exchange, does a price change predict the next one — does it keep going or undo itself — and does trading that pay after costs?"},
   spreadmr: {name: "Spread mean-reversion", q: "When the Kalshi–Polymarket gap stretches, how fast does it snap back — and does trading the snap-back pay after costs?"},
   moves: {name: "Overreaction", q: "After a sharp price move or a burst of one-sided trading, does the price keep going or snap back — and does trading it pay after costs?"},
@@ -722,6 +724,19 @@ const ANALYSIS = {
 const analysisBadge = kind => el("span", {class: "badge"}, el("span", {class: "key analysis"}), ANALYSIS[kind].name);
 
 const fmtSecs = s => !s ? "—" : s < 90 ? Math.round(s) + "s" : s < 5400 ? (s / 60).toFixed(1) + " min" : (s / 3600).toFixed(1) + " h";
+
+const calibRead = c => c.slope - 1.96 * c.slope_se > 1 ? "favorites underpriced" : c.slope + 1.96 * c.slope_se < 1 ? "favorites overpriced" : "calibrated";
+function outcomeregVerdict(r) {
+  if (r.note && !r.cv_n) return r.note.charAt(0).toUpperCase() + r.note.slice(1) + ".";
+  const calib = r.calibration || [];
+  const cal = calib.map(c => `${venueName(c.venue)} ${calibRead(c)} (slope ${c.slope.toFixed(2)})`).join("; ");
+  const biased = calib.some(c => calibRead(c) !== "calibrated");
+  const cv = r.cv_verdict === "beats" ? "The model predicts unseen days better than the market price — there's structure the price misses, worth a trading test."
+    : r.cv_verdict === "worse" ? "The model predicts unseen days worse than the market price: the price already knows more than these features."
+    : biased ? "The bias shows in the fit, but on days the model never saw it's no better than the price — too small, or too little data, to exploit reliably yet."
+    : "On days it never saw, the model is no better than the market's own price — nothing here to exploit.";
+  return (cal ? cal + ". " : "") + cv;
+}
 
 function autocorrVerdict(r) {
   if (!r.fits) return "No series had enough continuous prices to fit.";
@@ -765,7 +780,7 @@ function longshotVerdict(r) {
 function analysesSection(runs) {
   const out = [el("h2", {}, "Analyses"),
     el("p", {class: "h2note"}, "Read-only studies of the same recorded data, for ideas beyond arbitrage. The latest of each, then the history.")];
-  const cards = ["spreadmr", "autocorr", "moves", "longshot", "leadlag"].map(kind => {
+  const cards = ["outcomereg", "spreadmr", "autocorr", "moves", "longshot", "leadlag"].map(kind => {
     const r = runs.find(x => x.kind === kind);
     if (!r) return null;
     const big = kind === "leadlag"
@@ -773,8 +788,9 @@ function analysesSection(runs) {
       : kind === "moves" ? `${r.edges} edge${r.edges === 1 ? "" : "s"} after costs · ${count(r.move_events + r.flow_events)} events`
       : kind === "spreadmr" ? `half-life ${fmtSecs(r.half_life_s)} · ${r.edges} edge${r.edges === 1 ? "" : "s"} after costs`
       : kind === "autocorr" ? `${r.reversion} reversion · ${r.momentum} momentum · ${r.flat} flat · ${r.edges} edge${r.edges === 1 ? "" : "s"}`
+      : kind === "outcomereg" ? (r.cv_n ? `model ${r.cv_verdict === "beats" ? "beats" : r.cv_verdict === "worse" ? "loses to" : "ties"} the market out of sample` : "not enough data")
       : `${r.clear_buckets} of ${r.solid_buckets} solid buckets show a clear edge`;
-    const verdict = kind === "leadlag" ? leadlagVerdict(r) : kind === "moves" ? movesVerdict(r) : kind === "spreadmr" ? spreadmrVerdict(r) : kind === "autocorr" ? autocorrVerdict(r) : longshotVerdict(r);
+    const verdict = kind === "leadlag" ? leadlagVerdict(r) : kind === "moves" ? movesVerdict(r) : kind === "spreadmr" ? spreadmrVerdict(r) : kind === "autocorr" ? autocorrVerdict(r) : kind === "outcomereg" ? outcomeregVerdict(r) : longshotVerdict(r);
     return el("a", {class: "card acard", href: "#run=" + r.id},
       el("h3", {}, ANALYSIS[kind].name), el("div", {class: "big"}, big),
       el("div", {class: "sub"}, verdict),
@@ -791,6 +807,7 @@ function analysesSection(runs) {
         : r.kind === "moves" ? `${r.edges} edge${r.edges === 1 ? "" : "s"} · ${count(r.move_events)} moves, ${count(r.flow_events)} flow bursts`
         : r.kind === "spreadmr" ? `half-life ${fmtSecs(r.half_life_s)} · ${r.edges}/${r.strategies_tested} rules clear · ${r.markets} markets`
         : r.kind === "autocorr" ? `${r.reversion}/${r.momentum}/${r.flat} of ${r.fits} (rev/mom/flat) · ${r.edges} edges`
+        : r.kind === "outcomereg" ? `${r.obs} markets · out of sample: ${r.cv_verdict}`
         : `${r.clear_buckets}/${r.solid_buckets} clear · ${r.markets} markets`)))))));
   return out;
 }
@@ -1120,6 +1137,80 @@ function showAutocorr(d) {
       el("tbody", {}, r.fits.map((f, i) => el("tr", {}, el("td", {}, venueName(f.venue)), el("td", {}, hLabel(f.horizon_s)), el("td", {class: "r num"}, count(f.pairs)),
         el("td", {class: "r num"}, f.markets), el("td", {class: "r num"}, (f.beta > 0 ? "+" : "") + f.beta.toFixed(3)), el("td", {class: "r num"}, "±" + (1.96 * f.beta_se).toFixed(3)),
         el("td", {class: "r num"}, f.past_sd.toFixed(2) + "¢"), el("td", {}, verdicts[i] === "none" ? "no clear pattern" : verdicts[i])))))));
+}
+
+function showOutcomeReg(d) {
+  const run = d.run, r = d.outcomereg, cv = r.cv || {};
+  document.title = "Outcome regression · " + (run.label || run.id) + " · Backtest runs";
+  const beats = cv.n ? (cv.logloss_diff - 1.96 * cv.logloss_diff_se > 0 ? "beats" : cv.logloss_diff + 1.96 * cv.logloss_diff_se < 0 ? "worse" : "ties") : "ties";
+  const summary = {note: r.note, cv_n: cv.n, cv_verdict: beats, calibration: r.calibration};
+  const head = [...analysisHeader(run).filter(Boolean), el("p", {class: "verdict"}, outcomeregVerdict(summary))];
+  if (!r.coefficients || !r.coefficients.length) { app.replaceChildren(...head); return; }
+  const kpis = el("div", {class: "stats kpis"},
+    stat("Out of sample", cv.n ? (cv.logloss_diff > 0 ? "+" : "") + cv.logloss_diff.toFixed(4) : "—", cv.n ? `log-loss gain vs the price, ±${(1.96 * cv.logloss_diff_se).toFixed(4)} (${cv.folds} folds by day)` : null, true),
+    ...(r.calibration || []).map(c => stat(venueName(c.venue) + " slope", c.slope.toFixed(2), "±" + (1.96 * c.slope_se).toFixed(2) + " · " + calibRead(c))),
+    stat("Settled markets", r.obs, r.clusters + " league-days · YES " + pct(r.yes_rate)));
+  // No standard error (e.g. two exchanges with identical data) is no evidence either way.
+  const sig = c => c.se > 0 && (c.name === "log-odds of price" ? Math.abs(c.beta - 1) > 1.96 * c.se : c.name !== "intercept" && Math.abs(c.beta) > 1.96 * c.se);
+  app.replaceChildren(...head, kpis,
+    el("h2", {}, "Calibration"),
+    el("p", {class: "h2note"}, "The fitted chance of YES at each opening price, P(yes) = σ(a + b·log-odds), for each exchange, with the binned data behind it (faint points have fewer than 30 markets). On the diagonal the price is right; a steeper curve means favorites win more often than priced."),
+    el("div", {class: "card"}, orCalibChart(r)),
+    el("h2", {}, "Full model"),
+    el("p", {class: "h2note"}, "Log-odds coefficients with 95% ranges clustered by league-day. ▲ marks a feature whose range excludes no effect (0 — or 1 for the price's own slope). Features that don't vary in this sample are left out."),
+    el("div", {class: "tablewrap"}, el("table", {},
+      el("thead", {}, el("tr", {}, el("th", {}, "Feature"), el("th", {class: "r"}, "Coefficient"), el("th", {class: "r"}, "±95%"), el("th", {}, "Reads as"))),
+      el("tbody", {}, r.coefficients.map(c => el("tr", {}, el("td", {}, c.name),
+        el("td", {class: "r num" + (sig(c) ? " better" : "")}, (c.beta > 0 ? "+" : "") + c.beta.toFixed(3)), el("td", {class: "r num"}, "±" + (1.96 * c.se).toFixed(3)),
+        el("td", {style: "white-space:normal"}, c.what)))))),
+    el("h2", {}, "Out-of-sample test"),
+    el("p", {class: "h2note"}, `The model is fitted on four fifths of the days and scored on the fifth it never saw, five times over (${cv.n} held-out markets). Lower log-loss and Brier are better. If the model can't beat the market's own price here, the features carry no exploitable information.`),
+    el("div", {class: "tablewrap"}, el("table", {},
+      el("thead", {}, el("tr", {}, el("th", {}, "Score"), ["Market price", "Model", "Market − model", "±95%"].map(h => el("th", {class: "r"}, h)))),
+      el("tbody", {},
+        el("tr", {}, el("td", {}, "Log-loss"), el("td", {class: "r num"}, cv.market_logloss.toFixed(4)), el("td", {class: "r num"}, cv.model_logloss.toFixed(4)),
+          el("td", {class: "r num"}, (cv.logloss_diff > 0 ? "+" : "") + cv.logloss_diff.toFixed(4)), el("td", {class: "r num"}, "±" + (1.96 * cv.logloss_diff_se).toFixed(4))),
+        el("tr", {}, el("td", {}, "Brier"), el("td", {class: "r num"}, cv.market_brier.toFixed(4)), el("td", {class: "r num"}, cv.model_brier.toFixed(4)),
+          el("td", {class: "r num"}, (cv.brier_diff > 0 ? "+" : "") + cv.brier_diff.toFixed(4)), el("td", {class: "r num"}, "±" + (1.96 * cv.brier_diff_se).toFixed(4)))))));
+}
+
+// Fitted calibration curves per exchange over the binned data.
+function orCalibChart(r) {
+  const venues = (r.calibration || []).map(c => c.venue);
+  const box = el("div", {class: "chart"});
+  const legend = el("div", {class: "legend"}, venues.map(v => el("span", {}, el("span", {class: "key " + (v === "kalshi" ? "kalshi" : "poly"), style: v === "kalshi" ? "border-radius:50%" : null}), venueName(v))));
+  const tip = tooltip(box);
+  const sigm = z => 1 / (1 + Math.exp(-z));
+  responsive(box, W => {
+    box.querySelector("svg")?.remove();
+    const H = Math.min(400, Math.max(260, W * 0.5)), m = {l: 48, r: 16, t: 12, b: 40};
+    const X = v => m.l + v * (W - m.l - m.r), Y = v => m.t + (1 - v) * (H - m.t - m.b);
+    const svg = sv("svg", {viewBox: `0 0 ${W} ${H}`, height: H, role: "img", "aria-label": "Calibration curves; the coefficients table has the fitted values"});
+    for (const v of [0, .25, .5, .75, 1]) svg.append(sv("line", {class: "gridline", x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v)}),
+      sv("text", {class: "tick", x: m.l - 6, y: Y(v) + 4, "text-anchor": "end"}, pct0(v)),
+      sv("text", {class: "tick", x: X(v), y: H - m.b + 16, "text-anchor": "middle"}, pct0(v)));
+    svg.append(sv("text", {class: "tick", x: (m.l + W - m.r) / 2, y: H - 4, "text-anchor": "middle"}, "opening price (implied chance of YES)"),
+      sv("line", {x1: X(0), y1: Y(0), x2: X(1), y2: Y(1), stroke: "var(--muted)", "stroke-width": 1}));
+    for (const c of r.calibration || []) {
+      const color = c.venue === "kalshi" ? "var(--kalshi)" : "var(--poly)";
+      let d = "";
+      for (let i = 0; i <= 96; i++) { const p = 0.02 + i * 0.01; d += (i ? "L" : "M") + X(p) + "," + Y(sigm(c.intercept + c.slope * Math.log(p / (1 - p)))); }
+      svg.append(sv("path", {d, fill: "none", stroke: color, "stroke-width": 2}));
+    }
+    for (const pt of r.points || []) {
+      const color = pt.venue === "kalshi" ? "var(--kalshi)" : "var(--poly)", x = X(pt.mean_p), y = Y(pt.realized), faint = pt.n < 30 ? .4 : 1;
+      const g = sv("g", {tabindex: "0", role: "img", "aria-label": `${venueName(pt.venue)} priced ${pct(pt.mean_p)}: won ${pct(pt.realized)} of ${pt.n}`});
+      const mark = pt.venue === "kalshi" ? sv("circle", {cx: x, cy: y, r: 4, fill: color, "fill-opacity": faint, stroke: "var(--surface)", "stroke-width": 2})
+        : sv("rect", {x: x - 4, y: y - 4, width: 8, height: 8, rx: 1.5, fill: color, "fill-opacity": faint, stroke: "var(--surface)", "stroke-width": 2});
+      g.append(sv("circle", {cx: x, cy: y, r: 12, fill: "transparent"}), mark);
+      const show = () => tip.show(x, y, () => [el("strong", {}, pct(pt.realized) + " won YES"), tipLine(color, venueName(pt.venue) + " · priced " + pct(pt.lo) + "–" + pct(pt.hi)), el("div", {}, pt.n + " markets" + (pt.n < 30 ? " — too few to read" : ""))]);
+      g.addEventListener("pointerenter", show); g.addEventListener("pointerleave", () => tip.hide());
+      g.addEventListener("focus", show); g.addEventListener("blur", () => tip.hide());
+      svg.append(g);
+    }
+    box.prepend(svg);
+  });
+  return el("div", {}, legend, box);
 }
 
 // β by horizon, one series per exchange (Kalshi blue, Polymarket amber; the

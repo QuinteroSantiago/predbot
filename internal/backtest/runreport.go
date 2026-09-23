@@ -25,19 +25,20 @@ const RunReportSchema = 1
 // AnalysisReport is a read-only analysis run (-leadlag, -longshot, -moves) as JSON.
 // Run.Kind names the analysis and which result field is set.
 type AnalysisReport struct {
-	Schema   int             `json:"schema"`
-	Run      RunMeta         `json:"run"`
-	LeadLag  *LeadLagResult  `json:"leadlag,omitempty"`
-	Longshot *LongshotResult `json:"longshot,omitempty"`
-	Moves    *MoveResult     `json:"moves,omitempty"`
-	SpreadMR *SpreadMRResult `json:"spreadmr,omitempty"`
-	Autocorr *AutocorrResult `json:"autocorr,omitempty"`
+	Schema     int               `json:"schema"`
+	Run        RunMeta           `json:"run"`
+	LeadLag    *LeadLagResult    `json:"leadlag,omitempty"`
+	Longshot   *LongshotResult   `json:"longshot,omitempty"`
+	Moves      *MoveResult       `json:"moves,omitempty"`
+	SpreadMR   *SpreadMRResult   `json:"spreadmr,omitempty"`
+	Autocorr   *AutocorrResult   `json:"autocorr,omitempty"`
+	OutcomeReg *OutcomeRegResult `json:"outcomereg,omitempty"`
 }
 
 // RunMeta describes how a run was made.
 type RunMeta struct {
 	ID           string     `json:"id"`    // unique, sortable: <started UTC>-<mode>
-	Kind         string     `json:"kind"`  // "trading", "leadlag", "longshot", "moves", "spreadmr" or "autocorr"
+	Kind         string     `json:"kind"`  // "trading", "leadlag", "longshot", "moves", "spreadmr", "autocorr" or "outcomereg"
 	Label        string     `json:"label"` // free text, e.g. "full archive"
 	Mode         string     `json:"mode"`  // trading: "maker" or "taker"; analyses: same as Kind
 	Adverse      bool       `json:"adverse"`

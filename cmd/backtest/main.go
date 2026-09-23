@@ -38,6 +38,7 @@ func main() {
 	leadlag := flag.Bool("leadlag", false, "read-only: measure whether one venue's mid leads the other (cross-venue lead-lag), no trading")
 	longshot := flag.Bool("longshot", false, "read-only: calibration / favorite-longshot bias from opening price vs settled outcome")
 	outcomesPath := flag.String("outcomes", "", "outcomes.jsonl for -longshot (default: <data>/outcomes.jsonl)")
+	outcomeReg := flag.Bool("outcomereg", false, "read-only: logistic regression of who won on opening price and features, with an out-of-sample test against the market (needs outcomes)")
 	autocorr := flag.Bool("autocorr", false, "read-only: does a price change predict the next one (momentum vs reversion, 5s–10m), and does trading it pay after costs")
 	spreadMR := flag.Bool("spreadmr", false, "read-only: model the Kalshi−Poly gap as mean-reverting (half-life, typical excursion) and test trading it after costs")
 	moves := flag.Bool("moves", false, "read-only: overreaction study — after a sharp move or one-sided trading, momentum or reversion, and does trading it pay after costs")
@@ -284,6 +285,35 @@ func main() {
 	}
 
 	fees := backtest.Fees{KalshiMult: cfg.Backtest.KalshiFeeMult}
+
+	// Outcome regression: standalone read-only pass; needs settled outcomes.
+	if *outcomeReg {
+		op := *outcomesPath
+		if op == "" {
+			op = filepath.Join(dir, "outcomes.jsonl")
+		}
+		outcomes, err := loadOutcomes(op)
+		if err != nil || len(outcomes) == 0 {
+			slog.Error("outcome regression needs settled outcomes", "err", err, "path", op)
+			os.Exit(1)
+		}
+		or := backtest.NewOutcomeReg(outcomes)
+		bar := countBar(*showProgress, "pass 2/2 outcome-reg", nSnaps)
+		_ = backtest.StreamReplay(dir, w, func(s core.BookSnapshot) error {
+			bar.Add(1)
+			if c, ok := bm.Canonical(s.Venue, s.VenueID); ok {
+				or.Observe(c, s)
+			}
+			return nil
+		})
+		bar.Finish()
+		fmt.Printf("Loaded %d settled outcomes; replayed %d snapshots across %d markets\n\n", len(outcomes), nSnaps, len(bm.Canonicals()))
+		fmt.Print(or.Report())
+		res := or.Result()
+		writeReport(backtest.AnalysisReport{Schema: backtest.RunReportSchema,
+			Run: runMeta("outcomereg", "outcomereg"), OutcomeReg: &res})
+		return
+	}
 
 	// Price momentum/reversion: standalone read-only pass, per venue.
 	if *autocorr {

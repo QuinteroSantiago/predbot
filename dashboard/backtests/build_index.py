@@ -108,8 +108,20 @@ def autocorr_summary(d):
             "strongest": {k: strongest[k] for k in ("venue", "horizon_s", "beta", "beta_se")} if strongest else None}
 
 
+def outcomereg_summary(d):
+    r = d["outcomereg"]
+    cv = r.get("cv") or {}
+    diff, se = cv.get("logloss_diff", 0), cv.get("logloss_diff_se", 0)
+    beats = "beats" if cv.get("n") and diff - 1.96 * se > 0 else "worse" if cv.get("n") and diff + 1.96 * se < 0 else "ties"
+    return {**base(d["run"]), "obs": r["obs"], "clusters": r["clusters"], "note": r.get("note", ""),
+            "calibration": [{k: c[k] for k in ("venue", "slope", "slope_se")} for c in r.get("calibration") or []],
+            "cv_diff": diff, "cv_diff_se": se, "cv_n": cv.get("n", 0), "cv_verdict": beats}
+
+
 def summary(d):
     kind = d["run"].get("kind", "trading")
+    if kind == "outcomereg":
+        return outcomereg_summary(d)
     if kind == "autocorr":
         return autocorr_summary(d)
     if kind == "spreadmr":
