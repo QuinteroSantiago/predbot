@@ -145,7 +145,7 @@ func TestShardedTradingMatchesSerial(t *testing.T) {
 		}
 		run := func(n int) *TradingResult {
 			t.Helper()
-			r, err := runTrading(dir, 0, markets, opts, n)
+			r, err := runTrading(dir, Window{}, markets, opts, n)
 			if err != nil {
 				t.Fatalf("maker=%v shards=%d: %v", maker, n, err)
 			}

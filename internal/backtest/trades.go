@@ -11,22 +11,26 @@ import (
 	"predbot/internal/venue"
 )
 
-// LoadTrades reads recorded trade prints (the data/trades stream), bounded to
-// the most recent `hours` (0 = all), ordered by receive time.
+// LoadTrades reads recorded trade prints (the data/trades stream) inside w,
+// ordered by receive time.
 //
 // Trades are small compared with books — a print is a few fields, not a whole
 // order book — so they fit comfortably in memory even over long windows.
-func LoadTrades(dir string, hours int) ([]venue.Trade, error) {
+func LoadTrades(dir string, w Window) ([]venue.Trade, error) {
 	files, err := filepath.Glob(filepath.Join(dir, "trades", "*.jsonl.gz"))
 	if err != nil {
 		return nil, err
 	}
-	files = withinHours(files, hours)
+	files = withinWindow(files, w)
 
 	var out []venue.Trade
 	for _, f := range files {
 		ts, err := readTradeFile(f)
-		out = append(out, ts...)
+		for _, t := range ts {
+			if !w.Ranged() || w.contains(t.TsRecv) {
+				out = append(out, t)
+			}
+		}
 		if err != nil {
 			continue // a torn current-hour file is expected
 		}

@@ -44,20 +44,30 @@ import (
 // way the consumer hands snapshots to fn from ONE goroutine, in the original
 // order, so fn needs no locking and sees byte-identical output to the serial
 // walk.
-func StreamReplay(dir string, hours int, fn func(core.BookSnapshot) error) error {
-	byHour, err := hourlyFiles(dir, hours)
+func StreamReplay(dir string, w Window, fn func(core.BookSnapshot) error) error {
+	byHour, err := hourlyFiles(dir, w)
 	if err != nil {
 		return err
+	}
+	if w.Ranged() {
+		// Whole hours outside the range were never opened; trim the boundary hours.
+		inner := fn
+		fn = func(s core.BookSnapshot) error {
+			if !w.contains(s.TsRecv) {
+				return nil
+			}
+			return inner(s)
+		}
 	}
 	return streamHours(byHour, sortedHours(byHour), replayWorkers(), fn)
 }
 
-// ArchiveSpan returns the time range StreamReplay(dir, hours) will cover, from
-// the start of its first hourly file to the end of its last. ok is false when
-// there is nothing to replay. Used to show progress through a pass whose
-// snapshot count isn't known yet.
-func ArchiveSpan(dir string, hours int) (from, to time.Time, ok bool, err error) {
-	byHour, err := hourlyFiles(dir, hours)
+// ArchiveSpan returns the time range StreamReplay(dir, w) will cover, from the
+// start of its first hourly file to the end of its last, clipped to w's range.
+// ok is false when there is nothing to replay. Used to show progress through a
+// pass whose snapshot count isn't known yet.
+func ArchiveSpan(dir string, w Window) (from, to time.Time, ok bool, err error) {
+	byHour, err := hourlyFiles(dir, w)
 	if err != nil || len(byHour) == 0 {
 		return time.Time{}, time.Time{}, false, err
 	}
@@ -67,7 +77,14 @@ func ArchiveSpan(dir string, hours int) (from, to time.Time, ok bool, err error)
 	if err1 != nil || err2 != nil {
 		return time.Time{}, time.Time{}, false, nil
 	}
-	return from, last.Add(time.Hour), true, nil
+	to = last.Add(time.Hour)
+	if !w.From.IsZero() && w.From.After(from) {
+		from = w.From
+	}
+	if !w.To.IsZero() && w.To.Before(to) {
+		to = w.To
+	}
+	return from, to, to.After(from), nil
 }
 
 // errCanceled unwinds a decode goroutine whose output is no longer wanted. It
@@ -198,7 +215,7 @@ func decodeHour(files []string, out chan<- hourBatch, done <-chan struct{}) {
 // hourlyFiles returns files grouped by their hour stamp, preferring the
 // normalized stream and falling back to raw (the recorder may run with
 // -no-normalized, and raw is the ground truth either way).
-func hourlyFiles(dir string, hours int) (map[string][]string, error) {
+func hourlyFiles(dir string, w Window) (map[string][]string, error) {
 	// Filter to the window FIRST, then decide whether to fall back to raw.
 	// Checking "are there normalized files?" before filtering is wrong: with
 	// -no-normalized the normalized files still exist but are all stale, so the
@@ -207,13 +224,13 @@ func hourlyFiles(dir string, hours int) (map[string][]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	files = withinHours(files, hours)
+	files = withinWindow(files, w)
 	if len(files) == 0 {
 		rawFiles, err := filepath.Glob(filepath.Join(dir, "raw", "*.jsonl.gz"))
 		if err != nil {
 			return nil, err
 		}
-		files = withinHours(rawFiles, hours)
+		files = withinWindow(rawFiles, w)
 	}
 
 	out := map[string][]string{}

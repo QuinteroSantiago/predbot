@@ -12,6 +12,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -41,6 +42,13 @@ func main() {
 	maker := flag.Bool("maker", false, "use the MAKER strategy: rest one leg (earns the Poly rebate) and take the other")
 	exportPath := flag.String("export", "", "write detected opportunities to this JSON file")
 	spreadPath := flag.String("export-spread", "", "write sampled cross-venue spread to this JSON file")
+	from := flag.String("from", "", "replay from this time on (UTC; 2006-01-02 or RFC 3339); combines with -days/-hours")
+	to := flag.String("to", "", "replay up to, not including, this time (UTC; same formats)")
+	latencyMS := flag.Int("latency-ms", -1, "override backtest.latency_ms, the simulated fill delay (-1 = config)")
+	minEdge := flag.Float64("min-edge", -1, "override backtest.min_edge, in cents per contract (-1 = config)")
+	minDepth := flag.Float64("min-depth", -1, "override backtest.min_depth, in contracts on each leg's top of book (0 = off, -1 = config)")
+	feeMult := flag.Float64("kalshi-fee-mult", -1, "override backtest.kalshi_fee_mult (-1 = config)")
+	variant := flag.String("variant", "", "free-text variant within -label for sweeps, e.g. \"latency 300ms\"")
 	reportJSON := flag.String("report-json", "", "also write the report as JSON (for the backtest runs page) to this file")
 	label := flag.String("label", "", "free-text label for this run in -report-json, e.g. \"full archive\"")
 	showProgress := flag.Bool("progress", true, "show progress on stderr: a live bar on a terminal, a status line every 15s when redirected")
@@ -51,6 +59,24 @@ func main() {
 	if err != nil {
 		slog.Error("config load failed", "err", err)
 		os.Exit(1)
+	}
+	// Overrides replace the config values outright, so every consumer below
+	// sees the effective settings and the report records what actually ran.
+	b := &cfg.Backtest
+	if *latencyMS >= 0 {
+		b.LatencyMS = *latencyMS
+	}
+	if *minEdge >= 0 {
+		b.MinEdge = int64(math.Round(*minEdge * 100)) // cents -> $0.0001
+	}
+	if *minDepth >= 0 {
+		b.MinDepth = int64(math.Round(*minDepth * 100)) // contracts -> 0.01-contract Qty
+	}
+	if *feeMult >= 0 {
+		b.KalshiFeeMult = *feeMult
+	}
+	if *skewMS >= 0 {
+		b.MaxSkewMS = *skewMS
 	}
 	markets, err := config.LoadMarkets(*mktPath)
 	if err != nil {
@@ -66,6 +92,25 @@ func main() {
 	if window == 0 {
 		window = *days * 24
 	}
+	w := backtest.Window{Hours: window}
+	for _, f := range []struct {
+		name, val string
+		dst       *time.Time
+	}{{"from", *from, &w.From}, {"to", *to, &w.To}} {
+		if f.val == "" {
+			continue
+		}
+		t, err := parseWhen(f.val)
+		if err != nil {
+			slog.Error("bad -"+f.name, "value", f.val, "err", err)
+			os.Exit(2)
+		}
+		*f.dst = t
+	}
+	if !w.From.IsZero() && !w.To.IsZero() && !w.To.After(w.From) {
+		slog.Error("-to must be after -from", "from", *from, "to", *to)
+		os.Exit(2)
+	}
 	// Streaming: the full archive does not fit in memory (a 1.3 GB load was
 	// OOM-killed), so we make ONE forward pass without materialising it.
 	// A first pass collects the venue ids present, so sports markets — which are
@@ -74,8 +119,8 @@ func main() {
 	seenID := map[string]bool{}
 	var nSnaps int
 	var firstTs, lastTs int64
-	scan := scanBar(*showProgress, dir, window)
-	if err := backtest.StreamReplay(dir, window, func(s core.BookSnapshot) error {
+	scan := scanBar(*showProgress, dir, w)
+	if err := backtest.StreamReplay(dir, w, func(s core.BookSnapshot) error {
 		scan.observe(s.TsRecv)
 		nSnaps++
 		if firstTs == 0 {
@@ -123,14 +168,30 @@ func main() {
 			Mode:        mode,
 			Adverse:     *adverse,
 			WindowHours: window,
-			DataFrom:    time.Unix(0, firstTs).UTC(),
-			DataTo:      time.Unix(0, lastTs).UTC(),
-			Snapshots:   nSnaps,
-			Markets:     len(bm.Canonicals()),
-			StartedAt:   started.UTC(),
-			FinishedAt:  finished.UTC(),
-			DurationS:   finished.Sub(started).Seconds(),
-			Args:        os.Args[1:],
+			Variant:     *variant,
+			Params: backtest.RunParams{
+				LatencyMS:         b.LatencyMS,
+				MinEdgeCents:      float64(b.MinEdge) / 100,
+				MinDepthContracts: float64(b.MinDepth) / 100,
+				MaxClipContracts:  float64(b.MaxClip) / 100,
+				KalshiFeeMult:     b.KalshiFeeMult,
+				MaxSkewMS:         b.MaxSkewMS,
+				MaxBookAgeMS:      b.MaxBookAgeMS,
+			},
+			DataFrom:   time.Unix(0, firstTs).UTC(),
+			DataTo:     time.Unix(0, lastTs).UTC(),
+			Snapshots:  nSnaps,
+			Markets:    len(bm.Canonicals()),
+			StartedAt:  started.UTC(),
+			FinishedAt: finished.UTC(),
+			DurationS:  finished.Sub(started).Seconds(),
+			Args:       os.Args[1:],
+		}
+		if !w.From.IsZero() {
+			m.From = &w.From
+		}
+		if !w.To.IsZero() {
+			m.To = &w.To
 		}
 		m.Host, _ = os.Hostname()
 		m.Revision, m.Dirty = buildRevision()
@@ -153,7 +214,7 @@ func main() {
 	if *leadlag {
 		ll := backtest.NewLeadLag()
 		bar := countBar(*showProgress, "pass 2/2 lead-lag", nSnaps)
-		_ = backtest.StreamReplay(dir, window, func(s core.BookSnapshot) error {
+		_ = backtest.StreamReplay(dir, w, func(s core.BookSnapshot) error {
 			bar.Add(1)
 			canonical, ok := bm.Canonical(s.Venue, s.VenueID)
 			if !ok {
@@ -198,7 +259,7 @@ func main() {
 		}
 		ls := backtest.NewLongshot(outcomes)
 		bar := countBar(*showProgress, "pass 2/2 longshot", nSnaps)
-		_ = backtest.StreamReplay(dir, window, func(s core.BookSnapshot) error {
+		_ = backtest.StreamReplay(dir, w, func(s core.BookSnapshot) error {
 			bar.Add(1)
 			bid, okB := s.BestYesBid()
 			ask, okA := s.BestYesAsk()
@@ -220,19 +281,19 @@ func main() {
 	}
 
 	fees := backtest.Fees{KalshiMult: cfg.Backtest.KalshiFeeMult}
-	maxSkew := cfg.Backtest.MaxSkewMS * int64(time.Millisecond)
-	if *skewMS >= 0 {
-		maxSkew = *skewMS * int64(time.Millisecond)
-	}
 	opts := backtest.TradingOpts{
 		Fees:      fees,
 		LatencyMS: cfg.Backtest.LatencyMS,
 		Strategy: strategy.Config{
 			MinEdge: core.Price(cfg.Backtest.MinEdge),
 			MaxClip: core.Qty(cfg.Backtest.MaxClip),
+			// The liquidity floor the paper and live traders apply (config
+			// backtest.min_depth). Missing here until 2026-09-22, so earlier
+			// backtests counted trades against books too thin to hedge.
+			MinDepth: core.Qty(cfg.Backtest.MinDepth),
 		},
 		MaxAge:     cfg.Backtest.MaxBookAgeMS * int64(time.Millisecond),
-		MaxSkew:    maxSkew,
+		MaxSkew:    cfg.Backtest.MaxSkewMS * int64(time.Millisecond),
 		Resolution: map[string]time.Time{},
 		Maker:      *maker,
 		Spread:     *spreadPath != "",
@@ -241,7 +302,7 @@ func main() {
 		opts.Adverse = backtest.NewAdverseSelection()
 		// Adverse selection is driven by REAL TRADE PRINTS — a book cannot tell a
 		// trade from a cancellation, so books alone cannot answer this.
-		opts.Trades, err = backtest.LoadTrades(dir, window)
+		opts.Trades, err = backtest.LoadTrades(dir, w)
 		if err != nil {
 			slog.Warn("trade load failed; adverse selection unavailable", "err", err)
 		}
@@ -262,7 +323,7 @@ func main() {
 	allMarkets := append(append([]config.Market{}, markets...), sportsMarkets...)
 	bar := countBar(*showProgress, "pass 2/2 replay", nSnaps)
 	opts.Progress = bar.Counter()
-	res, err := backtest.RunTrading(dir, window, allMarkets, opts)
+	res, err := backtest.RunTrading(dir, w, allMarkets, opts)
 	bar.Finish()
 	if err != nil {
 		slog.Warn("trading replay stopped early", "err", err)
@@ -295,7 +356,12 @@ func main() {
 		}
 		meta := runMeta("trading", mode)
 		meta.Shards = backtest.TradingShards(opts)
-		writeReport(backtest.NewRunReport(meta, res, *maker))
+		rr := backtest.NewRunReport(meta, res, *maker)
+		if opts.Adverse != nil {
+			a := opts.Adverse.Result()
+			rr.Adverse = &a
+		}
+		writeReport(rr)
 	}
 
 	span := time.Duration(lastTs-firstTs) * time.Nanosecond
@@ -347,6 +413,14 @@ func loadOutcomes(path string) (map[string]int, error) {
 	return out, sc.Err()
 }
 
+// parseWhen reads a -from/-to value: a UTC date, or an RFC 3339 time.
+func parseWhen(v string) (time.Time, error) {
+	if t, err := time.Parse("2006-01-02", v); err == nil {
+		return t, nil
+	}
+	return time.Parse(time.RFC3339, v)
+}
+
 // buildRevision returns the git commit the binary was built from, if the build
 // recorded one.
 func buildRevision() (rev string, dirty bool) {
@@ -388,12 +462,12 @@ type scanProgress struct {
 	seen   atomic.Int64
 }
 
-func scanBar(on bool, dir string, window int) *scanProgress {
+func scanBar(on bool, dir string, w backtest.Window) *scanProgress {
 	sp := &scanProgress{}
 	if !on {
 		return sp
 	}
-	from, to, ok, err := backtest.ArchiveSpan(dir, window)
+	from, to, ok, err := backtest.ArchiveSpan(dir, w)
 	if err != nil || !ok {
 		return sp
 	}

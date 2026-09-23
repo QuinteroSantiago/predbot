@@ -13,9 +13,10 @@ type RunReport struct {
 	Run           RunMeta         `json:"run"`
 	Report        ReportSummary   `json:"report"`
 	Maker         *MakerSummary   `json:"maker,omitempty"`
-	Opportunities int             `json:"opportunities"` // gap-open episodes
-	Pairs         []PairOutcome   `json:"pairs"`         // entry order: the equity curve
-	Markets       []MarketOutcome `json:"markets"`       // net P&L, best first
+	Adverse       *AdverseResult  `json:"adverse,omitempty"` // -adverse runs
+	Opportunities int             `json:"opportunities"`     // gap-open episodes
+	Pairs         []PairOutcome   `json:"pairs"`             // entry order: the equity curve
+	Markets       []MarketOutcome `json:"markets"`           // net P&L, best first
 }
 
 // RunReportSchema is the RunReport shape version.
@@ -32,25 +33,41 @@ type AnalysisReport struct {
 
 // RunMeta describes how a run was made.
 type RunMeta struct {
-	ID           string    `json:"id"`    // unique, sortable: <started UTC>-<mode>
-	Kind         string    `json:"kind"`  // "trading", "leadlag" or "longshot"
-	Label        string    `json:"label"` // free text, e.g. "full archive"
-	Mode         string    `json:"mode"`  // trading: "maker" or "taker"; analyses: same as Kind
-	Adverse      bool      `json:"adverse"`
-	WindowHours  int       `json:"window_hours"` // 0 = whole archive
-	DataFrom     time.Time `json:"data_from"`    // first and last replayed snapshot
-	DataTo       time.Time `json:"data_to"`
-	Snapshots    int       `json:"snapshots"`
-	Markets      int       `json:"markets"`
-	StartedAt    time.Time `json:"started_at"`
-	FinishedAt   time.Time `json:"finished_at"`
-	DurationS    float64   `json:"duration_s"`
-	Host         string    `json:"host"`
-	Revision     string    `json:"revision,omitempty"` // git commit the binary was built from
-	Dirty        bool      `json:"dirty,omitempty"`    // built with uncommitted changes
-	Shards       int       `json:"shards"`
-	ParseWorkers int       `json:"parse_workers"`
-	Args         []string  `json:"args"`
+	ID           string     `json:"id"`    // unique, sortable: <started UTC>-<mode>
+	Kind         string     `json:"kind"`  // "trading", "leadlag" or "longshot"
+	Label        string     `json:"label"` // free text, e.g. "full archive"
+	Mode         string     `json:"mode"`  // trading: "maker" or "taker"; analyses: same as Kind
+	Adverse      bool       `json:"adverse"`
+	WindowHours  int        `json:"window_hours"`   // 0 = whole archive
+	From         *time.Time `json:"from,omitempty"` // requested range (-from/-to), if any
+	To           *time.Time `json:"to,omitempty"`
+	Variant      string     `json:"variant,omitempty"` // sweep variant within Label
+	Params       RunParams  `json:"params"`
+	DataFrom     time.Time  `json:"data_from"` // first and last replayed snapshot
+	DataTo       time.Time  `json:"data_to"`
+	Snapshots    int        `json:"snapshots"`
+	Markets      int        `json:"markets"`
+	StartedAt    time.Time  `json:"started_at"`
+	FinishedAt   time.Time  `json:"finished_at"`
+	DurationS    float64    `json:"duration_s"`
+	Host         string     `json:"host"`
+	Revision     string     `json:"revision,omitempty"` // git commit the binary was built from
+	Dirty        bool       `json:"dirty,omitempty"`    // built with uncommitted changes
+	Shards       int        `json:"shards"`
+	ParseWorkers int        `json:"parse_workers"`
+	Args         []string   `json:"args"`
+}
+
+// RunParams are the effective strategy and sim settings (config plus any
+// command-line overrides), in human units.
+type RunParams struct {
+	LatencyMS         int     `json:"latency_ms"`
+	MinEdgeCents      float64 `json:"min_edge_cents"`
+	MinDepthContracts float64 `json:"min_depth_contracts"` // 0 = no liquidity floor
+	MaxClipContracts  float64 `json:"max_clip_contracts"`
+	KalshiFeeMult     float64 `json:"kalshi_fee_mult"`
+	MaxSkewMS         int64   `json:"max_skew_ms"`
+	MaxBookAgeMS      int64   `json:"max_book_age_ms"`
 }
 
 // ReportSummary is Report in JSON units.

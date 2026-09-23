@@ -20,7 +20,7 @@ func TestRunReportAgreesWithReport(t *testing.T) {
 		res[m.Canonical], _ = time.Parse("2006-01-02", m.ResolutionDate)
 	}
 	for _, maker := range []bool{false, true} {
-		r, err := runTrading(dir, 0, markets, TradingOpts{
+		r, err := runTrading(dir, Window{}, markets, TradingOpts{
 			Fees: Fees{KalshiMult: 0.07}, LatencyMS: 150,
 			Strategy: strategy.Config{MinEdge: 100, MaxClip: 5000},
 			MaxAge:   int64(5 * time.Second), MaxSkew: int64(time.Second),

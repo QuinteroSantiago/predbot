@@ -2,6 +2,7 @@ package backtest
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 
@@ -146,32 +147,76 @@ func (a *AdverseSelection) ObserveTrade(canonical string, t venue.Trade) {
 		&probe{side: makerSide, midAtFill: m, ts: ts, remaining: rem})
 }
 
-// Report summarises the measured adverse drift.
-func (a *AdverseSelection) Report() string {
-	var b strings.Builder
-	fmt.Fprintln(&b, "=== Adverse selection: where does the price go AFTER a maker fill? ===")
-	fmt.Fprintf(&b, "  driven by %d real trade prints (a book cannot tell a trade from a cancel)\n", a.trades)
-	fmt.Fprintln(&b, "  positive drift = the price moved AGAINST the maker, i.e. the rebate was bait")
+// AdverseRebateCents is the Polymarket maker rebate per contract at p=0.5, the
+// yardstick for the adverse-selection verdict.
+const AdverseRebateCents = 0.31
+
+// AdverseResult is the adverse-selection measurement, for the text report and
+// the backtest runs page. Drift is in cents; positive = against the maker.
+type AdverseResult struct {
+	Trades      int              `json:"trades"` // trade prints that seeded probes
+	RebateCents float64          `json:"rebate_cents"`
+	Horizons    []AdverseHorizon `json:"horizons"` // shortest first
+}
+
+// AdverseHorizon is the drift measured a fixed time after each fill.
+type AdverseHorizon struct {
+	Seconds   int64   `json:"seconds"`
+	Fills     int     `json:"fills"`
+	MeanCents float64 `json:"mean_cents"`
+	// StdErrCents is the standard error of MeanCents: ±1.96·StdErrCents is a
+	// rough 95% range for the true mean drift.
+	StdErrCents  float64 `json:"stderr_cents"`
+	AgainstShare float64 `json:"against_share"` // fraction of fills the price moved against
+}
+
+// Result computes the adverse-selection summary.
+func (a *AdverseSelection) Result() AdverseResult {
+	res := AdverseResult{Trades: a.trades, RebateCents: AdverseRebateCents}
 	hs := append([]int64{}, a.Horizons...)
 	sort.Slice(hs, func(i, j int) bool { return hs[i] < hs[j] })
 	for _, h := range hs {
 		xs := a.closed[h]
-		if len(xs) == 0 {
-			fmt.Fprintf(&b, "  %4ds: no samples yet\n", h)
-			continue
-		}
-		var sum, worse float64
-		for _, x := range xs {
-			sum += x
-			if x > 0 {
-				worse++
+		hr := AdverseHorizon{Seconds: h, Fills: len(xs)}
+		if len(xs) > 0 {
+			var sum, worse float64
+			for _, x := range xs {
+				sum += x
+				if x > 0 {
+					worse++
+				}
+			}
+			n := float64(len(xs))
+			hr.MeanCents, hr.AgainstShare = sum/n, worse/n
+			if len(xs) > 1 {
+				var ss float64
+				for _, x := range xs {
+					ss += (x - hr.MeanCents) * (x - hr.MeanCents)
+				}
+				hr.StdErrCents = math.Sqrt(ss/(n-1)) / math.Sqrt(n)
 			}
 		}
-		mean := sum / float64(len(xs))
-		fmt.Fprintf(&b, "  %4ds: mean adverse drift %+.3fc over %d fills (%.0f%% moved against the maker)\n",
-			h, mean, len(xs), 100*worse/float64(len(xs)))
+		res.Horizons = append(res.Horizons, hr)
 	}
-	fmt.Fprintln(&b, "  VERDICT RULE: the Poly maker rebate is ~0.31c/contract at p=0.5.")
+	return res
+}
+
+// Report summarises the measured adverse drift.
+func (a *AdverseSelection) Report() string {
+	res := a.Result()
+	var b strings.Builder
+	fmt.Fprintln(&b, "=== Adverse selection: where does the price go AFTER a maker fill? ===")
+	fmt.Fprintf(&b, "  driven by %d real trade prints (a book cannot tell a trade from a cancel)\n", res.Trades)
+	fmt.Fprintln(&b, "  positive drift = the price moved AGAINST the maker, i.e. the rebate was bait")
+	for _, h := range res.Horizons {
+		if h.Fills == 0 {
+			fmt.Fprintf(&b, "  %4ds: no samples yet\n", h.Seconds)
+			continue
+		}
+		fmt.Fprintf(&b, "  %4ds: mean adverse drift %+.3fc over %d fills (%.0f%% moved against the maker)\n",
+			h.Seconds, h.MeanCents, h.Fills, 100*h.AgainstShare)
+	}
+	fmt.Fprintf(&b, "  VERDICT RULE: the Poly maker rebate is ~%.2fc/contract at p=0.5.\n", AdverseRebateCents)
 	fmt.Fprintln(&b, "  If mean adverse drift exceeds rebate + captured spread, maker resting LOSES.")
 	return b.String()
 }

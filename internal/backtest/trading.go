@@ -190,11 +190,11 @@ func (sh *shard) finish() { sh.sim.Flush(sh.bm) }
 // market's snapshots in order and owns all of its state. Markets never touch
 // each other's state (no shared capital gate; a pair settles against its own
 // market's books), so the merged result matches a serial run.
-func RunTrading(dir string, window int, markets []config.Market, opts TradingOpts) (*TradingResult, error) {
-	return runTrading(dir, window, markets, opts, simShards())
+func RunTrading(dir string, w Window, markets []config.Market, opts TradingOpts) (*TradingResult, error) {
+	return runTrading(dir, w, markets, opts, simShards())
 }
 
-func runTrading(dir string, window int, markets []config.Market, opts TradingOpts, n int) (*TradingResult, error) {
+func runTrading(dir string, w Window, markets []config.Market, opts TradingOpts, n int) (*TradingResult, error) {
 	if n < 1 {
 		n = 1
 	}
@@ -203,7 +203,7 @@ func runTrading(dir string, window int, markets []config.Market, opts TradingOpt
 	}
 	if n == 1 {
 		sh := newShard(markets, opts)
-		err := StreamReplay(dir, window, func(s core.BookSnapshot) error {
+		err := StreamReplay(dir, w, func(s core.BookSnapshot) error {
 			sh.tick(s)
 			if opts.Progress != nil {
 				opts.Progress.Add(1)
@@ -238,7 +238,7 @@ func runTrading(dir string, window int, markets []config.Market, opts TradingOpt
 	route := book.NewManager(markets)
 	owner := map[string]int{}
 	pending := make([][]core.BookSnapshot, n)
-	err := StreamReplay(dir, window, func(s core.BookSnapshot) error {
+	err := StreamReplay(dir, w, func(s core.BookSnapshot) error {
 		// Counted as routed, not as simulated: a shard can lag the router by
 		// up to shardQueue batches, which is noise against a whole archive.
 		if opts.Progress != nil {

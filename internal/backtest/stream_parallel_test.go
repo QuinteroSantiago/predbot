@@ -92,7 +92,7 @@ func collect(t testing.TB, byHour map[string][]string, hours []string, workers i
 // every snapshot must match at the same index.
 func TestParallelDecodeMatchesSerial(t *testing.T) {
 	dir := writeSyntheticArchive(t, 6, 10_000)
-	byHour, err := hourlyFiles(dir, 24)
+	byHour, err := hourlyFiles(dir, Window{Hours: 24})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestParallelDecodeMatchesSerial(t *testing.T) {
 // file-handle leak behind it (the -race build and t.TempDir cleanup catch those).
 func TestParallelDecodeStopsOnCallbackError(t *testing.T) {
 	dir := writeSyntheticArchive(t, 4, 3_000)
-	byHour, err := hourlyFiles(dir, 24)
+	byHour, err := hourlyFiles(dir, Window{Hours: 24})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +158,7 @@ func TestParallelDecodeStopsOnCallbackError(t *testing.T) {
 // is routinely mid-write, and that tolerance predates the parallel decode.
 func TestParallelDecodeToleratesTornFile(t *testing.T) {
 	dir := writeSyntheticArchive(t, 3, 1_000)
-	byHour, err := hourlyFiles(dir, 24)
+	byHour, err := hourlyFiles(dir, Window{Hours: 24})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -182,7 +182,7 @@ func TestParallelDecodeToleratesTornFile(t *testing.T) {
 // a given box: go test ./internal/backtest -run xxx -bench ReplayWorkers
 func BenchmarkReplayWorkers(b *testing.B) {
 	dir := writeSyntheticArchive(b, 8, 20_000)
-	byHour, err := hourlyFiles(dir, 24)
+	byHour, err := hourlyFiles(dir, Window{Hours: 24})
 	if err != nil {
 		b.Fatal(err)
 	}

@@ -15,7 +15,7 @@ func TestStreamMatchesLoad(t *testing.T) {
 		t.Skip("no recent data to compare")
 	}
 	var got []core.BookSnapshot
-	if err := StreamReplay(dir, 2, func(s core.BookSnapshot) error {
+	if err := StreamReplay(dir, Window{Hours: 2}, func(s core.BookSnapshot) error {
 		got = append(got, s)
 		return nil
 	}); err != nil {
