@@ -15,7 +15,7 @@ flattening, the failure runbook, and monitoring. This README covers the code.
 | Piece | State |
 |---|---|
 | Recorder (`predbot-record`) | Always on, on the predbot VM. Authenticated WS on both venues, runtime MLB game discovery, paper trader on the live feed. |
-| Live trader (`predbot-live`) | **Armed, maker mode**, build `bc2b566`. MLB + NFL. Caps: 1 contract/order, 2 unhedged, −$5 P&L floor, 10-contract min depth. |
+| Live trader (`predbot-live`) | **Armed, maker mode**, build `bc2b566`. MLB + NFL. Caps (unit, from the next `deploy-live`): 50 contracts/order, 100 unhedged, −$25 P&L floor, 10-contract min depth. |
 | Universe | Discovered at runtime (`-sports`). `config/markets.yaml` is `[]` on purpose: the static election/macro/crypto basket was removed on 2026-08-28 because its edges were phantom. |
 | Thesis | Taker/taker arbitrage almost never clears the ~3.49¢ fee wall at retail depth. The live run is testing the **maker-rebate** variant: rest the Polymarket leg and earn the rebate, then hedge on Kalshi. In the backtest, adverse drift (0.287¢) is below the rebate (0.31¢); it has not been proven live. |
 
