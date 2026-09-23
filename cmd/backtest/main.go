@@ -38,6 +38,7 @@ func main() {
 	leadlag := flag.Bool("leadlag", false, "read-only: measure whether one venue's mid leads the other (cross-venue lead-lag), no trading")
 	longshot := flag.Bool("longshot", false, "read-only: calibration / favorite-longshot bias from opening price vs settled outcome")
 	outcomesPath := flag.String("outcomes", "", "outcomes.jsonl for -longshot (default: <data>/outcomes.jsonl)")
+	moves := flag.Bool("moves", false, "read-only: overreaction study — after a sharp move or one-sided trading, momentum or reversion, and does trading it pay after costs")
 	adverse := flag.Bool("adverse", false, "measure adverse selection: where price goes AFTER a hypothetical maker fill")
 	maker := flag.Bool("maker", false, "use the MAKER strategy: rest one leg (earns the Poly rebate) and take the other")
 	exportPath := flag.String("export", "", "write detected opportunities to this JSON file")
@@ -281,6 +282,46 @@ func main() {
 	}
 
 	fees := backtest.Fees{KalshiMult: cfg.Backtest.KalshiFeeMult}
+
+	// Overreaction study: standalone read-only pass. Trade prints drive the
+	// one-sided-flow trigger and outcomes the hold-to-settlement horizon; either
+	// may be missing, and the study runs with what it has.
+	if *moves {
+		op := *outcomesPath
+		if op == "" {
+			op = filepath.Join(dir, "outcomes.jsonl")
+		}
+		outcomes, err := loadOutcomes(op)
+		if err != nil {
+			slog.Warn("no outcomes; skipping the hold-to-settlement horizon", "err", err, "path", op)
+		}
+		trades, err := backtest.LoadTrades(dir, w)
+		if err != nil || len(trades) == 0 {
+			slog.Warn("no trade prints in this window; only the price-move trigger will run", "err", err)
+		}
+		ms := backtest.NewMoveStudy(fees, outcomes)
+		bar := countBar(*showProgress, "pass 2/2 moves", nSnaps)
+		next := 0
+		_ = backtest.StreamReplay(dir, w, func(s core.BookSnapshot) error {
+			bar.Add(1)
+			for next < len(trades) && trades[next].TsRecv <= s.TsRecv {
+				ms.ObserveTrade(trades[next])
+				next++
+			}
+			ms.ObserveBook(s)
+			return nil
+		})
+		bar.Finish()
+		span := time.Duration(lastTs-firstTs) * time.Nanosecond
+		fmt.Printf("Replayed %d snapshots and %d trade prints over %s across %d markets\n\n",
+			nSnaps, len(trades), span.Round(time.Minute), len(bm.Canonicals()))
+		fmt.Print(ms.Report())
+		res := ms.Result()
+		writeReport(backtest.AnalysisReport{Schema: backtest.RunReportSchema,
+			Run: runMeta("moves", "moves"), Moves: &res})
+		return
+	}
+
 	opts := backtest.TradingOpts{
 		Fees:      fees,
 		LatencyMS: cfg.Backtest.LatencyMS,
