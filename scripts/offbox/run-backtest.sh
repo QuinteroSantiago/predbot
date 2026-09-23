@@ -12,6 +12,7 @@
 #   ./run-backtest.sh outcomereg # logistic regression of who won; out-of-sample vs the market
 #   ./run-backtest.sh fairvalue  # fair value from both prices; bet where one strays, out of sample
 #   ./run-backtest.sh analyses   # every read-only analysis above, one after another
+#   ./run-backtest.sh stop       # stop EVERYTHING: the analyses chain, sweeps, and any run
 #
 # Lives in scripts/offbox/ in the predbot repo; copy it next to the bt-new binary
 # and the data/ directory on the compute box (see sweep.sh for batches).
@@ -26,11 +27,41 @@ cd "$(dirname "$0")"
 mode="${1:-}"
 json=()
 
+# Stop everything: first the loops that chain runs together (so none starts the
+# next), then the runs themselves. Loops are found by the pid files they leave;
+# bt-new by its exact process name (never pkill -f: over SSH the pattern matches
+# the remote shell running the command and kills your own session).
+if [[ "$mode" == stop ]]; then
+  stopped=0
+  for f in analyses.pid sweep-*/pid; do
+    [[ -f "$f" ]] || continue
+    if kill "$(cat "$f")" 2>/dev/null; then
+      echo "stopped ${f%/pid} loop (pid $(cat "$f"))"
+      stopped=1
+    fi
+    rm -f "$f"
+  done
+  # An analyses chain started before pid files existed has no analyses.pid.
+  if pkill -f '^bash -c for m in leadlag longshot' 2>/dev/null; then
+    echo "stopped analyses chain"
+    stopped=1
+  fi
+  if pgrep -x bt-new >/dev/null; then
+    pgrep -a -x bt-new | sed 's/^/stopping: /'
+    pkill -x bt-new
+    stopped=1
+  fi
+  rm -f ./*-full.pid
+  [[ $stopped == 1 ]] && echo "all stopped; finished runs keep their .txt/.json" || echo "nothing was running"
+  exit 0
+fi
+
 # All the read-only analyses in sequence (each uses every core), detached.
 if [[ "$mode" == analyses ]]; then
   setsid nohup bash -c 'for m in leadlag longshot moves spreadmr autocorr outcomereg fairvalue; do
       echo "== $m $(date -u +%FT%TZ)"; RUN_FOREGROUND=1 ./run-backtest.sh "$m" || echo "   $m failed or skipped"
-    done; echo "ALL DONE $(date -u +%FT%TZ)"' > analyses.log 2>&1 < /dev/null &
+    done; echo "ALL DONE $(date -u +%FT%TZ)"; rm -f analyses.pid' > analyses.log 2>&1 < /dev/null &
+  echo $! > analyses.pid
   echo "running all analyses in sequence (pid $!); progress: tail -f $PWD/analyses.log"
   exit 0
 fi
@@ -70,7 +101,7 @@ case "$mode" in
       exit 1
     fi
     ;;
-  *) echo "usage: $0 maker|taker|longshot|leadlag|adverse|moves|spreadmr|autocorr|outcomereg|fairvalue|analyses" >&2; exit 2 ;;
+  *) echo "usage: $0 maker|taker|longshot|leadlag|adverse|moves|spreadmr|autocorr|outcomereg|fairvalue|analyses|stop" >&2; exit 2 ;;
 esac
 
 pidfile="$mode-full.pid"
