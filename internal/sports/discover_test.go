@@ -156,3 +156,31 @@ func TestCanonTeamWNBA(t *testing.T) {
 		}
 	}
 }
+
+// College football codes collide across venues: Poly "sdst" is San Diego State
+// (Kalshi SDSU) while Kalshi "SDST" is South Dakota State (Poly "sdkst"). Each
+// venue's code must resolve through its own side, and the two games must not
+// cross.
+func TestReconstructCFBCollidingCodes(t *testing.T) {
+	kalshi := []string{
+		"KXNCAAFGAME-26SEP26SDSUTOL-SDSU", "KXNCAAFGAME-26SEP26SDSUTOL-TOL",
+		"KXNCAAFGAME-26SEP26EIUSDST-EIU", "KXNCAAFGAME-26SEP26EIUSDST-SDST",
+	}
+	poly := []string{"aec-cfb-sdst-toledo-2026-09-26", "aec-cfb-eill-sdkst-2026-09-26"}
+	got := map[string]Match{}
+	for _, m := range ReconstructFromIDs(kalshi, poly) {
+		got[m.Canonical] = m
+	}
+	if m := got["CFB-20260926-SDSU"]; m.KalshiTicker != "KXNCAAFGAME-26SEP26SDSUTOL-SDSU" || m.PolySlug != "aec-cfb-sdst-toledo-2026-09-26" {
+		t.Errorf("San Diego State = %+v", m)
+	}
+	if _, ok := got["CFB-20260926-SDST"]; ok {
+		t.Errorf("South Dakota State (home, not Poly's YES) matched: %+v", got)
+	}
+	if polyTeam("cfb", "sdkst") != "SDST" || polyTeam("cfb", "sdst") != "SDSU" {
+		t.Error("cfb Poly codes must resolve per venue")
+	}
+	if polyTeam("cfb", "nosuchschool") != "" {
+		t.Error("unknown cfb code must not match")
+	}
+}

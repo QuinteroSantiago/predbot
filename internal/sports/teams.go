@@ -123,6 +123,28 @@ var canonByLeague = map[string]map[string]string{
 // "AZ" and the Athletics as "ATH"; both resolve here.
 func CanonTeam(league, raw string) string { return canonTeam(league, raw) }
 
+// kalshiTeam is the canonical team for a Kalshi game market, from its
+// yes_sub_title and ticker. College football skips the alias tables: codes
+// collide across its ~260 schools, so its canonical is Kalshi's own ticker
+// suffix and only the Poly side is translated (cfbPolyToKalshi).
+func kalshiTeam(league, subtitle, ticker string) string {
+	if league == "cfb" {
+		return kalshiMarketSuffix(ticker)
+	}
+	if team := canonTeam(league, subtitle); team != "" {
+		return team
+	}
+	return canonTeam(league, kalshiMarketSuffix(ticker))
+}
+
+// polyTeam is the canonical team for a Poly slug team code.
+func polyTeam(league, code string) string {
+	if league == "cfb" {
+		return cfbPolyToKalshi[code]
+	}
+	return canonTeam(league, code)
+}
+
 func canonTeam(league, raw string) string {
 	table, ok := canonByLeague[strings.ToLower(league)]
 	if !ok {

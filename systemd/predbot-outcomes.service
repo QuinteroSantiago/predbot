@@ -13,7 +13,7 @@ Wants=network-online.target
 Type=oneshot
 User=predbot
 Group=predbot
-ExecStart=/opt/predbot/outcomes -markets /opt/predbot/config/markets.yaml -sports mlb,nfl,wnba -data /var/lib/predbot/data -out /var/lib/predbot/data/outcomes.jsonl
+ExecStart=/opt/predbot/outcomes -markets /opt/predbot/config/markets.yaml -sports mlb,nfl,wnba,cfb -data /var/lib/predbot/data -out /var/lib/predbot/data/outcomes.jsonl
 TimeoutStartSec=10min
 
 NoNewPrivileges=true

@@ -59,7 +59,15 @@ func (c *Client) get(ctx context.Context, url string) ([]byte, error) {
 	return io.ReadAll(resp.Body)
 }
 
-var leagueSeries = map[string]string{"mlb": "KXMLBGAME", "nfl": "KXNFLGAME", "nba": "KXNBAGAME", "wnba": "KXWNBAGAME"}
+// leagueSeries maps a league (Poly's slug prefix, e.g. "cfb" for college
+// football) to its Kalshi game series.
+var leagueSeries = map[string]string{
+	"mlb":  "KXMLBGAME",
+	"nfl":  "KXNFLGAME",
+	"nba":  "KXNBAGAME",
+	"wnba": "KXWNBAGAME",
+	"cfb":  "KXNCAAFGAME",
+}
 
 // DiscoverKalshi returns today's open games for a league. Fully live-verifiable.
 func (c *Client) DiscoverKalshi(ctx context.Context, league string) ([]venueGame, error) {
@@ -91,10 +99,7 @@ func (c *Client) DiscoverKalshi(ctx context.Context, league string) ([]venueGame
 		}
 		g := venueGame{league: league, date: date, outcomes: map[string]string{}}
 		for _, m := range e.Markets {
-			team := canonTeam(league, m.YesSubTitle)
-			if team == "" {
-				team = canonTeam(league, kalshiMarketSuffix(m.Ticker))
-			}
+			team := kalshiTeam(league, m.YesSubTitle, m.Ticker)
 			if team != "" {
 				g.outcomes[team] = m.Ticker
 			}
@@ -179,10 +184,7 @@ func (c *Client) SettledKalshi(ctx context.Context, league string) ([]SettledRes
 			if m.Result != "yes" && m.Result != "no" {
 				continue // not actually resolved
 			}
-			team := canonTeam(league, m.YesSubTitle)
-			if team == "" {
-				team = canonTeam(league, kalshiMarketSuffix(m.Ticker))
-			}
+			team := kalshiTeam(league, m.YesSubTitle, m.Ticker)
 			if team == "" {
 				continue
 			}
@@ -266,7 +268,7 @@ func parsePolyEventSlug(league, slug string) (date, away string) {
 	if _, err := time.Parse("2006-01-02", date); err != nil {
 		return "", ""
 	}
-	return date, canonTeam(league, parts[1])
+	return date, polyTeam(league, parts[1])
 }
 
 // ReconstructFromIDs rebuilds cross-listed game matches from venue ids that
@@ -287,7 +289,7 @@ func ReconstructFromIDs(kalshiTickers, polySlugs []string) []Match {
 				continue
 			}
 			date := kalshiEventDate(series, t[:i]) // strip "-<TEAM>" to get the event ticker
-			team := canonTeam(league, t[i+1:])
+			team := kalshiTeam(league, "", t)
 			if date == "" || team == "" {
 				continue
 			}
