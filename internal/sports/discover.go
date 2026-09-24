@@ -294,6 +294,22 @@ func (c *Client) DiscoverPoly(ctx context.Context, league string) ([]venueGame, 
 	return games, nil
 }
 
+// PolySlugs lists a league's open moneyline market slugs on Poly — the ids the
+// trader subscribes to. For tools that need a realistic set of slugs.
+func (c *Client) PolySlugs(ctx context.Context, league string) ([]string, error) {
+	games, err := c.DiscoverPoly(ctx, league)
+	if err != nil {
+		return nil, err
+	}
+	var slugs []string
+	for _, g := range games {
+		for _, slug := range g.outcomes {
+			slugs = append(slugs, slug)
+		}
+	}
+	return slugs, nil
+}
+
 // parsePolyEventSlug parses "mlb-tor-nyy-2026-08-23" -> (date, canonical away team).
 func parsePolyEventSlug(league, slug string) (date, away string) {
 	date, away, _ = parsePolyGame(league, slug)

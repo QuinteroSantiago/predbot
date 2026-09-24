@@ -11,6 +11,23 @@
 //	-market <slug>              market to subscribe to (and trade, if placing)
 //	-side buy|sell -contracts N -price P   the order to place
 //	-i-understand               required before any real order is sent
+//
+// Reproducing the live trader's subscription (the 2026-09-24 silent fills
+// happened with ~290 slugs sent as three 100-slug ORDER subscriptions):
+//
+//	-pad N -pad-leagues mlb,nfl  also subscribe N other real slugs, chunked by
+//	                            100 with the trader's requestIds (order-sub-0..)
+//	-target-chunk first|last    which chunk the traded market goes in. If only
+//	                            the LAST subscription sticks, "first" goes silent
+//	-resubscribe-after D        resend every chunk after D, as the trader does
+//	                            every 2 min (tests whether a resend drops them)
+//	-exit-price P               after the wait, place the opposite IOC at P and
+//	                            listen again — a round trip that ends flat
+//
+// Round trip on one contract, costing about the spread:
+//
+//	filltest -market <slug> -side buy -price 0.99 -exit-price 0.01 -tif ioc \
+//	  -pad 250 -pad-leagues mlb,nfl,wnba,cfb,nhl -target-chunk first -i-understand
 package main
 
 import (
@@ -26,6 +43,7 @@ import (
 	"predbot/internal/core"
 	"predbot/internal/exec"
 	"predbot/internal/live"
+	"predbot/internal/sports"
 	"predbot/internal/venue"
 	"predbot/internal/venue/polymarketus"
 )
@@ -42,6 +60,11 @@ func main() {
 	tif := flag.String("tif", "ioc", "ioc | gtc (gtc rests so you can test 'new' order updates)")
 	subtypes := flag.String("subtypes", "SUBSCRIPTION_TYPE_ORDER", "comma-separated subscriptionType values to subscribe to")
 	allMarkets := flag.Bool("all-markets", false, "omit marketSlugs (docs claim this means ALL markets)")
+	pad := flag.Int("pad", 0, "also subscribe this many other real slugs, chunked by 100 like the trader")
+	padLeagues := flag.String("pad-leagues", "mlb,nfl,wnba,cfb,nhl", "leagues to draw -pad slugs from")
+	targetChunk := flag.String("target-chunk", "first", "first | last: which 100-slug chunk holds -market")
+	resubAfter := flag.Duration("resubscribe-after", 0, "resend every subscription after this long (the trader resends every 2m); 0 = never")
+	exitPrice := flag.String("exit-price", "", "after the wait, place the opposite side IOC at this price (round trip)")
 	flag.Parse()
 
 	if *market == "" {
@@ -54,7 +77,7 @@ func main() {
 	}
 	wsURL := "wss://api.polymarket.us" + path
 
-	ctx, cancel := context.WithTimeout(context.Background(), *wait+60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 2**wait+*resubAfter+2*time.Minute)
 	defer cancel()
 
 	fmt.Printf("=== dialing %s\n", wsURL)
@@ -71,26 +94,47 @@ func main() {
 	defer conn.Close()
 	fmt.Println("=== connected")
 
-	for i, st := range strings.Split(*subtypes, ",") {
-		st = strings.TrimSpace(st)
-		if st == "" {
-			continue
+	slugs := []string{*market}
+	if *pad > 0 {
+		others := padSlugs(ctx, *padLeagues, *market, *pad)
+		if *targetChunk == "last" {
+			slugs = append(others, *market)
+		} else {
+			slugs = append([]string{*market}, others...)
 		}
-		body := map[string]any{
-			"requestId":        fmt.Sprintf("filltest-%d", i),
-			"subscriptionType": st,
+		fmt.Printf("=== %d slugs in %d chunk(s); -market is in the %s chunk\n", len(slugs), (len(slugs)+99)/100, *targetChunk)
+	}
+	subscribe := func() {
+		for i, st := range strings.Split(*subtypes, ",") {
+			st = strings.TrimSpace(st)
+			if st == "" {
+				continue
+			}
+			// Docs say an empty marketSlugs subscribes to ALL markets; the production
+			// code found the opposite in 2026-08. -all-markets tests that claim.
+			if *allMarkets {
+				send(ctx, conn, map[string]any{"requestId": fmt.Sprintf("filltest-%d", i), "subscriptionType": st})
+				continue
+			}
+			for c := 0; c < len(slugs); c += 100 {
+				id := fmt.Sprintf("filltest-%d", i)
+				if st == "SUBSCRIPTION_TYPE_ORDER" {
+					id = fmt.Sprintf("order-sub-%d", c/100) // the trader's ids
+				} else if c > 0 {
+					id = fmt.Sprintf("filltest-%d-%d", i, c/100)
+				}
+				send(ctx, conn, map[string]any{"requestId": id, "subscriptionType": st,
+					"marketSlugs": slugs[c:min(c+100, len(slugs))]})
+			}
 		}
-		// Docs say an empty marketSlugs subscribes to ALL markets; the production
-		// code found the opposite in 2026-08. -all-markets tests that claim.
-		if !*allMarkets {
-			body["marketSlugs"] = []string{*market}
-		}
-		sub, _ := json.Marshal(map[string]any{"subscribe": body})
-		if err := conn.Write(ctx, sub); err != nil {
-			fmt.Printf("!!! subscribe write failed: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Printf("=== sent subscribe: %s\n", string(sub))
+	}
+	subscribe()
+	if *resubAfter > 0 {
+		go func() {
+			time.Sleep(*resubAfter)
+			fmt.Printf("[%s] === RESUBSCRIBING (as the trader does every 2m)\n", time.Now().Format("15:04:05.000"))
+			subscribe()
+		}()
 	}
 
 	// Every frame, verbatim. This is the whole point of the tool.
@@ -107,7 +151,7 @@ func main() {
 	}()
 
 	done := make(chan struct{})
-	var total, execs int
+	var total, execs, targetExecs int
 	go func() {
 		defer close(done)
 		for f := range frames {
@@ -116,6 +160,9 @@ func main() {
 			if strings.Contains(f, "execution") {
 				tag = "EXEC "
 				execs++
+				if strings.Contains(f, *market) {
+					targetExecs++
+				}
 			}
 			if len(f) > 100000 {
 				f = f[:100000] + "…(truncated)"
@@ -171,14 +218,74 @@ func main() {
 		time.Sleep(*wait)
 		after, _ := acct.Positions(ctx)
 		fmt.Printf("=== REST position AFTER: %+v\n", after)
+
+		if *exitPrice != "" {
+			xpx, err := core.ParsePrice(*exitPrice)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "bad -exit-price:", err)
+				os.Exit(2)
+			}
+			xs := core.BuyYes
+			if s == core.BuyYes {
+				xs = core.SellYes
+			}
+			fmt.Printf("=== placing REAL exit: %s %s %.0f contracts @ %s IOC\n", xs, *market, *contracts, *exitPrice)
+			id, err := ex.Place(ctx, core.Order{Intent: core.Intent{
+				Venue: "polymarketus", VenueID: *market, Side: xs, Px: xpx, Qty: qty, TIF: core.IOC,
+			}})
+			if err != nil {
+				fmt.Printf("!!! EXIT FAILED: %v — check the position by hand\n", err)
+			} else {
+				fmt.Printf("=== exit placed, venue_order_id=%s\n", id)
+			}
+			time.Sleep(*wait)
+			final, _ := acct.Positions(ctx)
+			fmt.Printf("=== REST position FINAL: %+v\n", final)
+		}
 	}
 
 	conn.Close()
 	<-done
-	fmt.Printf("\n=== VERDICT: %d raw frame(s), %d containing an execution\n", total, execs)
+	fmt.Printf("\n=== VERDICT: %d raw frame(s), %d containing an execution (%d on -market)\n", total, execs, targetExecs)
 	if total == 0 {
 		fmt.Println("    ZERO frames — the socket delivered nothing at all.")
 	} else if execs == 0 {
 		fmt.Println("    Frames arrived but NONE were executions.")
 	}
+}
+
+func send(ctx context.Context, conn venue.Conn, body map[string]any) {
+	sub, _ := json.Marshal(map[string]any{"subscribe": body})
+	if err := conn.Write(ctx, sub); err != nil {
+		fmt.Printf("!!! subscribe write failed: %v\n", err)
+		os.Exit(1)
+	}
+	shown := string(sub)
+	if len(shown) > 300 {
+		shown = shown[:300] + "…"
+	}
+	fmt.Printf("=== sent subscribe: %s\n", shown)
+}
+
+// padSlugs returns up to n real open Poly slugs other than target, so the
+// subscription looks like the trader's.
+func padSlugs(ctx context.Context, leagues, target string, n int) []string {
+	c := sports.New()
+	var out []string
+	for _, lg := range strings.Split(leagues, ",") {
+		slugs, err := c.PolySlugs(ctx, strings.TrimSpace(lg))
+		if err != nil {
+			fmt.Printf("!!! discovering %s: %v\n", lg, err)
+			continue
+		}
+		for _, s := range slugs {
+			if s != target && len(out) < n {
+				out = append(out, s)
+			}
+		}
+	}
+	if len(out) < n {
+		fmt.Printf("=== only found %d pad slugs (wanted %d)\n", len(out), n)
+	}
+	return out
 }
