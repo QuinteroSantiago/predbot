@@ -140,6 +140,9 @@ summary{cursor:pointer; font-size:13px; color:var(--ink-2); font-family:"IBM Ple
 .two{display:grid; grid-template-columns:1fr; gap:16px}
 @media (min-width:860px){ .two{grid-template-columns:1fr 1fr} }
 .note{font-size:13px; color:var(--muted); margin-top:10px}
+.invalid-banner{border:1px solid var(--loss); border-left-width:4px; border-radius:8px; padding:10px 14px; margin:12px 0 4px; color:var(--ink); background:var(--surface); font-size:14px; max-width:80ch}
+.invalid-tag{font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--loss); margin-left:6px}
+tr.invalid td{opacity:.55}
 .args{font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--ink-2); background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:10px 12px; overflow-wrap:anywhere; white-space:pre-wrap}
 </style>
 </head>
@@ -300,6 +303,8 @@ async function showIndex() {
     ["all", "maker", "taker"].map(m => el("option", {value: m, selected: m === FILTER.mode}, m === "all" ? "Maker and taker" : m)));
   const byLabel = runs.filter(r => FILTER.label === "all" || (r.label || "(no label)") === FILTER.label);
   const shown = byLabel.filter(r => isTrading(r) && (FILTER.mode === "all" || r.mode === FILTER.mode));
+  // Known-wrong runs stay in the table (flagged) but out of every comparison.
+  const valid = shown.filter(r => !r.invalid);
   const analyses = byLabel.filter(r => !isTrading(r));
 
   const body = [el("div", {class: "filters"}, el("label", {}, "Runs", labelSel), el("label", {}, "Strategy", modeSel),
@@ -310,14 +315,16 @@ async function showIndex() {
   } else if (!shown.length) {
     body.push(el("h2", {}, "Strategy runs"), el("p", {class: "h2note"}, "No maker or taker runs match these filters."));
   } else {
-    body.push(headToHead(shown));
-    const isSweep = new Set(shown.map(r => r.variant).filter(Boolean)).size >= 2;
-    if (shown.length >= 2 && !isSweep) body.push(el("h2", {}, "Net P&L by run"),
+    if (valid.length) body.push(headToHead(valid));
+    const isSweep = new Set(valid.map(r => r.variant).filter(Boolean)).size >= 2;
+    if (shown.length > valid.length) body.push(el("p", {class: "note"},
+      (shown.length - valid.length) + " run(s) flagged invalid are left out of the comparison and charts; they stay in the table below."));
+    if (valid.length >= 2 && !isSweep) body.push(el("h2", {}, "Net P&L by run"),
       el("p", {class: "h2note"}, "Each point is one run, placed by when it finished. Only compare runs over the same kind of window — the label filter above keeps them apples to apples."),
-      el("div", {class: "card"}, runsChart(shown)));
+      el("div", {class: "card"}, runsChart(valid)));
     if (isSweep) body.push(el("h2", {}, "By variant"),
       el("p", {class: "h2note"}, "Net P&L for each variant in the current filter — one bar per run, newest run per variant and mode. Bars that swing sign or collapse under small setting changes mean the result is fragile."),
-      el("div", {class: "card"}, variantChart(shown)));
+      el("div", {class: "card"}, variantChart(valid)));
     body.push(el("h2", {}, "All strategy runs"), el("p", {class: "h2note"}, "Newest first. Select a row for its detail."), runsTable(shown));
   }
   if (analyses.length) body.push(...analysesSection(analyses));
@@ -357,7 +364,8 @@ function headToHead(runs) {
 function runsTable(runs) {
   const cols = [
     ["Finished", r => when(r.finished_at)],
-    ["Label", r => [runName(r), r.imported ? el("span", {class: "note", style: "margin:0 0 0 6px"}, "imported") : null]],
+    ["Label", r => [runName(r), r.imported ? el("span", {class: "note", style: "margin:0 0 0 6px"}, "imported") : null,
+      r.invalid ? el("span", {class: "invalid-tag", title: r.invalid}, r.invalid.startsWith("Overstated") ? "overstated" : "invalid") : null]],
     ["Mode", r => modeBadge(r.mode, r.adverse)],
     ["Data", r => dataSpan(r)],
     ["Net P&L", r => usd(r.net_pnl_usd, true), 1],
@@ -370,7 +378,7 @@ function runsTable(runs) {
   const open = r => { location.hash = "run=" + r.id; };
   return el("div", {class: "tablewrap"}, el("table", {},
     el("thead", {}, el("tr", {}, cols.map(([h, , right]) => el("th", {class: right ? "r" : null}, h)))),
-    el("tbody", {}, runs.map(r => el("tr", {class: "link", tabindex: "0", "aria-label": "Open run " + r.id,
+    el("tbody", {}, runs.map(r => el("tr", {class: r.invalid ? "link invalid" : "link", tabindex: "0", "aria-label": "Open run " + r.id,
       onclick: () => open(r), onkeydown: e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(r); } }},
       cols.map(([, f, right]) => el("td", {class: right ? "r num" : null}, f(r))))))));
 }
@@ -439,11 +447,13 @@ async function showRun(id) {
   if (run.kind === "fairvalue") return showFairValue(d);
   const rep = d.report;
   document.title = (run.label || "Run") + " · " + run.mode + " · Backtest runs";
+  const flagged = ((await loadIndex()).runs.find(r => r.id === id) || {}).invalid;
 
   const head = [
     el("a", {class: "back", href: "#"}, "← All runs"),
     el("div", {class: "eyebrow"}, "predbot · backtest run"),
     el("h1", {}, run.label || run.id),
+    flagged ? el("div", {class: "invalid-banner", role: "note"}, flagged) : null,
     el("div", {class: "meta"},
       modeBadge(run.mode, run.adverse),
       el("span", {}, el("b", {}, dataSpan(run)), run.imported_from ? null : " · " + windowText(run)),

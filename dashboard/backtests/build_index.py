@@ -16,6 +16,24 @@ import sys
 SCHEMA = 1
 ID_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 
+# Runs whose numbers are known to be wrong, and why. The page flags them and
+# leaves them out of the head-to-head and the charts; the files stay, so the
+# history is still there to look at.
+PRICING_FIX = "2026-09-24T21:50:00Z"  # first maker run on 7562339's build
+OVERSTATED = {"20260924T215058Z-maker"}  # built before 5a96400
+
+
+def invalid_reason(run):
+    if run.get("kind", "trading") != "trading" or run.get("mode") != "maker":
+        return ""
+    if run["finished_at"] < PRICING_FIX:
+        return ("Invalid: rests were priced through the book, so they filled at once as takers "
+                "while the strategy credited a maker rebate (fixed in 7562339).")
+    if run["id"] in OVERSTATED:
+        return ("Overstated: rests that filled with no hedge were booked at $0 instead of "
+                "paying their exit (fixed in 5a96400).")
+    return ""
+
 
 def base(run):
     return {
@@ -36,6 +54,7 @@ def base(run):
         "from": run.get("from"),
         "to": run.get("to"),
         "params": run.get("params"),  # absent before 2026-09-22 builds
+        "invalid": invalid_reason(run),
     }
 
 
