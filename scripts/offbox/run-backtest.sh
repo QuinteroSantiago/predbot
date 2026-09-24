@@ -18,6 +18,8 @@
 # Lives in scripts/offbox/ in the predbot repo; copy it next to the bt-new binary
 # and the data/ directory on the compute box (see sweep.sh for batches).
 #
+# VARIANT="rest pricing fixed" ./run-backtest.sh maker   labels the run
+#
 # Writes <mode>-full.txt (the report) and <mode>-full.log (progress, a line
 # every 15s), and <mode>-full.json for the /backtests/ page.
 # One run per mode at a time; different modes can run side by side (they share
@@ -112,6 +114,18 @@ case "$mode" in
     ;;
   *) echo "usage: $0 maker|taker|longshot|leadlag|adverse|moves|spreadmr|autocorr|outcomereg|fairvalue|analyses|all|stop" >&2; exit 2 ;;
 esac
+
+# VARIANT="…" labels the run on the /backtests/ page (e.g. which fix it tests),
+# so a rerun is told apart from the run it replaces.
+if [[ -n "${VARIANT:-}" ]]; then
+  if [[ " ${json[*]} " == *" -variant "* ]]; then
+    for i in "${!json[@]}"; do
+      [[ "${json[$i]}" == -variant ]] && json[$((i+1))]="${json[$((i+1))]}, $VARIANT"
+    done
+  else
+    json+=(-variant "$VARIANT")
+  fi
+fi
 
 pidfile="$mode-full.pid"
 if [[ "${RUN_FOREGROUND:-}" == 1 ]]; then
