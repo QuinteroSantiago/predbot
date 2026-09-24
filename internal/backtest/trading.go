@@ -255,8 +255,12 @@ func (sh *shard) clearRest(c string) {
 	delete(sh.restAt, c)
 }
 
-// finish settles anything still pending at end of replay.
-func (sh *shard) finish() {
+// finish settles anything still pending at end of replay. end is the last
+// timestamp of the WHOLE replay: a shard's own data can stop earlier, and a
+// rest whose deadline the serial run reached must expire here too, or the
+// result would depend on the shard count.
+func (sh *shard) finish(end int64) {
+	sh.expireRests(end)
 	for c, h := range sh.hedges {
 		sh.sim.SettleMakerPair(c, h.rest, h.take, h.qty, h.filledAt, sh.bm)
 		delete(sh.hedges, c)
@@ -284,16 +288,18 @@ func runTrading(dir string, w Window, markets []config.Market, opts TradingOpts,
 	if opts.Adverse != nil {
 		n = 1 // the trade cursor is global across markets
 	}
+	var end int64 // last timestamp replayed, across every market
 	if n == 1 {
 		sh := newShard(markets, opts)
 		err := StreamReplay(dir, w, func(s core.BookSnapshot) error {
+			end = max(end, s.TsRecv)
 			sh.tick(s)
 			if opts.Progress != nil {
 				opts.Progress.Add(1)
 			}
 			return nil
 		})
-		sh.finish()
+		sh.finish(end)
 		return mergeShards([]*shard{sh}), err
 	}
 
@@ -311,7 +317,7 @@ func runTrading(dir string, w Window, markets []config.Market, opts TradingOpts,
 					sh.tick(s)
 				}
 			}
-			sh.finish()
+			sh.finish(end) // written by the router before it closed q
 		}(shards[i], queues[i])
 	}
 
@@ -327,6 +333,7 @@ func runTrading(dir string, w Window, markets []config.Market, opts TradingOpts,
 		if opts.Progress != nil {
 			opts.Progress.Add(1)
 		}
+		end = max(end, s.TsRecv) // serial ticks advance on every snapshot, routed or not
 		c, ok := route.Canonical(s.Venue, s.VenueID)
 		if !ok {
 			return nil // not in markets.yaml (§12); a shard would drop it too

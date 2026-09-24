@@ -283,6 +283,22 @@ func main() {
 		return pos[venueID], nil
 	}
 	trader.SetVerifier(verify)
+	trader.SetOrderChecker(func(octx context.Context, venueName, orderID string) (bool, error) {
+		var a live.AccountClient = kAcct
+		if venueName == "polymarketus" {
+			a = pAcct
+		}
+		ids, err := a.OpenOrders(octx)
+		if err != nil {
+			return true, err
+		}
+		for _, id := range ids {
+			if id == orderID {
+				return true, nil
+			}
+		}
+		return false, nil
+	})
 	// Seed anything Reconcile was told to adopt: the drift monitor compares the
 	// venues against the trader's ledger, so an adopted position it has never
 	// heard of would read as drift and kill on the first tick.
@@ -544,7 +560,16 @@ func main() {
 				// exchange-side order group (order_group_not_found). Skip cleanly
 				// (no entry mark, no error) when the strategy's cheaper rest is Kalshi.
 				if *maker {
-					if ri := strategy.RestingLeg(legs); ri < 0 || legs[ri].Venue != "polymarketus" {
+					ri := strategy.RestingLeg(legs)
+					if ri < 0 || legs[ri].Venue != "polymarketus" {
+						continue
+					}
+					// A rest priced through its own book fills at once as a taker
+					// (2026-09-24, CHW). The strategy no longer does this and Poly
+					// rejects it (post-only); this is the third lock.
+					if strategy.RestCrosses(legs[ri], books[legs[ri].Venue]) {
+						slog.Error("skip: resting leg would cross its own book", "canonical", canonical,
+							"side", legs[ri].Side.String(), "px", legs[ri].Px.String())
 						continue
 					}
 				}

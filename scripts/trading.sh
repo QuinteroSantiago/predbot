@@ -3,8 +3,10 @@
 # Operator manual: https://rpi5/predbot-manual.html
 #
 #   trading.sh start    arm and run continuously (extra args go to preflight)
-#   trading.sh stop     stop trading (graceful; cancels nothing — see note)
-#   trading.sh kill     ENGAGE KILL SWITCH: stop AND block restarts until cleared
+#   trading.sh stop     stop trading, then cancel every open Poly order
+#   trading.sh kill     ENGAGE KILL SWITCH: stop, cancel open Poly orders, AND
+#                       block restarts until cleared
+#   trading.sh cancel-open   list open Poly orders and cancel them all
 #   trading.sh status   is it running, what has it done
 #   trading.sh logs     follow the live log
 #   trading.sh clear    remove the KILLED marker (human decision, after review)
@@ -37,12 +39,18 @@ case "${1:-status}" in
     ;;
   stop)
     "${SSH[@]}" "sudo systemctl stop $SVC"
-    echo "stopped. NOTE: resting orders (if any) are NOT auto-cancelled — check the venue UIs."
+    echo "stopped. Cancelling any open Polymarket orders (the bot only rests there)…"
+    "$0" cancel-open || echo "!!! open orders may remain — check the Polymarket app"
+    ;;
+  cancel-open)
+    # Orphaned rests keep working after the bot stops and fill with no hedge.
+    "${SSH[@]}" "set -a; . /etc/predbot/env; set +a; /opt/predbot/cancelopen -yes"
     ;;
   kill)
     # Engage the kill switch first (persists a marker that blocks restart), then stop.
     "${SSH[@]}" "sudo systemctl reload $SVC 2>/dev/null || true; sleep 1; sudo systemctl stop $SVC"
     "${SSH[@]}" "sudo -u predbot touch /var/lib/predbot/KILLED"
+    "$0" cancel-open || echo "!!! open orders may remain — check the Polymarket app"
     echo "KILL SWITCH ENGAGED — trading stopped and restarts BLOCKED."
     echo "Review positions in both venue UIs, then: $0 clear"
     ;;
@@ -95,7 +103,7 @@ case "${1:-status}" in
     GOTOOLCHAIN=auto go test ./... >/dev/null || { echo "TESTS FAILED — not deploying."; exit 1; }
     tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
     echo "Building amd64 binaries…"
-    for c in live dumppos preflight; do
+    for c in live dumppos preflight cancelopen; do
       out="$tmp/$([ "$c" = live ] && echo predbot-live || echo "$c")"
       CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOTOOLCHAIN=auto go build -trimpath \
         -ldflags "-X main.build=$BUILD_ID" -o "$out" "./cmd/$c"
@@ -105,7 +113,7 @@ case "${1:-status}" in
     scp -o BatchMode=yes -q systemd/predbot-live.service "$REMOTE:/tmp/predbot-live.service"
     "${SSH[@]}" '
       set -e
-      for b in predbot-live dumppos preflight; do
+      for b in predbot-live dumppos preflight cancelopen; do
         sudo mv -f /tmp/$b /opt/predbot/$b
         sudo chmod 0755 /opt/predbot/$b
         sudo chown predbot:predbot /opt/predbot/$b
@@ -122,5 +130,5 @@ case "${1:-status}" in
     "${SSH[@]}" "sudo rm -f /var/lib/predbot/KILLED && echo 'KILLED marker removed'"
     ;;
   *)
-    echo "usage: $0 {start|stop|kill|status|logs|clear|adopt-once|deploy-live}"; exit 2 ;;
+    echo "usage: $0 {start|stop|kill|status|logs|clear|adopt-once|deploy-live|cancel-open}"; exit 2 ;;
 esac

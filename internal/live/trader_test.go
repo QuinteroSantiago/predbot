@@ -27,6 +27,9 @@ type fakeExec struct {
 	// correlation: Polymarket keys fills by the VENUE-assigned order id, which
 	// the trader only learns from this call's return value.
 	placeFn func(core.Order) (string, error)
+	// cancelErr, when set, is returned by every Cancel (the venue refused it).
+	cancelErr error
+	cancels   int
 }
 
 // setFail flips the reject switch under the lock: the hedge grace window runs on
@@ -61,7 +64,12 @@ func (f *fakeExec) Place(_ context.Context, o core.Order) (string, error) {
 	}
 	return "oid", nil
 }
-func (f *fakeExec) Cancel(context.Context, string) error { return nil }
+func (f *fakeExec) Cancel(context.Context, string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.cancels++
+	return f.cancelErr
+}
 func (f *fakeExec) orders() []core.Order {
 	f.mu.Lock()
 	defer f.mu.Unlock()

@@ -1,6 +1,10 @@
 package strategy
 
-import "predbot/internal/core"
+import (
+	"sort"
+
+	"predbot/internal/core"
+)
 
 // MakerCrossVenue looks for pairs that are unprofitable as taker/taker but
 // profitable when ONE leg rests as a maker (design §9.2 "Maker variants").
@@ -18,81 +22,101 @@ import "predbot/internal/core"
 // backtester must model fill probability honestly rather than assuming a rest
 // always fills. See backtest.RestingFill.
 //
-// The resting leg is placed at the current best price on its side (joining the
-// touch), and the other leg is taken IOC once the rest fills.
+// The resting leg JOINS the touch on its own side of its own book — a rested
+// buy at that venue's best bid, a rested sell at its best ask — so it waits on
+// the book and earns the maker rebate. The other leg is taken IOC at the other
+// venue's touch once the rest fills. So the two maker shapes are:
+//
+//	REST buy on R @ R.bid, TAKE sell on T @ T.bid:  gross = T.bid − R.bid
+//	REST sell on R @ R.ask, TAKE buy on T @ T.ask:  gross = R.ask − T.ask
+//
+// Until 2026-09-24 the rest was priced at the OTHER side of its book (a rested
+// sell at the best bid), which crosses: every "rest" filled instantly as a
+// taker while the edge was computed with the maker rebate, and the backtest,
+// which uses this function, credited the same phantom rebate.
 func MakerCrossVenue(canonical string, books map[string]core.BookSnapshot, exp Exposure, fees FeeModel, cfg Config) []core.Intent {
 	if exp.InFlight[canonical] {
 		return nil
 	}
-	type vb struct {
-		venue string
-		book  core.BookSnapshot
+	var venues []string
+	for v := range books {
+		venues = append(venues, v)
 	}
-	var vs []vb
-	for v, b := range books {
-		vs = append(vs, vb{v, b})
-	}
+	sort.Strings(venues) // ties on net must pick the same pair every run
 
 	var best []core.Intent
 	var bestNet int64
-	for i := range vs {
-		for j := range vs {
-			if i == j {
-				continue
-			}
-			buy, sell := vs[i], vs[j]
-			ask, okA := buy.book.BestYesAsk()
-			bid, okB := sell.book.BestYesBid()
-			if !okA || !okB {
-				continue
-			}
-			if cfg.MinDepth > 0 && (ask.Qty < cfg.MinDepth || bid.Qty < cfg.MinDepth) {
-				continue
-			}
-			gross := int64(bid.Px) - int64(ask.Px)
-			if gross <= 0 {
-				continue
-			}
-			qty := minQty(ask.Qty, bid.Qty, cfg.MaxClip)
-			if qty <= 0 {
-				continue
-			}
-			c := contracts(qty)
-			grossTotal := int64(float64(gross) * c)
+	consider := func(rest, take core.Intent, takeDepth core.Qty) {
+		if cfg.MinDepth > 0 && takeDepth < cfg.MinDepth {
+			return // the hedge must be able to clear when the rest fills
+		}
+		qty := takeDepth
+		if cfg.MaxClip > 0 && qty > cfg.MaxClip {
+			qty = cfg.MaxClip
+		}
+		if qty <= 0 {
+			return
+		}
+		buy, sell := rest, take
+		if rest.Side == core.SellYes {
+			buy, sell = take, rest
+		}
+		gross := int64(sell.Px) - int64(buy.Px)
+		if gross <= 0 {
+			return
+		}
+		c := contracts(qty)
+		net := int64(float64(gross)*c) -
+			fees.Fee(rest.Venue, rest.Px, qty, true) - fees.Fee(take.Venue, take.Px, qty, false)
+		if net <= 0 || int64(float64(net)/c) < int64(cfg.MinEdge) || net <= bestNet {
+			return
+		}
+		bestNet = net
+		pairID := canonical + ":maker:" + buy.Venue + "->" + sell.Venue
+		buy.PairID, buy.Leg, buy.Qty = pairID, 0, qty
+		sell.PairID, sell.Leg, sell.Qty = pairID, 1, qty
+		best = []core.Intent{buy, sell}
+	}
 
-			// Try resting EACH leg and take the better of the two. The rested
-			// leg pays the maker fee (a rebate on Polymarket); the other pays taker.
-			for _, restBuy := range []bool{true, false} {
-				feeBuy := fees.Fee(buy.venue, ask.Px, qty, restBuy)
-				feeSell := fees.Fee(sell.venue, bid.Px, qty, !restBuy)
-				net := grossTotal - feeBuy - feeSell
-				if net <= 0 || int64(float64(net)/c) < int64(cfg.MinEdge) {
-					continue
+	for _, r := range venues {
+		for _, t := range venues {
+			if r == t {
+				continue
+			}
+			rb, tb := books[r], books[t]
+			// REST buy on r at its bid; TAKE sell on t at its bid.
+			if rBid, ok := rb.BestYesBid(); ok {
+				if tBid, ok := tb.BestYesBid(); ok {
+					consider(
+						core.Intent{Venue: r, VenueID: rb.VenueID, Side: core.BuyYes, Px: rBid.Px, TIF: core.GTC, Reason: "REST buy"},
+						core.Intent{Venue: t, VenueID: tb.VenueID, Side: core.SellYes, Px: tBid.Px, TIF: core.IOC, Reason: "take sell"},
+						tBid.Qty)
 				}
-				if net <= bestNet {
-					continue
+			}
+			// REST sell on r at its ask; TAKE buy on t at its ask.
+			if rAsk, ok := rb.BestYesAsk(); ok {
+				if tAsk, ok := tb.BestYesAsk(); ok {
+					consider(
+						core.Intent{Venue: r, VenueID: rb.VenueID, Side: core.SellYes, Px: rAsk.Px, TIF: core.GTC, Reason: "REST sell"},
+						core.Intent{Venue: t, VenueID: tb.VenueID, Side: core.BuyYes, Px: tAsk.Px, TIF: core.IOC, Reason: "take buy"},
+						tAsk.Qty)
 				}
-				bestNet = net
-				pairID := canonical + ":maker:" + buy.venue + "->" + sell.venue
-				legs := []core.Intent{
-					{PairID: pairID, Leg: 0, Venue: buy.venue, VenueID: buy.book.VenueID,
-						Side: core.BuyYes, Px: ask.Px, Qty: qty, Reason: "maker buy"},
-					{PairID: pairID, Leg: 1, Venue: sell.venue, VenueID: sell.book.VenueID,
-						Side: core.SellYes, Px: bid.Px, Qty: qty, Reason: "maker sell"},
-				}
-				// The resting leg is GTC (it waits); the taking leg is IOC.
-				if restBuy {
-					legs[0].TIF, legs[1].TIF = core.GTC, core.IOC
-					legs[0].Reason, legs[1].Reason = "REST buy", "take sell"
-				} else {
-					legs[0].TIF, legs[1].TIF = core.IOC, core.GTC
-					legs[0].Reason, legs[1].Reason = "take buy", "REST sell"
-				}
-				best = legs
 			}
 		}
 	}
 	return best
+}
+
+// RestCrosses reports whether a resting leg's price would cross its own book
+// (a buy at or above the best ask, a sell at or below the best bid) — i.e. it
+// would fill immediately as a taker instead of resting.
+func RestCrosses(rest core.Intent, b core.BookSnapshot) bool {
+	if rest.Side == core.BuyYes {
+		ask, ok := b.BestYesAsk()
+		return ok && rest.Px >= ask.Px
+	}
+	bid, ok := b.BestYesBid()
+	return ok && rest.Px <= bid.Px
 }
 
 // RestingLeg returns the index of the leg that rests (TIF GTC), or -1 if this is

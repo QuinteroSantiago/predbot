@@ -80,3 +80,18 @@ func TestAdoptedPositionsDoNotReadAsDrift(t *testing.T) {
 		t.Error("adopted position engaged the kill switch")
 	}
 }
+
+// An open order left on a venue can fill at any moment with no pair behind it
+// (2026-09-24), so startup refuses it even when positions are adoptable.
+func TestReconcileRefusesOpenOrders(t *testing.T) {
+	eng := risk.New(risk.Config{}, nil, "")
+	sup := NewSupervisor([]AccountClient{
+		&fakeAcct{venue: "kalshi"},
+		&fakeAcct{venue: "polymarketus", orders: []string{"CPN9G2VCMXDQ"}},
+	}, eng, nil)
+	sup.AdoptExisting = true
+	err := sup.Reconcile(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "CPN9G2VCMXDQ") {
+		t.Fatalf("want a refusal naming the open order, got %v", err)
+	}
+}

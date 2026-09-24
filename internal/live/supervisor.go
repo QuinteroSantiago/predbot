@@ -66,7 +66,7 @@ func NewSupervisor(accounts []AccountClient, engine *risk.Engine, trader *Trader
 // reported loudly: the bot did not create it in this run, so a human should look.
 func (s *Supervisor) Reconcile(ctx context.Context) error {
 	s.preExisting = map[string]float64{}
-	var found []string
+	var found, openOrders []string
 	for _, a := range s.accounts {
 		pos, err := a.Positions(ctx)
 		if err != nil {
@@ -88,6 +88,9 @@ func (s *Supervisor) Reconcile(ctx context.Context) error {
 		if len(orders) > 0 {
 			s.log.Warn("PRE-EXISTING OPEN ORDERS at startup — verify before trading",
 				"venue", a.Venue(), "count", len(orders))
+			for _, id := range orders {
+				openOrders = append(openOrders, a.Venue()+" "+id)
+			}
 		}
 		if bal, err := a.BalanceUSD(ctx); err == nil {
 			s.log.Info("venue balance", "venue", a.Venue(), "usd", bal)
@@ -99,6 +102,14 @@ func (s *Supervisor) Reconcile(ctx context.Context) error {
 	// exact same number 30s later, killed. Two components, identical data,
 	// opposite verdicts, with a 30-second window in between where the bot was
 	// live and free to trade. Whatever the answer is, it has to be the same one.
+	// An open order the bot didn't place this run is never adoptable: it can
+	// fill at any moment with no pair behind it. That's exactly how an orphaned
+	// rest (its cancel had failed) filled unhedged on 2026-09-24.
+	if len(openOrders) > 0 {
+		sort.Strings(openOrders)
+		return fmt.Errorf("live: %d open order(s) left on the venues: %s — cancel them first (scripts/trading.sh cancel-open)",
+			len(openOrders), strings.Join(openOrders, ", "))
+	}
 	sort.Strings(found)
 	if len(found) > 0 && !s.AdoptExisting {
 		return fmt.Errorf("live: %d pre-existing position(s) the bot cannot account for: %s — flatten them, or pass -adopt-positions if this is a hedge you have reviewed",

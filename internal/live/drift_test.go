@@ -10,13 +10,14 @@ import (
 )
 
 type fakeAcct struct {
-	venue string
-	pos   map[string]float64
+	venue  string
+	pos    map[string]float64
+	orders []string
 }
 
 func (f *fakeAcct) Venue() string                                         { return f.venue }
 func (f *fakeAcct) Positions(context.Context) (map[string]float64, error) { return f.pos, nil }
-func (f *fakeAcct) OpenOrders(context.Context) ([]string, error)          { return nil, nil }
+func (f *fakeAcct) OpenOrders(context.Context) ([]string, error)          { return f.orders, nil }
 func (f *fakeAcct) BalanceUSD(context.Context) (float64, error)           { return 100, nil }
 
 // A position the bot knows about must NOT kill.

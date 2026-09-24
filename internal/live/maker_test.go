@@ -2,6 +2,7 @@ package live
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -245,5 +246,74 @@ func TestMakerPollIgnoresKnownPosition(t *testing.T) {
 	tr.pending.Wait()
 	if eng.Killed() || len(k.orders()) != 0 {
 		t.Errorf("known position read as a fill: killed=%v kalshi orders=%d", eng.Killed(), len(k.orders()))
+	}
+}
+
+// 2026-09-24: every Poly cancel failed, the bot logged "abandoned cleanly", and
+// the still-working rest filled 6 minutes later with no hedge. A failed cancel
+// on an order the venue still lists as open must kill, not be forgotten.
+func TestMakerFailedCancelOnOpenOrderKills(t *testing.T) {
+	tr, k, p, eng := setup(t)
+	tr.restWait = 50 * time.Millisecond
+	p.placeFn = func(core.Order) (string, error) { return "poid", nil }
+	p.cancelErr = errors.New("cancel 400")
+	tr.SetVerifier(func(context.Context, string, string) (float64, error) { return 0, nil })
+	tr.SetOrderChecker(func(_ context.Context, _, id string) (bool, error) { return id == "poid", nil })
+
+	if err := tr.ExecuteMakerPair(context.Background(), "MKT", makerPair()); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	tr.pending.Wait()
+	if !eng.Killed() {
+		t.Fatal("a rest that could not be cancelled and is still open must kill")
+	}
+	if p.cancels != 3 {
+		t.Errorf("cancel attempts = %d; want 3 before giving up", p.cancels)
+	}
+	if len(k.orders()) != 0 {
+		t.Errorf("no hedge for an unfilled rest, got %d kalshi orders", len(k.orders()))
+	}
+}
+
+// If the open-order check itself fails, the order may still be working: kill.
+func TestMakerFailedCancelUnverifiableKills(t *testing.T) {
+	tr, _, p, eng := setup(t)
+	tr.restWait = 50 * time.Millisecond
+	p.placeFn = func(core.Order) (string, error) { return "poid", nil }
+	p.cancelErr = errors.New("cancel 400")
+	tr.SetVerifier(func(context.Context, string, string) (float64, error) { return 0, nil })
+	tr.SetOrderChecker(func(context.Context, string, string) (bool, error) { return true, errors.New("timeout") })
+	if err := tr.ExecuteMakerPair(context.Background(), "MKT", makerPair()); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	tr.pending.Wait()
+	if !eng.Killed() {
+		t.Fatal("an unverifiable failed cancel must kill")
+	}
+}
+
+// A cancel also fails on an order that already filled. If the venue no longer
+// lists it, carry on: the position check then finds and recovers the fill.
+func TestMakerFailedCancelOnFilledOrderRecovers(t *testing.T) {
+	tr, k, p, eng := setup(t)
+	tr.restWait = 50 * time.Millisecond
+	p.placeFn = func(core.Order) (string, error) { return "poid", nil }
+	p.cancelErr = errors.New("cancel 400: order not open")
+	tr.SetVerifier(func(_ context.Context, venue, _ string) (float64, error) {
+		if venue == "polymarketus" {
+			return -5, nil // the rested SELL filled, event lost
+		}
+		return 0, nil
+	})
+	tr.SetOrderChecker(func(context.Context, string, string) (bool, error) { return false, nil })
+	if err := tr.ExecuteMakerPair(context.Background(), "MKT", makerPair()); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	tr.pending.Wait()
+	if eng.Killed() {
+		t.Fatal("a filled (no longer open) rest must recover, not kill")
+	}
+	if len(k.orders()) != 1 {
+		t.Fatalf("want the Kalshi hedge, got %d", len(k.orders()))
 	}
 }

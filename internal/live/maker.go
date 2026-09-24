@@ -147,12 +147,9 @@ func (t *Trader) restLifecycle(ctx context.Context, canonical string, rest, take
 	// Cancel the rest regardless of outcome. Use a detached context so a shutdown
 	// (rootCtx cancelled) still cancels the resting order rather than orphaning it
 	// on the book. A full fill makes cancel a harmless no-op.
-	cctx, cc := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-	if cerr := ex.Cancel(cctx, cancelID); cerr != nil {
-		t.log.Warn("maker rest cancel failed (may already be filled/gone)",
-			"canonical", canonical, "venue", rest.Venue, "order_id", cancelID, "err", cerr)
+	if !t.cancelRest(ctx, canonical, rest, ex, cancelID) {
+		return // still (possibly) working on the book — killed inside
 	}
-	cc()
 
 	// A fill can race the cancel: drain briefly for anything that landed just
 	// before the venue acknowledged the cancel.
@@ -208,6 +205,50 @@ func (t *Trader) restLifecycle(ctx context.Context, canonical string, rest, take
 		"canonical", canonical, "naked_venue", rest.Venue, "naked_qty", filled.String(),
 		"hedge_venue", take.Venue, "grace", t.hedgeGrace.String())
 	t.completeOrExit(ctx, canonical, rest, take, filled)
+}
+
+// cancelRest cancels the resting order and reports whether it is known to be
+// off the book. A cancel error is NOT proof the order is gone: until
+// 2026-09-24 every Poly cancel failed and the bot abandoned rests that went on
+// to fill minutes later, unhedged. So a failed cancel is retried, then checked
+// against the venue's open orders; an order that may still be working kills
+// the engine (a human must pull it) rather than being forgotten.
+func (t *Trader) cancelRest(ctx context.Context, canonical string, rest core.Intent, ex interface {
+	Cancel(context.Context, string) error
+}, orderID string) bool {
+	// Detached context: a shutdown (rootCtx cancelled) must still cancel the
+	// rest rather than orphan it on the book.
+	dctx := context.WithoutCancel(ctx)
+	var cerr error
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			time.Sleep(500 * time.Millisecond)
+		}
+		cctx, cc := context.WithTimeout(dctx, 5*time.Second)
+		cerr = ex.Cancel(cctx, orderID)
+		cc()
+		if cerr == nil {
+			return true
+		}
+	}
+	// A cancel also fails when the order already filled or expired, so ask the
+	// venue before deciding anything.
+	open, oerr := true, error(nil)
+	if t.orderOpen != nil {
+		octx, oc := context.WithTimeout(dctx, 5*time.Second)
+		open, oerr = t.orderOpen(octx, rest.Venue, orderID)
+		oc()
+	}
+	if oerr == nil && !open {
+		t.log.Info("maker rest cancel failed but the order is no longer open (filled or gone)",
+			"canonical", canonical, "venue", rest.Venue, "order_id", orderID, "cancel_err", cerr)
+		return true
+	}
+	t.engine.Kill("resting order could not be cancelled")
+	t.log.Error("KILL: maker rest could NOT be cancelled and may still be working — cancel it on the venue",
+		"canonical", canonical, "venue", rest.Venue, "market", rest.VenueID, "order_id", orderID,
+		"cancel_err", cerr, "open_check_err", oerr)
+	return false
 }
 
 // awaitRest waits up to restWait for the rest's fill events, like drain, but

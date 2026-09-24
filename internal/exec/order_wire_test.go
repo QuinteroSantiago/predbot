@@ -90,3 +90,15 @@ func contains(s, sub string) bool {
 		return false
 	})()
 }
+
+// Resting orders go post-only so a mispriced rest is rejected rather than
+// filled as a taker; IOC orders must be free to take.
+func TestPolyRestIsPostOnly(t *testing.T) {
+	p := NewPolyUSExecutor("", nil)
+	if b := p.body(core.Order{Intent: core.Intent{VenueID: "m", Side: core.SellYes, Px: 6600, Qty: 100, TIF: core.GTC}}); !b.PostOnly {
+		t.Error("GTC rest must be post-only")
+	}
+	if b := p.body(core.Order{Intent: core.Intent{VenueID: "m", Side: core.BuyYes, Px: 5700, Qty: 100, TIF: core.IOC}}); b.PostOnly {
+		t.Error("IOC take must not be post-only")
+	}
+}

@@ -96,6 +96,9 @@ type Trader struct {
 	// verify asks the VENUE what position it actually holds. Used to detect a
 	// silent fill when no fill event arrived (fill streams can fail).
 	verify func(ctx context.Context, venue, venueID string) (float64, error)
+	// orderOpen asks the VENUE whether an order is still working. Used when a
+	// cancel fails: a failed cancel must never be read as "gone".
+	orderOpen func(ctx context.Context, venue, orderID string) (bool, error)
 
 	// onAck / onOrder are optional metric hooks (kept as callbacks so this package
 	// needn't import obs): onAck gets each venue order round-trip in seconds;
@@ -204,6 +207,11 @@ func (t *Trader) markResting(venueID string, delta int) {
 	if t.resting[venueID] += delta; t.resting[venueID] <= 0 {
 		delete(t.resting, venueID)
 	}
+}
+
+// SetOrderChecker installs the venue open-order check used after a failed cancel.
+func (t *Trader) SetOrderChecker(f func(ctx context.Context, venue, orderID string) (bool, error)) {
+	t.orderOpen = f
 }
 
 // SetVerifier installs the venue-position check used to catch silent fills.
