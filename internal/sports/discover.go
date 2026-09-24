@@ -59,7 +59,7 @@ func (c *Client) get(ctx context.Context, url string) ([]byte, error) {
 	return io.ReadAll(resp.Body)
 }
 
-var leagueSeries = map[string]string{"mlb": "KXMLBGAME", "nfl": "KXNFLGAME", "nba": "KXNBAGAME"}
+var leagueSeries = map[string]string{"mlb": "KXMLBGAME", "nfl": "KXNFLGAME", "nba": "KXNBAGAME", "wnba": "KXWNBAGAME"}
 
 // DiscoverKalshi returns today's open games for a league. Fully live-verifiable.
 func (c *Client) DiscoverKalshi(ctx context.Context, league string) ([]venueGame, error) {

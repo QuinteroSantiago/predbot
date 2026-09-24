@@ -87,9 +87,33 @@ var nflCanon = map[string]string{
 	"was": "WAS", "wsh": "WAS", "washington": "WAS", "commanders": "WAS",
 }
 
+// wnbaCanon maps WNBA team forms to a canonical abbreviation. The 2026
+// playoff teams were checked live on 2026-09-24: Kalshi codes CONN/GS/LA and
+// Poly slug codes conn/gsv/la. The rest (ATL/DAL/NY/SEA/PDX) use Kalshi's codes
+// from its full market history; their Poly codes are guesses, so a mismatch on
+// those teams just means that game doesn't cross-list (it can't mispair).
+var wnbaCanon = map[string]string{
+	"atl": "ATL", "atlanta": "ATL", "dream": "ATL",
+	"chi": "CHI", "chicago": "CHI", "sky": "CHI",
+	"conn": "CONN", "con": "CONN", "ct": "CONN", "connecticut": "CONN", "sun": "CONN",
+	"dal": "DAL", "dallas": "DAL", "wings": "DAL",
+	"gs": "GS", "gsv": "GS", "golden state": "GS", "valkyries": "GS",
+	"ind": "IND", "indiana": "IND", "fever": "IND",
+	"la": "LA", "los angeles": "LA", "sparks": "LA",
+	"lv": "LV", "lva": "LV", "las vegas": "LV", "aces": "LV",
+	"min": "MIN", "minnesota": "MIN", "lynx": "MIN",
+	"ny": "NY", "nyl": "NY", "new york": "NY", "liberty": "NY",
+	"pdx": "PDX", "por": "PDX", "portland": "PDX", "fire": "PDX",
+	"phx": "PHX", "pho": "PHX", "phoenix": "PHX", "mercury": "PHX",
+	"sea": "SEA", "seattle": "SEA", "storm": "SEA",
+	"tor": "TOR", "toronto": "TOR", "tempo": "TOR",
+	"wsh": "WSH", "was": "WSH", "washington": "WSH", "mystics": "WSH",
+}
+
 var canonByLeague = map[string]map[string]string{
-	"mlb": mlbCanon,
-	"nfl": nflCanon,
+	"mlb":  mlbCanon,
+	"nfl":  nflCanon,
+	"wnba": wnbaCanon,
 }
 
 // canonTeam normalizes a raw team code or name to its canonical abbreviation for

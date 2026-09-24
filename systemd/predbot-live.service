@@ -37,7 +37,7 @@ WorkingDirectory=/opt/predbot
 #   -min-depth-contracts=10  both legs need 10 contracts of real depth before we
 #     act — the phantom-edge guard that the 2026-08-24 naked-leg incident was
 #     missing. A floor on depth, not the order size (that's the cap above).
-#   -sports=mlb,nfl          the universe: daily games discovered at runtime
+#   -sports=mlb,nfl,wnba     the universe: daily games discovered at runtime
 #     (markets.yaml is empty). Keep predbot-record.service's -sports in step.
 # NOTE: still a live validation run of the maker path (below) — does it fill,
 # hedge and earn the rebate with real money — now at a size where it shows.
@@ -50,7 +50,7 @@ ExecStart=/opt/predbot/predbot-live \
   -max-unhedged-contracts=100 \
   -pnl-floor-usd=-25 \
   -min-depth-contracts=10 \
-  -sports=mlb,nfl \
+  -sports=mlb,nfl,wnba \
   -maker
 # -maker (2026-09-10): MAKER mode — rest one leg (earns the Poly rebate), hedge
 # the other on fill. This INVERTS the taker path's naked-leg-impossible

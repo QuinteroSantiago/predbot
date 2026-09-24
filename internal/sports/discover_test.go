@@ -114,3 +114,45 @@ func TestCanonicalFromPolySlug(t *testing.T) {
 		}
 	}
 }
+
+// WNBA ids as both venues listed the 2026-09-24 playoff slate. Kalshi and Poly
+// disagree on Golden State (GS vs gsv); both must land on the same canonical,
+// and Poly's YES (the away team, first in the slug) must pair with that team's
+// Kalshi market, never the opponent's.
+func TestReconstructWNBA(t *testing.T) {
+	kalshi := []string{
+		"KXWNBAGAME-26SEP24TORCONN-CONN", "KXWNBAGAME-26SEP24TORCONN-TOR",
+		"KXWNBAGAME-26SEP24GSLA-LA", "KXWNBAGAME-26SEP24GSLA-GS",
+	}
+	poly := []string{"aec-wnba-tor-conn-2026-09-24", "aec-wnba-gsv-la-2026-09-24"}
+	got := map[string]Match{}
+	for _, m := range ReconstructFromIDs(kalshi, poly) {
+		got[m.Canonical] = m
+	}
+	want := map[string][2]string{
+		"WNBA-20260924-TOR": {"KXWNBAGAME-26SEP24TORCONN-TOR", "aec-wnba-tor-conn-2026-09-24"},
+		"WNBA-20260924-GS":  {"KXWNBAGAME-26SEP24GSLA-GS", "aec-wnba-gsv-la-2026-09-24"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("matches = %+v; want %d", got, len(want))
+	}
+	for c, ids := range want {
+		if m := got[c]; m.KalshiTicker != ids[0] || m.PolySlug != ids[1] {
+			t.Errorf("%s = %s / %s; want %s / %s", c, m.KalshiTicker, m.PolySlug, ids[0], ids[1])
+		}
+	}
+}
+
+func TestCanonTeamWNBA(t *testing.T) {
+	cases := map[string]string{
+		"CONN": "CONN", "Connecticut": "CONN", "GS": "GS", "gsv": "GS", "Golden State": "GS",
+		"LA": "LA", "Los Angeles": "LA", "LV": "LV", "Las Vegas": "LV",
+		"New York": "NY", "PDX": "PDX", "Portland": "PDX",
+		"Team Coop": "", "Team Spoon": "", // All-Star game sides
+	}
+	for in, want := range cases {
+		if got := canonTeam("wnba", in); got != want {
+			t.Errorf("canonTeam(wnba, %q) = %q; want %q", in, got, want)
+		}
+	}
+}
