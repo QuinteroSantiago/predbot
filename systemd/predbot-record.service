@@ -4,7 +4,7 @@
 # Deployed by scripts/redeploy.sh (which installs this file).
 #
 # -sports must cover every league predbot-live trades (its unit has
-# -sports=mlb,nfl,wnba,cfb): a league the live bot trades but the recorder skips has no
+# -sports=mlb,nfl,wnba,cfb,nhl): a league the live bot trades but the recorder skips has no
 # recorded books/trades, no backup, and no arb-surface or Fee Wall coverage.
 [Unit]
 Description=predbot Phase 1 feed recorder (WebSocket: Kalshi + Polymarket US)
@@ -16,7 +16,7 @@ Type=simple
 User=predbot
 Group=predbot
 WorkingDirectory=/opt/predbot
-ExecStart=/opt/predbot/predbot-record -config /opt/predbot/config/config.yaml -markets /opt/predbot/config/markets.yaml -sports mlb,nfl,wnba,cfb -paper
+ExecStart=/opt/predbot/predbot-record -config /opt/predbot/config/config.yaml -markets /opt/predbot/config/markets.yaml -sports mlb,nfl,wnba,cfb,nhl -paper
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 RestartSec=5

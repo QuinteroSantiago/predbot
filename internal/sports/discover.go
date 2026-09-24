@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 )
@@ -22,11 +23,12 @@ type Match struct {
 }
 
 // venueGame is one game as seen on a single venue: canonical team -> the venue's
-// market id for that team's win.
+// market id for that team's win, and canonical team -> its opponent.
 type venueGame struct {
 	league   string
 	date     string
 	outcomes map[string]string
+	opp      map[string]string
 }
 
 // Client discovers games from the venues' public APIs.
@@ -67,6 +69,7 @@ var leagueSeries = map[string]string{
 	"nba":  "KXNBAGAME",
 	"wnba": "KXWNBAGAME",
 	"cfb":  "KXNCAAFGAME",
+	"nhl":  "KXNHLGAME",
 }
 
 // DiscoverKalshi returns today's open games for a league. Fully live-verifiable.
@@ -97,11 +100,12 @@ func (c *Client) DiscoverKalshi(ctx context.Context, league string) ([]venueGame
 		if date == "" {
 			continue
 		}
-		g := venueGame{league: league, date: date, outcomes: map[string]string{}}
+		g := venueGame{league: league, date: date, outcomes: map[string]string{}, opp: map[string]string{}}
 		for _, m := range e.Markets {
 			team := kalshiTeam(league, m.YesSubTitle, m.Ticker)
 			if team != "" {
 				g.outcomes[team] = m.Ticker
+				g.opp[team] = kalshiOpponent(league, series, m.Ticker)
 			}
 		}
 		if len(g.outcomes) > 0 {
@@ -125,6 +129,34 @@ func kalshiEventDate(series, ticker string) string {
 		return ""
 	}
 	return "20" + yy + "-" + mm + "-" + dd
+}
+
+// kalshiOpponent is the canonical opponent of a Kalshi game market's team, read
+// from the event ticker: KXMLBGAME-26AUG231335STLPHI-STL -> PHI. The event part
+// is the away code then the home code; if the team's code could be either end
+// (SDSU at SD: "SDSUSD" for SD), it's ambiguous and returns "".
+func kalshiOpponent(league, series, ticker string) string {
+	i := strings.LastIndexByte(ticker, '-')
+	rest := strings.TrimPrefix(ticker[:max(i, 0)], series+"-")
+	if i < 0 || len(rest) < 7 {
+		return ""
+	}
+	teams := strings.TrimLeft(rest[7:], "0123456789") // drop date, then the start time if any
+	code := ticker[i+1:]
+	isAway, isHome := strings.HasPrefix(teams, code), strings.HasSuffix(teams, code)
+	var opp string
+	switch {
+	case isAway && isHome:
+		return ""
+	case isAway:
+		opp = teams[len(code):]
+	case isHome:
+		opp = teams[:len(teams)-len(code)]
+	}
+	if opp == "" {
+		return ""
+	}
+	return kalshiTeam(league, "", "-"+opp)
 }
 
 func kalshiMarketSuffix(ticker string) string {
@@ -239,7 +271,7 @@ func (c *Client) DiscoverPoly(ctx context.Context, league string) ([]venueGame, 
 	}
 	var games []venueGame
 	for _, e := range resp.Events {
-		date, away := parsePolyEventSlug(league, e.Slug)
+		date, away, home := parsePolyGame(league, e.Slug)
 		if away == "" {
 			continue
 		}
@@ -250,6 +282,7 @@ func (c *Client) DiscoverPoly(ctx context.Context, league string) ([]venueGame, 
 			games = append(games, venueGame{
 				league: league, date: date,
 				outcomes: map[string]string{away: m.Slug}, // YES = away team
+				opp:      map[string]string{away: home},
 			})
 			break
 		}
@@ -258,17 +291,24 @@ func (c *Client) DiscoverPoly(ctx context.Context, league string) ([]venueGame, 
 }
 
 // parsePolyEventSlug parses "mlb-tor-nyy-2026-08-23" -> (date, canonical away team).
-// parts[1] is the away team, parts[2] the home team, last three the date.
 func parsePolyEventSlug(league, slug string) (date, away string) {
+	date, away, _ = parsePolyGame(league, slug)
+	return date, away
+}
+
+// parsePolyGame parses "mlb-tor-nyy-2026-08-23" -> (date, away, home), teams
+// canonical. parts[1] is the away team, parts[2] the home team, last three the
+// date. home is "" if unrecognized.
+func parsePolyGame(league, slug string) (date, away, home string) {
 	parts := strings.Split(slug, "-")
 	if len(parts) < 6 || parts[0] != league {
-		return "", ""
+		return "", "", ""
 	}
 	date = strings.Join(parts[len(parts)-3:], "-")
 	if _, err := time.Parse("2006-01-02", date); err != nil {
-		return "", ""
+		return "", "", ""
 	}
-	return date, polyTeam(league, parts[1])
+	return date, polyTeam(league, parts[1]), polyTeam(league, parts[2])
 }
 
 // ReconstructFromIDs rebuilds cross-listed game matches from venue ids that
@@ -277,8 +317,7 @@ func parsePolyEventSlug(league, slug string) (date, away string) {
 // are discovered at runtime and never live in markets.yaml, so without this the
 // backtest would drop them.
 func ReconstructFromIDs(kalshiTickers, polySlugs []string) []Match {
-	type gameKey struct{ league, date string }
-	kBy := map[gameKey]map[string]string{}
+	var kg, pg []venueGame
 	for _, t := range kalshiTickers {
 		for league, series := range leagueSeries {
 			if !strings.HasPrefix(t, series+"-") {
@@ -293,14 +332,10 @@ func ReconstructFromIDs(kalshiTickers, polySlugs []string) []Match {
 			if date == "" || team == "" {
 				continue
 			}
-			k := gameKey{league, date}
-			if kBy[k] == nil {
-				kBy[k] = map[string]string{}
-			}
-			kBy[k][team] = t
+			kg = append(kg, venueGame{league: league, date: date,
+				outcomes: map[string]string{team: t}, opp: map[string]string{team: kalshiOpponent(league, series, t)}})
 		}
 	}
-	pBy := map[gameKey]map[string]string{}
 	for _, s := range polySlugs {
 		rest, ok := strings.CutPrefix(s, "aec-") // aec-mlb-tor-nyy-2026-08-23
 		if !ok {
@@ -310,50 +345,55 @@ func ReconstructFromIDs(kalshiTickers, polySlugs []string) []Match {
 		if !found {
 			continue
 		}
-		date, away := parsePolyEventSlug(league, rest)
+		date, away, home := parsePolyGame(league, rest)
 		if away == "" {
 			continue
 		}
-		k := gameKey{league, date}
-		if pBy[k] == nil {
-			pBy[k] = map[string]string{}
-		}
-		pBy[k][away] = s
-	}
-	var kg, pg []venueGame
-	for k, o := range kBy {
-		kg = append(kg, venueGame{league: k.league, date: k.date, outcomes: o})
-	}
-	for k, o := range pBy {
-		pg = append(pg, venueGame{league: k.league, date: k.date, outcomes: o})
+		pg = append(pg, venueGame{league: league, date: date,
+			outcomes: map[string]string{away: s}, opp: map[string]string{away: home}})
 	}
 	return MatchGames(kg, pg)
 }
 
-// MatchGames pairs Kalshi and Poly games by (league, date, canonical team) and
-// returns one Match per shared outcome.
+// MatchGames pairs Kalshi and Poly games by (league, date, canonical team,
+// opponent) and returns one Match per shared outcome. The opponent keeps a team
+// playing twice in a day (split squads, doubleheaders) from pairing across two
+// different games; a key that still repeats on either venue (a doubleheader
+// against the same opponent) is ambiguous and skipped, as is an outcome whose
+// opponent is unknown.
 func MatchGames(kalshi, poly []venueGame) []Match {
-	type key struct{ league, date, team string }
-	pIdx := map[key]string{}
-	for _, g := range poly {
-		for team, slug := range g.outcomes {
-			pIdx[key{g.league, g.date, team}] = slug
-		}
-	}
-	var out []Match
-	for _, g := range kalshi {
-		for team, ticker := range g.outcomes {
-			if slug, ok := pIdx[key{g.league, g.date, team}]; ok {
-				out = append(out, Match{
-					Canonical:    fmt.Sprintf("%s-%s-%s", strings.ToUpper(g.league), strings.ReplaceAll(g.date, "-", ""), team),
-					League:       g.league,
-					Date:         g.date,
-					Team:         team,
-					KalshiTicker: ticker,
-					PolySlug:     slug,
-				})
+	type key struct{ league, date, team, opp string }
+	index := func(games []venueGame) (map[key]string, map[key]int) {
+		ids, n := map[key]string{}, map[key]int{}
+		for _, g := range games {
+			for team, id := range g.outcomes {
+				if g.opp[team] == "" {
+					continue
+				}
+				k := key{g.league, g.date, team, g.opp[team]}
+				ids[k] = id
+				n[k]++
 			}
 		}
+		return ids, n
 	}
+	kIDs, kN := index(kalshi)
+	pIDs, pN := index(poly)
+	var out []Match
+	for k, ticker := range kIDs {
+		slug, ok := pIDs[k]
+		if !ok || kN[k] != 1 || pN[k] != 1 {
+			continue
+		}
+		out = append(out, Match{
+			Canonical:    fmt.Sprintf("%s-%s-%s", strings.ToUpper(k.league), strings.ReplaceAll(k.date, "-", ""), k.team),
+			League:       k.league,
+			Date:         k.date,
+			Team:         k.team,
+			KalshiTicker: ticker,
+			PolySlug:     slug,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Canonical < out[j].Canonical })
 	return out
 }

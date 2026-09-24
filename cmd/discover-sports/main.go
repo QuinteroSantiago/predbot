@@ -14,7 +14,7 @@ import (
 )
 
 func main() {
-	league := flag.String("league", "mlb", "league: mlb|nfl|nba|wnba|cfb")
+	league := flag.String("league", "mlb", "league: mlb|nfl|nba|wnba|cfb|nhl")
 	flag.Parse()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)

@@ -41,9 +41,9 @@ func TestCanonTeamNFL(t *testing.T) {
 // An NFL game cross-lists once both venues' team forms canonicalize equally.
 func TestMatchGamesNFL(t *testing.T) {
 	kalshi := []venueGame{{league: "nfl", date: "2026-09-11", outcomes: map[string]string{
-		"KC": "KXNFLGAME-...-KC", "PHI": "KXNFLGAME-...-PHI"}}}
+		"KC": "KXNFLGAME-...-KC", "PHI": "KXNFLGAME-...-PHI"}, opp: map[string]string{"KC": "PHI", "PHI": "KC"}}}
 	poly := []venueGame{{league: "nfl", date: "2026-09-11", outcomes: map[string]string{
-		"KC": "aec-nfl-kc-phi-2026-09-11"}}}
+		"KC": "aec-nfl-kc-phi-2026-09-11"}, opp: map[string]string{"KC": "PHI"}}}
 	m := MatchGames(kalshi, poly)
 	if len(m) != 1 || m[0].Canonical != "NFL-20260911-KC" {
 		t.Fatalf("nfl match = %+v; want 1 match NFL-20260911-KC", m)
@@ -72,9 +72,9 @@ func TestParsePolyEventSlug(t *testing.T) {
 
 func TestMatchGames(t *testing.T) {
 	kalshi := []venueGame{{league: "mlb", date: "2026-08-23", outcomes: map[string]string{
-		"CIN": "KXMLBGAME-26AUG231335CINSF-CIN", "SF": "KXMLBGAME-26AUG231335CINSF-SF"}}}
+		"CIN": "KXMLBGAME-26AUG231335CINSF-CIN", "SF": "KXMLBGAME-26AUG231335CINSF-SF"}, opp: map[string]string{"CIN": "SF", "SF": "CIN"}}}
 	poly := []venueGame{{league: "mlb", date: "2026-08-23", outcomes: map[string]string{
-		"CIN": "aec-mlb-cin-sf-2026-08-23"}}}
+		"CIN": "aec-mlb-cin-sf-2026-08-23"}, opp: map[string]string{"CIN": "SF"}}}
 
 	m := MatchGames(kalshi, poly)
 	if len(m) != 1 {
@@ -90,8 +90,8 @@ func TestMatchGames(t *testing.T) {
 
 func TestMatchGamesNoOverlap(t *testing.T) {
 	// Different dates -> no match.
-	kalshi := []venueGame{{league: "mlb", date: "2026-08-23", outcomes: map[string]string{"CIN": "k"}}}
-	poly := []venueGame{{league: "mlb", date: "2026-08-24", outcomes: map[string]string{"CIN": "p"}}}
+	kalshi := []venueGame{{league: "mlb", date: "2026-08-23", outcomes: map[string]string{"CIN": "k"}, opp: map[string]string{"CIN": "SF"}}}
+	poly := []venueGame{{league: "mlb", date: "2026-08-24", outcomes: map[string]string{"CIN": "p"}, opp: map[string]string{"CIN": "SF"}}}
 	if m := MatchGames(kalshi, poly); len(m) != 0 {
 		t.Errorf("expected no match across dates, got %+v", m)
 	}
@@ -182,5 +182,69 @@ func TestReconstructCFBCollidingCodes(t *testing.T) {
 	}
 	if polyTeam("cfb", "nosuchschool") != "" {
 		t.Error("unknown cfb code must not match")
+	}
+}
+
+// NHL: Poly's own codes (veg, nas, mon, was) must land on Kalshi's.
+func TestCanonTeamNHL(t *testing.T) {
+	cases := map[string]string{
+		"veg": "VGK", "VGK": "VGK", "Vegas": "VGK", "nas": "NSH", "Nashville": "NSH",
+		"mon": "MTL", "Montreal": "MTL", "was": "WSH", "WSH": "WSH",
+		"New York I": "NYI", "New York R": "NYR", "nj": "NJ", "St. Louis": "STL",
+		"Hartford Whalers": "",
+	}
+	for in, want := range cases {
+		if got := canonTeam("nhl", in); got != want {
+			t.Errorf("canonTeam(nhl, %q) = %q; want %q", in, got, want)
+		}
+	}
+	m := ReconstructFromIDs(
+		[]string{"KXNHLGAME-26SEP26SJVGK-VGK", "KXNHLGAME-26SEP26SJVGK-SJ"},
+		[]string{"aec-nhl-sj-veg-2026-09-26"})
+	if len(m) != 1 || m[0].Canonical != "NHL-20260926-SJ" || m[0].KalshiTicker != "KXNHLGAME-26SEP26SJVGK-SJ" {
+		t.Fatalf("nhl match = %+v; want NHL-20260926-SJ on the SJ ticker", m)
+	}
+}
+
+func TestKalshiOpponent(t *testing.T) {
+	cases := []struct{ league, series, ticker, want string }{
+		{"mlb", "KXMLBGAME", "KXMLBGAME-26AUG231335STLPHI-STL", "PHI"},
+		{"mlb", "KXMLBGAME", "KXMLBGAME-26AUG231335STLPHI-PHI", "STL"},
+		{"mlb", "KXMLBGAME", "KXMLBGAME-26AUG231335CWSATH-ATH", "CHW"}, // canonicalized
+		{"wnba", "KXWNBAGAME", "KXWNBAGAME-26SEP24GSLA-LA", "GS"},
+		{"cfb", "KXNCAAFGAME", "KXNCAAFGAME-26SEP24LIBCCAR-LIB", "CCAR"},
+		{"cfb", "KXNCAAFGAME", "KXNCAAFGAME-26SEP26SDSUSD-SDSU", "SD"},
+		{"cfb", "KXNCAAFGAME", "KXNCAAFGAME-26SEP26SDSUSD-SD", ""}, // SD is both ends: ambiguous
+		{"mlb", "KXMLBGAME", "KXMLBGAME-26AUG231335STLPHI-NYY", ""},
+		{"mlb", "KXMLBGAME", "garbage", ""},
+	}
+	for _, c := range cases {
+		if got := kalshiOpponent(c.league, c.series, c.ticker); got != c.want {
+			t.Errorf("kalshiOpponent(%s) = %q; want %q", c.ticker, got, c.want)
+		}
+	}
+}
+
+// NHL split squads: Montreal plays Ottawa and Boston on the same date. Poly
+// lists only MTL-at-OTT; Kalshi only MTL-at-BOS. Keyed on (date, team) alone
+// those paired across two different games.
+func TestMatchGamesSplitSquad(t *testing.T) {
+	m := ReconstructFromIDs(
+		[]string{"KXNHLGAME-26SEP26MTLBOS-MTL", "KXNHLGAME-26SEP26MTLBOS-BOS"},
+		[]string{"aec-nhl-mon-ott-2026-09-26"})
+	if len(m) != 0 {
+		t.Fatalf("split-squad games paired across different opponents: %+v", m)
+	}
+}
+
+// A doubleheader against the same opponent is two games with the same key on
+// Kalshi (the start time tells them apart there, but not on Poly), so it's
+// ambiguous and must be skipped rather than paired twice.
+func TestMatchGamesDoubleheaderSkipped(t *testing.T) {
+	m := ReconstructFromIDs(
+		[]string{"KXMLBGAME-26AUG231305CINSF-CIN", "KXMLBGAME-26AUG231835CINSF-CIN"},
+		[]string{"aec-mlb-cin-sf-2026-08-23"})
+	if len(m) != 0 {
+		t.Fatalf("doubleheader paired: %+v", m)
 	}
 }

@@ -110,10 +110,50 @@ var wnbaCanon = map[string]string{
 	"wsh": "WSH", "was": "WSH", "washington": "WSH", "mystics": "WSH",
 }
 
+// nhlCanon maps NHL team forms to a canonical abbreviation (Kalshi's codes).
+// Checked against both venues' preseason listings on 2026-09-24; Poly uses
+// its own codes for Montreal (mon), Nashville (nas), Vegas (veg) and
+// Washington (was). Toronto wasn't listed on either yet.
+var nhlCanon = map[string]string{
+	"ana": "ANA", "anaheim": "ANA", "ducks": "ANA",
+	"bos": "BOS", "boston": "BOS", "bruins": "BOS",
+	"buf": "BUF", "buffalo": "BUF", "sabres": "BUF",
+	"car": "CAR", "carolina": "CAR", "hurricanes": "CAR",
+	"cbj": "CBJ", "clb": "CBJ", "columbus": "CBJ", "blue jackets": "CBJ",
+	"cgy": "CGY", "cal": "CGY", "calgary": "CGY", "flames": "CGY",
+	"chi": "CHI", "chicago": "CHI", "blackhawks": "CHI",
+	"col": "COL", "colorado": "COL", "avalanche": "COL",
+	"dal": "DAL", "dallas": "DAL", "stars": "DAL",
+	"det": "DET", "detroit": "DET", "red wings": "DET",
+	"edm": "EDM", "edmonton": "EDM", "oilers": "EDM",
+	"fla": "FLA", "florida": "FLA", "panthers": "FLA",
+	"la": "LA", "lak": "LA", "los angeles": "LA", "kings": "LA",
+	"min": "MIN", "minnesota": "MIN", "wild": "MIN",
+	"mtl": "MTL", "mon": "MTL", "montreal": "MTL", "canadiens": "MTL",
+	"nj": "NJ", "njd": "NJ", "new jersey": "NJ", "devils": "NJ",
+	"nsh": "NSH", "nas": "NSH", "nashville": "NSH", "predators": "NSH",
+	"nyi": "NYI", "new york i": "NYI", "islanders": "NYI",
+	"nyr": "NYR", "new york r": "NYR", "rangers": "NYR",
+	"ott": "OTT", "ottawa": "OTT", "senators": "OTT",
+	"phi": "PHI", "philadelphia": "PHI", "flyers": "PHI",
+	"pit": "PIT", "pittsburgh": "PIT", "penguins": "PIT",
+	"sea": "SEA", "seattle": "SEA", "kraken": "SEA",
+	"sj": "SJ", "sjs": "SJ", "san jose": "SJ", "sharks": "SJ",
+	"stl": "STL", "st. louis": "STL", "st louis": "STL", "blues": "STL",
+	"tb": "TB", "tbl": "TB", "tampa bay": "TB", "lightning": "TB",
+	"tor": "TOR", "toronto": "TOR", "maple leafs": "TOR",
+	"uta": "UTA", "utah": "UTA", "mammoth": "UTA",
+	"van": "VAN", "vancouver": "VAN", "canucks": "VAN",
+	"vgk": "VGK", "veg": "VGK", "vegas": "VGK", "golden knights": "VGK",
+	"wpg": "WPG", "win": "WPG", "winnipeg": "WPG", "jets": "WPG",
+	"wsh": "WSH", "was": "WSH", "washington": "WSH", "capitals": "WSH",
+}
+
 var canonByLeague = map[string]map[string]string{
 	"mlb":  mlbCanon,
 	"nfl":  nflCanon,
 	"wnba": wnbaCanon,
+	"nhl":  nhlCanon,
 }
 
 // canonTeam normalizes a raw team code or name to its canonical abbreviation for
