@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"predbot/internal/book"
@@ -34,6 +35,17 @@ type Supervisor struct {
 
 	client *Client
 	log    *slog.Logger
+
+	mu     sync.Mutex
+	starts map[string]time.Time // canonical -> scheduled start
+}
+
+// StartTime is a discovered game's scheduled start, if known.
+func (s *Supervisor) StartTime(canonical string) (time.Time, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t, ok := s.starts[canonical]
+	return t, ok
 }
 
 // Run blocks until ctx is done, keeping the sports subscription current.
@@ -63,6 +75,18 @@ func (s *Supervisor) Run(ctx context.Context) {
 			}
 			matches = append(matches, MatchGames(k, p)...)
 		}
+		starts := make(map[string]time.Time, len(matches))
+		for _, m := range matches {
+			if !m.Start.IsZero() {
+				starts[m.Canonical] = m.Start
+			}
+		}
+		// Updated every refresh, not only when the set changes: a postponed game
+		// keeps its ids but moves its start.
+		s.mu.Lock()
+		s.starts = starts
+		s.mu.Unlock()
+
 		var mkts []config.Market
 		var kt, ps []string
 		for _, m := range matches {
@@ -114,10 +138,7 @@ func (s *Supervisor) Run(ctx context.Context) {
 // Live reports whether a canonical id is a sports market (they expire, unlike
 // the static basket, so callers must age them out of any "already entered" set).
 func Live(canonical string) bool {
-	for _, p := range []string{"MLB-", "NFL-", "NBA-"} {
-		if strings.HasPrefix(canonical, p) {
-			return true
-		}
-	}
-	return false
+	league, _, ok := strings.Cut(canonical, "-")
+	_, known := leagueSeries[strings.ToLower(league)]
+	return ok && known
 }

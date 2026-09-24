@@ -37,6 +37,10 @@ WorkingDirectory=/opt/predbot
 #   -min-depth-contracts=10  both legs need 10 contracts of real depth before we
 #     act — the phantom-edge guard that the 2026-08-24 naked-leg incident was
 #     missing. A floor on depth, not the order size (that's the cap above).
+#   -edge-step=24h           min edge grows with time to game start (2026-09-24,
+#     santiago's call): config min_edge (1c) inside 24h, 2c inside 48h, 3c
+#     inside 72h... A pair locks capital until the game resolves, so a game days
+#     out must pay more to take one of the few slots buying power allows.
 #   -sports=mlb,nfl,wnba,cfb,nhl  the universe: daily games discovered at runtime
 #     (markets.yaml is empty). Keep predbot-record.service's -sports in step.
 # NOTE: still a live validation run of the maker path (below) — does it fill,
@@ -50,6 +54,7 @@ ExecStart=/opt/predbot/predbot-live \
   -max-unhedged-contracts=100 \
   -pnl-floor-usd=-25 \
   -min-depth-contracts=10 \
+  -edge-step=24h \
   -sports=mlb,nfl,wnba,cfb,nhl \
   -maker
 # -maker (2026-09-10): MAKER mode — rest one leg (earns the Poly rebate), hedge

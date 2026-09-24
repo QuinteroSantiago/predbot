@@ -20,6 +20,7 @@ type Match struct {
 	Team         string // canonical abbreviation
 	KalshiTicker string
 	PolySlug     string
+	Start        time.Time // scheduled start, from Poly; zero if unknown
 }
 
 // venueGame is one game as seen on a single venue: canonical team -> the venue's
@@ -29,6 +30,7 @@ type venueGame struct {
 	date     string
 	outcomes map[string]string
 	opp      map[string]string
+	start    time.Time
 }
 
 // Client discovers games from the venues' public APIs.
@@ -261,8 +263,9 @@ func (c *Client) DiscoverPoly(ctx context.Context, league string) ([]venueGame, 
 		Events []struct {
 			Slug    string `json:"slug"`
 			Markets []struct {
-				Slug             string `json:"slug"`
-				SportsMarketType string `json:"sportsMarketType"`
+				Slug             string    `json:"slug"`
+				SportsMarketType string    `json:"sportsMarketType"`
+				GameStartTime    time.Time `json:"gameStartTime"`
 			} `json:"markets"`
 		} `json:"events"`
 	}
@@ -283,6 +286,7 @@ func (c *Client) DiscoverPoly(ctx context.Context, league string) ([]venueGame, 
 				league: league, date: date,
 				outcomes: map[string]string{away: m.Slug}, // YES = away team
 				opp:      map[string]string{away: home},
+				start:    m.GameStartTime,
 			})
 			break
 		}
@@ -363,6 +367,7 @@ func ReconstructFromIDs(kalshiTickers, polySlugs []string) []Match {
 // opponent is unknown.
 func MatchGames(kalshi, poly []venueGame) []Match {
 	type key struct{ league, date, team, opp string }
+	start := map[key]time.Time{}
 	index := func(games []venueGame) (map[key]string, map[key]int) {
 		ids, n := map[key]string{}, map[key]int{}
 		for _, g := range games {
@@ -373,6 +378,9 @@ func MatchGames(kalshi, poly []venueGame) []Match {
 				k := key{g.league, g.date, team, g.opp[team]}
 				ids[k] = id
 				n[k]++
+				if !g.start.IsZero() {
+					start[k] = g.start
+				}
 			}
 		}
 		return ids, n
@@ -392,6 +400,7 @@ func MatchGames(kalshi, poly []venueGame) []Match {
 			Team:         k.team,
 			KalshiTicker: ticker,
 			PolySlug:     slug,
+			Start:        start[k],
 		})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Canonical < out[j].Canonical })

@@ -1,6 +1,10 @@
 package sports
 
-import "testing"
+import (
+	"strings"
+	"testing"
+	"time"
+)
 
 func TestCanonTeam(t *testing.T) {
 	cases := map[string]string{
@@ -246,5 +250,28 @@ func TestMatchGamesDoubleheaderSkipped(t *testing.T) {
 		[]string{"aec-mlb-cin-sf-2026-08-23"})
 	if len(m) != 0 {
 		t.Fatalf("doubleheader paired: %+v", m)
+	}
+}
+
+// The scheduled start rides on Poly's side of the match (Kalshi's listing has
+// no reliable start), so the live loop can price time-to-start.
+func TestMatchGamesCarriesStart(t *testing.T) {
+	st := time.Date(2026, 9, 24, 23, 0, 0, 0, time.UTC)
+	kalshi := []venueGame{{league: "wnba", date: "2026-09-24", outcomes: map[string]string{"TOR": "k"}, opp: map[string]string{"TOR": "CONN"}}}
+	poly := []venueGame{{league: "wnba", date: "2026-09-24", outcomes: map[string]string{"TOR": "p"}, opp: map[string]string{"TOR": "CONN"}, start: st}}
+	m := MatchGames(kalshi, poly)
+	if len(m) != 1 || !m[0].Start.Equal(st) {
+		t.Fatalf("match = %+v; want start %v", m, st)
+	}
+}
+
+func TestLiveCoversEveryLeague(t *testing.T) {
+	for league := range leagueSeries {
+		if c := strings.ToUpper(league) + "-20260924-XYZ"; !Live(c) {
+			t.Errorf("Live(%q) = false; a traded league's entries would never age out", c)
+		}
+	}
+	if Live("FED-DEC-CUT") || Live("MLB") {
+		t.Error("non-sports canonical reported live")
 	}
 }

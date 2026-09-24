@@ -3,7 +3,11 @@
 // runs live and in backtest. Phase 2 runs them detect-only.
 package strategy
 
-import "predbot/internal/core"
+import (
+	"time"
+
+	"predbot/internal/core"
+)
 
 // FeeModel returns the signed fee (in $0.0001 units) for a fill of qty at px on
 // venue as maker or taker (design §10.3). Negative == rebate. Implemented in the
@@ -31,6 +35,18 @@ type Config struct {
 	// arb. This happened live on 2026-08-24 (MLB-20260827-BAL): a 4c gap against
 	// an all-but-empty Kalshi book left a 5-contract unhedged short.
 	MinDepth core.Qty
+}
+
+// HorizonEdge scales the minimum edge with time to the game's start: a pair
+// locks capital on both venues until the game resolves, so a trade that ties it
+// up longer must pay more. One step of base per started step until start —
+// with a 24h step and 1c base: 1c inside 24h, 2c inside 48h, 3c inside 72h.
+// A game already under way (or a step of 0) needs just base.
+func HorizonEdge(base core.Price, untilStart, step time.Duration) core.Price {
+	if step <= 0 || untilStart <= 0 {
+		return base
+	}
+	return base * core.Price((untilStart+step-1)/step)
 }
 
 // contracts converts fixed-point Qty (0.01-contract units) to whole contracts.

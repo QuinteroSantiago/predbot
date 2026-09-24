@@ -69,6 +69,7 @@ func main() {
 	sportsLeagues := flag.String("sports", "", "also trade cross-listed daily games, e.g. \"mlb\" (fast + liquid; more chances to fire)")
 	maker := flag.Bool("maker", false, "MAKER mode: rest one leg (earn the Poly rebate) and hedge the other on fill, instead of taker/taker (design §9.2)")
 	restWait := flag.Duration("rest-wait", 30*time.Second, "maker: how long a resting leg sits on the book before it is cancelled")
+	edgeStep := flag.Duration("edge-step", 0, "scale the min edge with time to game start: min_edge per started step (24h: 1c inside 24h, 2c inside 48h, ...); 0 = flat")
 	flag.Parse()
 
 	if !*dryRun && !*arm {
@@ -422,6 +423,7 @@ func main() {
 	go drain(polySnaps)
 
 	// --- dynamic sports subscription (fast, liquid daily games) -------------
+	var sportsSup *sports.Supervisor // nil without -sports
 	if leagues := splitCSV(*sportsLeagues); len(leagues) > 0 {
 		// The supervisor emits both venues into one channel; demux by venue into
 		// the same per-venue drains so sports markets get the same isolation.
@@ -444,8 +446,9 @@ func main() {
 				}
 			}
 		}()
-		go (&sports.Supervisor{Leagues: leagues, KDial: kDial, PDial: pDial,
-			Rec: venue.NopRecorder(), Met: met, BM: bm, Out: sportsSnaps}).Run(rootCtx)
+		sportsSup = &sports.Supervisor{Leagues: leagues, KDial: kDial, PDial: pDial,
+			Rec: venue.NopRecorder(), Met: met, BM: bm, Out: sportsSnaps}
+		go sportsSup.Run(rootCtx)
 		slog.Info("sports trading enabled", "leagues", leagues)
 	}
 
@@ -484,7 +487,7 @@ func main() {
 	const sportsEntryTTL = 12 * time.Hour
 
 	slog.Info("live loop starting", "markets", len(markets), "dry_run", *dryRun,
-		"mode", modeName(*maker), "rest_wait", restWait.String())
+		"mode", modeName(*maker), "rest_wait", restWait.String(), "edge_step", edgeStep.String())
 	tick := time.NewTicker(500 * time.Millisecond)
 	defer tick.Stop()
 	for {
@@ -520,11 +523,15 @@ func main() {
 				for c := range entered {
 					inFlight[c] = true
 				}
+				gcfg := scfg
+				if st, ok := startTime(sportsSup, canonical); ok {
+					gcfg.MinEdge = strategy.HorizonEdge(scfg.MinEdge, time.Until(st), *edgeStep)
+				}
 				var legs []core.Intent
 				if *maker {
-					legs = strategy.MakerCrossVenue(canonical, books, strategy.Exposure{InFlight: inFlight}, fees, scfg)
+					legs = strategy.MakerCrossVenue(canonical, books, strategy.Exposure{InFlight: inFlight}, fees, gcfg)
 				} else {
-					legs = strategy.CrossVenue(canonical, books, strategy.Exposure{InFlight: inFlight}, fees, scfg)
+					legs = strategy.CrossVenue(canonical, books, strategy.Exposure{InFlight: inFlight}, fees, gcfg)
 				}
 				if len(legs) == 0 {
 					continue
@@ -562,7 +569,7 @@ func main() {
 					}
 					slog.Info("DRY RUN would place pair", "canonical", canonical, "mode", modeName(*maker),
 						"leg1", legFmt(legs[0]), "leg2", legFmt(legs[1]))
-					entered[canonical] = time.Now()
+					entered[canonical] = holdFrom(sportsSup, canonical)
 					continue
 				}
 				exec := trader.ExecutePair
@@ -574,7 +581,7 @@ func main() {
 					sup.NoteError()
 					continue
 				}
-				entered[canonical] = time.Now()
+				entered[canonical] = holdFrom(sportsSup, canonical)
 			}
 		}
 	}
@@ -619,4 +626,23 @@ func splitCSV(s string) []string {
 		}
 	}
 	return out
+}
+
+// holdFrom is when an entry's hold-to-resolution TTL starts counting: now, or
+// the game's scheduled start if later. Games are traded days ahead, so aging
+// from entry alone let a game entered 2 days out be re-entered 12h later.
+func holdFrom(sup *sports.Supervisor, canonical string) time.Time {
+	now := time.Now()
+	if st, ok := startTime(sup, canonical); ok && st.After(now) {
+		return st
+	}
+	return now
+}
+
+// startTime is a sports game's scheduled start, if the supervisor knows it.
+func startTime(sup *sports.Supervisor, canonical string) (time.Time, bool) {
+	if sup == nil {
+		return time.Time{}, false
+	}
+	return sup.StartTime(canonical)
 }
