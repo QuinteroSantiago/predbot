@@ -42,6 +42,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	osexec "os/exec"
 	"strings"
 	"sync"
 	"time"
@@ -71,6 +72,7 @@ func main() {
 	targetChunk := flag.String("target-chunk", "first", "first | last: which 100-slug chunk holds -market")
 	resubAfter := flag.Duration("resubscribe-after", 0, "resend every subscription after this long (the trader resends every 2m); 0 = never")
 	exitPrice := flag.String("exit-price", "", "after the wait, place the opposite side IOC at this price (round trip)")
+	allowLive := flag.Bool("allow-live", false, "place orders even while predbot-live is running (its drift monitor may kill on them)")
 	poll := flag.Duration("poll", 100*time.Millisecond, "how often to poll the REST position after placing, to time when it reflects the fill")
 	flag.Parse()
 
@@ -189,6 +191,13 @@ func main() {
 	} else {
 		if !*confirm {
 			fmt.Fprintln(os.Stderr, "refusing to place a real order without -i-understand")
+			os.Exit(2)
+		}
+		// 2026-09-24: round trips run while the live bot was armed showed up in
+		// its ledger as fills for unknown orders; one held past a drift check
+		// (30s) would have tripped the kill switch.
+		if !*allowLive && osexec.Command("systemctl", "is-active", "--quiet", "predbot-live").Run() == nil {
+			fmt.Fprintln(os.Stderr, "refusing: predbot-live is running and would see these fills as drift. Stop it first (trading.sh stop) or pass -allow-live")
 			os.Exit(2)
 		}
 		if *price == "" {
