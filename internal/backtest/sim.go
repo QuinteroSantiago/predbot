@@ -125,37 +125,40 @@ func (s *Sim) settle(p pendingPair, bm *book.Manager) {
 // legging estimates the round-trip cost of exiting the unhedged excess at the
 // opposite top-of-book on the over-filled leg's venue.
 func (s *Sim) legging(buy, sell core.Intent, buyQty, sellQty core.Qty, books map[string]core.BookSnapshot) int64 {
-	diff := buyQty - sellQty
-	if diff == 0 {
+	switch diff := buyQty - sellQty; {
+	case diff > 0: // over-bought YES on the buy venue
+		return s.exitCost(buy, diff, books[buy.Venue])
+	case diff < 0: // over-sold YES on the sell venue
+		return s.exitCost(sell, -diff, books[sell.Venue])
+	}
+	return 0
+}
+
+// exitCost is what it costs to get out of qty of an unhedged leg entered at
+// leg.Px: dumped on its own venue at the opposite top of book (sell a long at
+// the bid, buy back a short at the ask), as the live trader does when a hedge
+// fails, plus that exit's taker fee. The round trip is charged as a loss
+// whichever way the price moved. An empty exit side charges nothing — the
+// position is then simply held, which this first-cut model does not price.
+func (s *Sim) exitCost(leg core.Intent, qty core.Qty, b core.BookSnapshot) int64 {
+	if qty <= 0 {
 		return 0
 	}
-	var venue string
-	var entryPx core.Price
-	var exit core.Level
-	var okExit bool
-	if diff > 0 { // over-bought YES on buy venue -> exit by selling at its bid
-		venue = buy.Venue
-		entryPx = buy.Px
-		bb := books[buy.Venue]
-		exit, okExit = bb.BestYesBid()
-	} else { // over-sold YES on sell venue -> exit by buying at its ask
-		diff = -diff
-		venue = sell.Venue
-		entryPx = sell.Px
-		sb := books[sell.Venue]
-		exit, okExit = sb.BestYesAsk()
+	exit, ok := b.BestYesBid()
+	if leg.Side == core.SellYes {
+		exit, ok = b.BestYesAsk()
 	}
-	_ = venue
-	if !okExit {
+	if !ok {
 		return 0
 	}
-	c := float64(diff) / 100
-	// Loss = |entry − exit| on the round trip.
-	loss := int64(exit.Px) - int64(entryPx)
+	loss := int64(exit.Px) - int64(leg.Px)
 	if loss < 0 {
 		loss = -loss
 	}
-	return int64(float64(loss) * c)
+	// The exit fee stays inside the legging line (not FeesByVenue), so the
+	// report's waterfall gross − fees − legging = net counts it once.
+	fee := s.fees.Fee(leg.Venue, exit.Px, qty, false)
+	return int64(float64(loss)*float64(qty)/100) + fee
 }
 
 // fillBuy walks YES asks (ascending) taking levels priced <= limit, up to qty.
@@ -219,9 +222,14 @@ func (s *Sim) SettleMakerPair(canonical string, rested, taking core.Intent, rest
 		takePx, takeQty = fillSell(books[taking.Venue], taking.Px, restedQty)
 	}
 	if takeQty == 0 {
-		// Rest filled but the hedge is gone: an unhedged maker position.
+		// Rest filled but the hedge is gone: an unhedged maker position, dumped
+		// as the live trader does. Until 2026-09-24 this booked $0 and dropped
+		// the position, so 405 legged rests cost nothing in the report.
+		legCost := s.exitCost(rested, restedQty, books[rested.Venue])
+		s.rep.LeggingCost += legCost
+		s.rep.NetPnL -= legCost
 		s.rep.PairsLegged++
-		s.rep.addPair(canonical, 0, 0, now)
+		s.rep.addPair(canonical, -legCost, 0, now)
 		return
 	}
 	hedged := restedQty
@@ -247,7 +255,10 @@ func (s *Sim) SettleMakerPair(canonical string, rested, taking core.Intent, rest
 	s.rep.FeesByVenue[sellVenue] += feeSell
 
 	capital := int64(float64(buyPx)*c) + int64(float64(int64(core.OneDollar)-int64(sellPx))*c)
-	net := gross - feeBuy - feeSell
+	// A partial hedge leaves the rest's remainder naked: dump it too.
+	legCost := s.exitCost(rested, restedQty-hedged, books[rested.Venue])
+	s.rep.LeggingCost += legCost
+	net := gross - feeBuy - feeSell - legCost
 
 	s.rep.CapitalLocked += capital
 	s.rep.GrossCaptured += gross
