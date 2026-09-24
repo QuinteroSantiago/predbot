@@ -24,6 +24,11 @@
 //	-exit-price P               after the wait, place the opposite IOC at P and
 //	                            listen again — a round trip that ends flat
 //
+// Each placed order also reports how long the REST position took to reflect
+// the fill (polled every -poll), next to the order ack and the first execution
+// event, as a LATENCY line. The trader checks REST positions 1s after an IOC
+// that delivered no fill event, so this says whether 1s is enough.
+//
 // Round trip on one contract, costing about the spread:
 //
 //	filltest -market <slug> -side buy -price 0.99 -exit-price 0.01 -tif ioc \
@@ -38,6 +43,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"predbot/internal/core"
@@ -65,6 +71,7 @@ func main() {
 	targetChunk := flag.String("target-chunk", "first", "first | last: which 100-slug chunk holds -market")
 	resubAfter := flag.Duration("resubscribe-after", 0, "resend every subscription after this long (the trader resends every 2m); 0 = never")
 	exitPrice := flag.String("exit-price", "", "after the wait, place the opposite side IOC at this price (round trip)")
+	poll := flag.Duration("poll", 100*time.Millisecond, "how often to poll the REST position after placing, to time when it reflects the fill")
 	flag.Parse()
 
 	if *market == "" {
@@ -152,6 +159,8 @@ func main() {
 
 	done := make(chan struct{})
 	var total, execs, targetExecs int
+	var execMu sync.Mutex
+	var execTimes []time.Time // arrival of each execution frame on -market
 	go func() {
 		defer close(done)
 		for f := range frames {
@@ -162,6 +171,9 @@ func main() {
 				execs++
 				if strings.Contains(f, *market) {
 					targetExecs++
+					execMu.Lock()
+					execTimes = append(execTimes, time.Now())
+					execMu.Unlock()
 				}
 			}
 			if len(f) > 100000 {
@@ -205,17 +217,54 @@ func main() {
 		time.Sleep(2 * time.Second) // let the subscription settle
 		ex := exec.NewPolyUSExecutor("https://api.polymarket.us",
 			func(m, p string) (http.Header, error) { return polymarketus.AuthHeaders(m, p) })
-		fmt.Printf("=== placing REAL order: %s %s %.0f contracts @ %s\n", *side, *market, *contracts, *price)
-		id, err := ex.Place(ctx, core.Order{Intent: core.Intent{
-			Venue: "polymarketus", VenueID: *market, Side: s, Px: px, Qty: qty, TIF: tifVal,
-		}})
-		if err != nil {
-			fmt.Printf("!!! PLACE FAILED: %v\n", err)
-		} else {
-			fmt.Printf("=== placed, venue_order_id=%s\n", id)
+		firstExecAfter := func(t0 time.Time) time.Duration {
+			execMu.Lock()
+			defer execMu.Unlock()
+			for _, at := range execTimes {
+				if !at.Before(t0) {
+					return at.Sub(t0)
+				}
+			}
+			return -1
 		}
-		fmt.Printf("=== listening %s for an execution event…\n", *wait)
-		time.Sleep(*wait)
+		// timeFill places o, polls the REST position until it moves off `from`,
+		// then waits out -wait, and prints one LATENCY line.
+		timeFill := func(label string, o core.Order, from float64) {
+			t0 := time.Now()
+			id, err := ex.Place(ctx, o)
+			ack := time.Since(t0)
+			if err != nil {
+				fmt.Printf("!!! %s PLACE FAILED: %v — check the position by hand\n", label, err)
+				return
+			}
+			fmt.Printf("=== %s placed, venue_order_id=%s (ack %s)\n", label, id, ack.Round(time.Millisecond))
+			rest, polls := time.Duration(-1), 0
+			for time.Since(t0) < *wait {
+				pos, err := acct.Positions(ctx)
+				polls++
+				if err == nil && pos[*market] != from {
+					rest = time.Since(t0)
+					break
+				}
+				time.Sleep(*poll)
+			}
+			if left := *wait - time.Since(t0); left > 0 {
+				time.Sleep(left) // keep listening for late execution frames
+			}
+			show := func(d time.Duration) string {
+				if d < 0 {
+					return "never (within -wait)"
+				}
+				return "+" + d.Round(time.Millisecond).String()
+			}
+			fmt.Printf("=== LATENCY %s: ack %s, REST position moved %s after %d poll(s), first exec event %s\n",
+				label, show(ack), show(rest), polls, show(firstExecAfter(t0)))
+		}
+
+		fmt.Printf("=== placing REAL order: %s %s %.0f contracts @ %s\n", *side, *market, *contracts, *price)
+		timeFill("entry", core.Order{Intent: core.Intent{
+			Venue: "polymarketus", VenueID: *market, Side: s, Px: px, Qty: qty, TIF: tifVal,
+		}}, before[*market])
 		after, _ := acct.Positions(ctx)
 		fmt.Printf("=== REST position AFTER: %+v\n", after)
 
@@ -230,15 +279,9 @@ func main() {
 				xs = core.SellYes
 			}
 			fmt.Printf("=== placing REAL exit: %s %s %.0f contracts @ %s IOC\n", xs, *market, *contracts, *exitPrice)
-			id, err := ex.Place(ctx, core.Order{Intent: core.Intent{
+			timeFill("exit", core.Order{Intent: core.Intent{
 				Venue: "polymarketus", VenueID: *market, Side: xs, Px: xpx, Qty: qty, TIF: core.IOC,
-			}})
-			if err != nil {
-				fmt.Printf("!!! EXIT FAILED: %v — check the position by hand\n", err)
-			} else {
-				fmt.Printf("=== exit placed, venue_order_id=%s\n", id)
-			}
-			time.Sleep(*wait)
+			}}, after[*market])
 			final, _ := acct.Positions(ctx)
 			fmt.Printf("=== REST position FINAL: %+v\n", final)
 		}
