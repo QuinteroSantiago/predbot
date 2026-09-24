@@ -312,7 +312,9 @@ func main() {
 				"canonical", canonical, "net_yes_contracts", net.String())
 		}
 	}
-	go live.NewDriftMonitor([]live.AccountClient{kGuard, pGuard}, engine, trader.Positions).Run(rootCtx)
+	drift := live.NewDriftMonitor([]live.AccountClient{kGuard, pGuard}, engine, trader.Positions)
+	drift.Skip = trader.Resting
+	go drift.Run(rootCtx)
 
 	// Publish live unhedged (naked-leg) exposure per market to the dashboard.
 	if err := obs.RegisterUnhedgedGauge(engine.UnhedgedSnapshot); err != nil {

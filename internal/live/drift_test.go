@@ -83,3 +83,21 @@ func (c *countingAcct) Positions(ctx context.Context) (map[string]float64, error
 	atomic.AddInt64(c.n, 1)
 	return c.fakeAcct.Positions(ctx)
 }
+
+// A market with a working maker rest is the rest lifecycle's to reconcile;
+// drift must not race it to a kill. Other markets are still checked.
+func TestDriftSkipsRestingMarket(t *testing.T) {
+	eng := risk.New(risk.Config{}, nil, "")
+	a := &fakeAcct{venue: "polymarketus", pos: map[string]float64{"P": -5}}
+	d := NewDriftMonitor([]AccountClient{a}, eng, func() map[string]float64 { return nil })
+	d.Skip = func(id string) bool { return id == "P" }
+	d.check(context.Background())
+	if eng.Killed() {
+		t.Fatal("drift killed on a market its rest lifecycle owns")
+	}
+	a.pos = map[string]float64{"P": -5, "Q": 2}
+	d.check(context.Background())
+	if !eng.Killed() {
+		t.Fatal("unexplained drift on a non-resting market must still kill")
+	}
+}

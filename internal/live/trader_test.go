@@ -609,7 +609,9 @@ func TestPartialFillStillWaitsOutTheWindow(t *testing.T) {
 // The dangerous case is NOT "neither leg filled" — that costs nothing. It is one
 // leg filled and one silent, because that is when the bot re-places. Before
 // 2026-08-25 the venue was never consulted here, so a leg whose fill event was
-// lost got sold a second time.
+// lost got sold a second time. Since 2026-09-24 the hedge IOC's own venue check
+// books the silent fill, so the pair completes: no re-sell, and no kill, since
+// the ledger now matches the venue.
 func TestSilentFillOnTheMissingLegIsCaughtBeforeReplacing(t *testing.T) {
 	tr, _, p, eng := setup(t)
 	p.tr = nil // poly's fill event never arrives...
@@ -624,14 +626,17 @@ func TestSilentFillOnTheMissingLegIsCaughtBeforeReplacing(t *testing.T) {
 	err := tr.ExecutePair(context.Background(), "MKT", pair())
 	tr.pending.Wait()
 
-	if err == nil {
-		t.Fatal("want an error for a silent fill on the missing leg, got nil")
-	}
-	if !eng.Killed() {
-		t.Error("a silent fill must engage the kill switch")
+	if err != nil || eng.Killed() {
+		t.Fatalf("err=%v killed=%v; a silent hedge fill booked from the venue completes the pair", err, eng.Killed())
 	}
 	if n := len(p.orders()); n != 1 {
 		t.Errorf("poly orders = %d; want 1 — the bot re-sold a leg that had already filled", n)
+	}
+	if got := tr.Positions()["P"]; got != -5 {
+		t.Errorf("ledger P = %v; want -5 from the venue", got)
+	}
+	if s := tr.Stats(); s.PairsCompleted != 1 {
+		t.Errorf("completed = %d; want 1", s.PairsCompleted)
 	}
 }
 
@@ -721,5 +726,43 @@ func TestLegState(t *testing.T) {
 		if got := legState(c.req, c.filled); got != c.want {
 			t.Errorf("legState(%v,%v)=%q want %q", c.req, c.filled, got, c.want)
 		}
+	}
+}
+
+// 2026-09-24: an exit IOC filled with no event, so the bot still believed it
+// held the leg it had dumped. The venue check books the fill instead.
+func TestIOCSilentFillBookedFromVenue(t *testing.T) {
+	tr, k, _, _ := setup(t)
+	k.placeFn = func(core.Order) (string, error) { return "koid", nil } // no fill event
+	tr.SetVerifier(func(_ context.Context, venue, _ string) (float64, error) {
+		if venue == "kalshi" {
+			return 5, nil // the BUY filled on the venue
+		}
+		return 0, nil
+	})
+	leg := core.Intent{Venue: "kalshi", VenueID: "K", Side: core.BuyYes, Px: 5000, Qty: 500, TIF: core.IOC}
+	if err := tr.engine.CheckAndReserve("MKT", leg); err != nil {
+		t.Fatal(err)
+	}
+	filled, err := tr.place(context.Background(), "MKT", leg)
+	if err != nil || filled != 500 {
+		t.Fatalf("place = %v, %v; want 500 booked from the venue", filled, err)
+	}
+	if got := tr.Positions()["K"]; got != 5 {
+		t.Errorf("ledger K = %v; want 5", got)
+	}
+}
+
+// A venue move AGAINST the order's direction is not its fill.
+func TestIOCSilentFillIgnoresWrongDirection(t *testing.T) {
+	tr, k, _, _ := setup(t)
+	k.placeFn = func(core.Order) (string, error) { return "koid", nil }
+	tr.SetVerifier(func(context.Context, string, string) (float64, error) { return -5, nil })
+	leg := core.Intent{Venue: "kalshi", VenueID: "K", Side: core.BuyYes, Px: 5000, Qty: 500, TIF: core.IOC}
+	if err := tr.engine.CheckAndReserve("MKT", leg); err != nil {
+		t.Fatal(err)
+	}
+	if filled, _ := tr.place(context.Background(), "MKT", leg); filled != 0 {
+		t.Errorf("filled = %v; a short is not a BUY's fill", filled)
 	}
 }

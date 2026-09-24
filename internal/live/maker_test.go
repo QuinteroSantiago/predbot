@@ -181,3 +181,69 @@ func TestMakerNoRestingLegFallsBackToTaker(t *testing.T) {
 		t.Errorf("completed = %d; want 1", s.PairsCompleted)
 	}
 }
+
+// 2026-09-24: a rest filled with no event and the drift monitor killed 23s in,
+// before the rest's own post-cancel check at 30s. Polling the venue during the
+// rest finds the fill in seconds and recovers it, and the market is marked
+// resting (so drift stands aside) only while the lifecycle owns it.
+func TestMakerPollCatchesSilentFillEarly(t *testing.T) {
+	tr, k, p, eng := setup(t)
+	tr.restWait = 5 * time.Second
+	tr.restPoll = 20 * time.Millisecond
+	p.placeFn = func(core.Order) (string, error) { return "poid", nil } // no fill event, ever
+	filledAt := time.Now().Add(60 * time.Millisecond)
+	tr.SetVerifier(func(_ context.Context, venue, _ string) (float64, error) {
+		if venue == "polymarketus" && time.Now().After(filledAt) {
+			return -5, nil // the rested SELL filled
+		}
+		return 0, nil
+	})
+
+	start := time.Now()
+	if err := tr.ExecuteMakerPair(context.Background(), "MKT", makerPair()); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	if !tr.Resting("P") {
+		t.Error("market should be marked resting while the rest works")
+	}
+	tr.pending.Wait()
+
+	if took := time.Since(start); took > 2*time.Second {
+		t.Errorf("recovery took %v; the poll should beat the %v rest wait", took, tr.restWait)
+	}
+	if tr.Resting("P") {
+		t.Error("resting mark must clear when the lifecycle ends")
+	}
+	if eng.Killed() {
+		t.Fatal("a silent fill caught by the poll must recover, not kill")
+	}
+	if len(k.orders()) != 1 {
+		t.Fatalf("want the Kalshi hedge, got %d kalshi orders", len(k.orders()))
+	}
+	if s := tr.Stats(); s.PairsCompleted != 1 {
+		t.Errorf("completed=%d; want 1", s.PairsCompleted)
+	}
+}
+
+// The poll must not mistake a position the bot already knows about (a fill it
+// DID see, or an earlier pair) for a silent fill.
+func TestMakerPollIgnoresKnownPosition(t *testing.T) {
+	tr, k, p, eng := setup(t)
+	tr.restWait = 200 * time.Millisecond
+	tr.restPoll = 20 * time.Millisecond
+	tr.posByVenueID["P"] = -3 // held from an earlier pair
+	p.placeFn = func(core.Order) (string, error) { return "poid", nil }
+	tr.SetVerifier(func(_ context.Context, venue, _ string) (float64, error) {
+		if venue == "polymarketus" {
+			return -3, nil
+		}
+		return 0, nil
+	})
+	if err := tr.ExecuteMakerPair(context.Background(), "MKT", makerPair()); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	tr.pending.Wait()
+	if eng.Killed() || len(k.orders()) != 0 {
+		t.Errorf("known position read as a fill: killed=%v kalshi orders=%d", eng.Killed(), len(k.orders()))
+	}
+}

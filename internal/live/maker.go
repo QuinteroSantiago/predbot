@@ -121,9 +121,11 @@ func (t *Trader) ExecuteMakerPair(ctx context.Context, canonical string, legs []
 		cancelID = o.ClientID
 	}
 
+	t.markResting(rest.VenueID, 1)
 	t.pending.Add(1)
 	go func() {
 		defer t.pending.Done()
+		defer t.markResting(rest.VenueID, -1)
 		defer t.forget(o.ClientID)
 		if id != "" && id != o.ClientID {
 			defer t.forget(id)
@@ -140,7 +142,7 @@ func (t *Trader) restLifecycle(ctx context.Context, canonical string, rest, take
 		Cancel(context.Context, string) error
 	}, cancelID string) {
 
-	filled := drain(ch, rest.Qty, t.restWait)
+	filled := t.awaitRest(ctx, canonical, rest, ch)
 
 	// Cancel the rest regardless of outcome. Use a detached context so a shutdown
 	// (rootCtx cancelled) still cancels the resting order rather than orphaning it
@@ -206,6 +208,49 @@ func (t *Trader) restLifecycle(ctx context.Context, canonical string, rest, take
 		"canonical", canonical, "naked_venue", rest.Venue, "naked_qty", filled.String(),
 		"hedge_venue", take.Venue, "grace", t.hedgeGrace.String())
 	t.completeOrExit(ctx, canonical, rest, take, filled)
+}
+
+// awaitRest waits up to restWait for the rest's fill events, like drain, but
+// also polls the venue position every restPoll: if the venue shows the rest
+// filling while no event arrived, it returns early so the caller cancels and
+// recovers within seconds instead of sitting naked until the rest expires.
+func (t *Trader) awaitRest(ctx context.Context, canonical string, rest core.Intent, ch <-chan Fill) core.Qty {
+	if t.verify == nil || t.restPoll <= 0 {
+		return drain(ch, rest.Qty, t.restWait)
+	}
+	var total core.Qty
+	deadline := time.After(t.restWait)
+	tick := time.NewTicker(t.restPoll)
+	defer tick.Stop()
+	for {
+		select {
+		case f := <-ch:
+			if total += f.Qty; total >= rest.Qty {
+				return total
+			}
+		case <-deadline:
+			return total
+		case <-tick.C:
+			qty, err := t.verify(ctx, rest.Venue, rest.VenueID)
+			if err != nil {
+				continue // the post-cancel verification is the one that must succeed
+			}
+			t.mu.Lock()
+			diff := qty - t.posByVenueID[rest.VenueID]
+			t.mu.Unlock()
+			if rest.Side == core.SellYes {
+				diff = -diff
+			}
+			// The ledger already holds the fills we saw, so any further move in
+			// the rest's direction is a fill whose event never came.
+			if diff > silentFillTolerance {
+				t.log.Warn("rest filled with no fill event — cancelling to recover now",
+					"canonical", canonical, "venue", rest.Venue, "market", rest.VenueID,
+					"unexplained", diff, "seen", total.String())
+				return total
+			}
+		}
+	}
 }
 
 // registerSink installs a fill channel for clientID and claims any fills that

@@ -69,6 +69,11 @@ type Trader struct {
 	// cancelled (maker path only). It bounds how long the bot sits waiting to be
 	// filled; on a fill the taking leg is hedged immediately via completeOrExit.
 	restWait time.Duration
+	// restPoll is how often a resting leg's venue position is checked while it
+	// waits. Poly's private stream intermittently goes blind (2026-08-24,
+	// 2026-09-24: connected and subscribed, yet no executions), so the fill
+	// EVENT can't be the only way the bot learns its rest filled.
+	restPoll time.Duration
 	// hedgeGrace is how long a legged pair gets to complete its missing side
 	// before the naked leg is dumped. It MUST stay below the supervisor's
 	// MaxUnhedgedFor (60s) or the bot kills itself mid-recovery.
@@ -112,6 +117,11 @@ type Trader struct {
 	// answer this; the DriftMonitor needs the venue view to tell a legitimate
 	// position apart from an unexplained one.
 	posByVenueID map[string]float64
+	// resting counts working maker rests per venue market id. Their lifecycle
+	// verifies the venue itself, so the drift monitor stands aside on these
+	// rather than racing it to a kill (2026-09-24: drift killed 23s into a rest
+	// whose own silent-fill recovery would have run at 30s).
+	resting map[string]int
 }
 
 // parkedFills is a set of fills waiting for their order to be registered.
@@ -158,6 +168,7 @@ func NewTrader(ex Executors, engine *risk.Engine, bm *book.Manager, legWait time
 		// than waiting longer for a message that may never come.
 		fillWait:   1 * time.Second,
 		restWait:   30 * time.Second, // maker: how long a rest sits before cancel
+		restPoll:   2 * time.Second,
 		hedgeGrace: 30 * time.Second, // < supervisor MaxUnhedgedFor (60s)
 		hedgeRetry: 2 * time.Second,
 		// 2c/contract: wider than normal fee drag, tighter than a real dislocation.
@@ -168,6 +179,7 @@ func NewTrader(ex Executors, engine *risk.Engine, bm *book.Manager, legWait time
 		awaiting:     map[string]chan Fill{},
 		parked:       map[string]parkedFills{},
 		posByVenueID: map[string]float64{},
+		resting:      map[string]int{},
 		log:          slog.With("component", "live-trader")}
 }
 
@@ -175,6 +187,22 @@ func NewTrader(ex Executors, engine *risk.Engine, bm *book.Manager, legWait time
 func (t *Trader) SetRestWait(d time.Duration) {
 	if d > 0 {
 		t.restWait = d
+	}
+}
+
+// Resting reports whether a maker rest is working on venueID. The drift monitor
+// skips those: the rest lifecycle polls and reconciles that market itself.
+func (t *Trader) Resting(venueID string) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.resting[venueID] > 0
+}
+
+func (t *Trader) markResting(venueID string, delta int) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.resting[venueID] += delta; t.resting[venueID] <= 0 {
+		delete(t.resting, venueID)
 	}
 }
 
@@ -561,6 +589,9 @@ func (t *Trader) place(ctx context.Context, canonical string, i core.Intent) (co
 	// window or is cancelled by the venue — a timeout means "no fill", which is
 	// safe: we release the reservation rather than assume a position we lack.
 	filled := wait(t.fillWait)
+	if filled < i.Qty {
+		filled += t.silentIOCFill(ctx, canonical, i, filled)
+	}
 	if filled > 0 {
 		t.engine.OnFill(canonical, i, filled)
 	}
@@ -589,6 +620,40 @@ func (t *Trader) place(ctx context.Context, canonical string, i core.Intent) (co
 		}
 	}
 	return filled, nil
+}
+
+// silentIOCFill asks the venue whether an IOC that delivered fewer fill events
+// than requested actually filled more, and books any such fill into the
+// trader's ledger as a seen fill would have been. Returns the extra quantity.
+// On 2026-09-24 a naked-leg exit filled with no event, so the bot still
+// believed it held the leg it had just dumped.
+func (t *Trader) silentIOCFill(ctx context.Context, canonical string, i core.Intent, seen core.Qty) core.Qty {
+	if t.verify == nil {
+		return 0
+	}
+	qty, err := t.verify(ctx, i.Venue, i.VenueID)
+	if err != nil {
+		t.log.Warn("cannot verify an IOC with missing fill events", "canonical", canonical,
+			"venue", i.Venue, "market", i.VenueID, "err", err)
+		return 0
+	}
+	t.mu.Lock()
+	diff := qty - t.posByVenueID[i.VenueID]
+	t.mu.Unlock()
+	if i.Side == core.SellYes {
+		diff = -diff
+	}
+	// Only a move in the order's own direction is this order's fill; anything
+	// else is drift for the monitor, not something to explain away here.
+	extra := core.Qty(math.Round(diff * 100))
+	if extra <= silentFillTolerance*100 {
+		return 0
+	}
+	extra = min(extra, i.Qty-seen)
+	t.bookSilentFill(i, extra)
+	t.log.Warn("SILENT FILL on IOC — booked from the venue position", "canonical", canonical,
+		"venue", i.Venue, "market", i.VenueID, "side", i.Side.String(), "qty", extra.String())
+	return extra
 }
 
 // OnFill feeds a venue fill event into the trader; wire this to the private

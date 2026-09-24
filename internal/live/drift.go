@@ -29,6 +29,10 @@ type DriftMonitor struct {
 	expected func() map[string]float64 // venueID -> contracts the bot believes it holds
 	log      *slog.Logger
 
+	// Skip, if set, names venue markets the monitor leaves alone for now — a
+	// working maker rest reconciles its own market (Trader.Resting).
+	Skip func(venueID string) bool
+
 	Interval  time.Duration // default 30s
 	Tolerance float64       // contracts of allowed mismatch (fills in flight); default 0.01
 
@@ -130,6 +134,9 @@ func (d *DriftMonitor) check(ctx context.Context) {
 
 		for venueID, qty := range actual {
 			exp := want[venueID]
+			if d.Skip != nil && d.Skip(venueID) {
+				continue
+			}
 			if diff := qty - exp; diff > d.Tolerance || diff < -d.Tolerance {
 				reason := fmt.Sprintf("POSITION DRIFT on %s %s: venue says %.2f, bot believes %.2f",
 					a.Venue(), venueID, qty, exp)
