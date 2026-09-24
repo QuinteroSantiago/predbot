@@ -137,7 +137,9 @@ go run ./cmd/backtest -data … -leadlag | -longshot                     # read-
 Replay is a streaming k-way merge by receive time (§10.1), so memory stays bounded
 on the full archive. Wall-clock time grows linearly with the archive: the full
 archive now takes over 3h on the Pi. Run full-archive jobs on the Arch box
-(`192.168.3.225`), never on the predbot VM.
+(`192.168.3.225` on Wi-Fi; `10.42.0.2` over the direct Ethernet link from the
+Pi's `eth0`, `10.42.0.1` — use the link for copying the archive), never on the
+predbot VM.
 
 Open TODOs in code:
 - The Kalshi per-order fee rounding accumulator (§6.1) is not modeled
