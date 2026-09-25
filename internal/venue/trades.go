@@ -59,17 +59,16 @@ type kalshiTradeMsg struct {
 
 // Run keeps the trade stream connected until ctx is done.
 func (k *KalshiTrades) Run(ctx context.Context, markets []string, h TradeHandler) {
-	backoff := 500 * time.Millisecond
+	backoff := NewBackoff(StreamReconnectDelay)
 	for ctx.Err() == nil {
 		conn, err := k.dial(ctx)
 		if err != nil {
-			if sleepTrades(ctx, backoff) != nil {
+			if backoff.Wait(ctx) != nil {
 				return
 			}
-			backoff = min(backoff*2, 30*time.Second)
 			continue
 		}
-		backoff = 500 * time.Millisecond
+		backoff.Reset()
 		sub, _ := json.Marshal(map[string]any{
 			"id": 1, "cmd": "subscribe",
 			"params": map[string]any{"channels": []string{"trade"}, "market_tickers": markets},
@@ -144,17 +143,16 @@ type polyTradeMsg struct {
 }
 
 func (p *PolyUSTrades) Run(ctx context.Context, markets []string, h TradeHandler) {
-	backoff := 500 * time.Millisecond
+	backoff := NewBackoff(StreamReconnectDelay)
 	for ctx.Err() == nil {
 		conn, err := p.dial(ctx)
 		if err != nil {
-			if sleepTrades(ctx, backoff) != nil {
+			if backoff.Wait(ctx) != nil {
 				return
 			}
-			backoff = min(backoff*2, 30*time.Second)
 			continue
 		}
-		backoff = 500 * time.Millisecond
+		backoff.Reset()
 		// EXPLICIT slug list: an empty list subscribes to NOTHING on this venue
 		// (learned the hard way — see the private fill stream).
 		for i := 0; i < len(markets); i += 100 {
@@ -197,16 +195,5 @@ func (p *PolyUSTrades) Run(ctx context.Context, markets []string, h TradeHandler
 				TakerSide: side, TsServer: ts, TsRecv: now.UnixNano()})
 		}
 		_ = conn.Close()
-	}
-}
-
-func sleepTrades(ctx context.Context, d time.Duration) error {
-	t := time.NewTimer(d)
-	defer t.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-t.C:
-		return nil
 	}
 }

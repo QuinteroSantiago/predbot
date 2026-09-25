@@ -33,6 +33,7 @@ import (
 	"predbot/internal/core"
 	"predbot/internal/exec"
 	"predbot/internal/risk"
+	"predbot/internal/venue"
 )
 
 // silentFillTolerance is the position mismatch (in contracts) tolerated before
@@ -882,7 +883,7 @@ func (t *Trader) completeOrExit(ctx context.Context, canonical string, held, mis
 				"canonical", canonical, "qty", remaining.String())
 			break
 		}
-		if sleepCtx(ctx, t.hedgeRetry) != nil {
+		if venue.Sleep(ctx, t.hedgeRetry) != nil {
 			return // context cancelled; shutdown path handles reconciliation
 		}
 		// Re-check immediately before committing an order: a late fill may have

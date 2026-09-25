@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
-	"time"
 
 	"predbot/internal/core"
 	"predbot/internal/venue"
@@ -64,18 +63,17 @@ type kalshiFillEnvelope struct {
 // every fill. It reconnects with backoff; on reconnect the caller should
 // reconcile positions, since fills during the gap were missed.
 func (k *KalshiFills) Run(ctx context.Context, h FillHandler) {
-	backoff := 500 * time.Millisecond
+	backoff := venue.NewBackoff(venue.StreamReconnectDelay)
 	for ctx.Err() == nil {
 		conn, err := k.dial(ctx)
 		if err != nil {
 			k.log.Warn("fill stream dial failed", "err", err)
-			if sleepCtx(ctx, backoff) != nil {
+			if backoff.Wait(ctx) != nil {
 				return
 			}
-			backoff = min(backoff*2, 30*time.Second)
 			continue
 		}
-		backoff = 500 * time.Millisecond
+		backoff.Reset()
 		sub, _ := json.Marshal(map[string]any{
 			"id": 1, "cmd": "subscribe",
 			"params": map[string]any{"channels": []string{"fill"}},
@@ -124,15 +122,4 @@ func parseDollars(s string) float64 {
 		return 0
 	}
 	return float64(p) / 1e4
-}
-
-func sleepCtx(ctx context.Context, d time.Duration) error {
-	t := time.NewTimer(d)
-	defer t.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-t.C:
-		return nil
-	}
 }

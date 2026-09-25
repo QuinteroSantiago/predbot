@@ -146,20 +146,19 @@ type polyPrivateEnvelope struct {
 // every execution. On reconnect the caller should reconcile positions, since
 // executions during the gap were missed.
 func (p *PolyUSFills) Run(ctx context.Context, h FillHandler) {
-	backoff := 500 * time.Millisecond
+	backoff := venue.NewBackoff(venue.StreamReconnectDelay)
 	var downSince time.Time // zero until the first disconnect; the blind window
 	for ctx.Err() == nil {
 		conn, err := p.dial(ctx)
 		if err != nil {
 			p.clearCovered() // not subscribed to anything while down
 			p.log.Warn("private stream dial failed", "err", err)
-			if sleepCtx(ctx, backoff) != nil {
+			if backoff.Wait(ctx) != nil {
 				return
 			}
-			backoff = min(backoff*2, 30*time.Second)
 			continue
 		}
-		backoff = 500 * time.Millisecond
+		backoff.Reset()
 		subscribe := func() int {
 			slugs := []string{}
 			if p.slugs != nil {

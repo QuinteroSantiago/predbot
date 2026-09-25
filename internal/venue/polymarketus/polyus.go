@@ -41,18 +41,17 @@ func (p *Ingester) Name() string { return name }
 // Stream connects, subscribes (batches of <=100 slugs, design §6.2), and emits
 // normalized snapshots until ctx is done, reconnecting with backoff.
 func (p *Ingester) Stream(ctx context.Context, markets []string, out chan<- core.BookSnapshot) error {
-	backoff := 250 * time.Millisecond
+	backoff := venue.NewBackoff(venue.FeedReconnectDelay)
 	for ctx.Err() == nil {
 		conn, err := p.dial(ctx)
 		if err != nil {
-			p.log.Warn("dial failed", "err", err, "backoff", backoff)
-			if sleepCtx(ctx, backoff) != nil {
+			p.log.Warn("dial failed", "err", err, "backoff", backoff.Delay())
+			if backoff.Wait(ctx) != nil {
 				return ctx.Err()
 			}
-			backoff = min(backoff*2, 30*time.Second)
 			continue
 		}
-		backoff = 250 * time.Millisecond
+		backoff.Reset()
 		if err := p.subscribe(ctx, conn, markets); err != nil {
 			p.log.Warn("subscribe failed", "err", err)
 			_ = conn.Close()
@@ -243,16 +242,5 @@ func parseState(s string) core.MarketState {
 		return core.StateClosed
 	default:
 		return core.StateUnknown
-	}
-}
-
-func sleepCtx(ctx context.Context, d time.Duration) error {
-	t := time.NewTimer(d)
-	defer t.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-t.C:
-		return nil
 	}
 }

@@ -47,7 +47,7 @@ func (p *PolyUSREST) Stream(ctx context.Context, slugs []string, out chan<- core
 				return ctx.Err()
 			}
 		}
-		if sleepCtx(ctx, p.interval) != nil {
+		if venue.Sleep(ctx, p.interval) != nil {
 			return ctx.Err()
 		}
 	}

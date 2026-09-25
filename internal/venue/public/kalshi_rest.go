@@ -50,7 +50,7 @@ func (k *KalshiREST) Stream(ctx context.Context, tickers []string, out chan<- co
 				return ctx.Err()
 			}
 		}
-		if sleepCtx(ctx, k.interval) != nil {
+		if venue.Sleep(ctx, k.interval) != nil {
 			return ctx.Err()
 		}
 	}

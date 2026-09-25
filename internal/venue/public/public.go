@@ -35,18 +35,6 @@ func emit(ctx context.Context, out chan<- core.BookSnapshot, s core.BookSnapshot
 // httpClient is shared; short timeout because these are small book snapshots.
 var httpClient = &http.Client{Timeout: 8 * time.Second}
 
-// sleepCtx sleeps for d or until ctx is done.
-func sleepCtx(ctx context.Context, d time.Duration) error {
-	t := time.NewTimer(d)
-	defer t.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-t.C:
-		return nil
-	}
-}
-
 func getJSON(ctx context.Context, url string) ([]byte, int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {

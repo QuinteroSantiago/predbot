@@ -47,18 +47,17 @@ func (k *Ingester) Name() string { return name }
 // done. It reconnects with exponential backoff; every reconnect discards all
 // books because Kalshi's seq restarts (design §7.1).
 func (k *Ingester) Stream(ctx context.Context, markets []string, out chan<- core.BookSnapshot) error {
-	backoff := 250 * time.Millisecond
+	backoff := venue.NewBackoff(venue.FeedReconnectDelay)
 	for ctx.Err() == nil {
 		conn, err := k.dial(ctx)
 		if err != nil {
-			k.log.Warn("dial failed", "err", err, "backoff", backoff)
-			if sleep(ctx, backoff) != nil {
+			k.log.Warn("dial failed", "err", err, "backoff", backoff.Delay())
+			if backoff.Wait(ctx) != nil {
 				return ctx.Err()
 			}
-			backoff = min(backoff*2, 30*time.Second)
 			continue
 		}
-		backoff = 250 * time.Millisecond
+		backoff.Reset()
 
 		st := newState() // discard everything on (re)connect
 		if err := k.subscribe(ctx, conn, markets); err != nil {
@@ -364,16 +363,5 @@ func parseState(s string) core.MarketState {
 		return core.StateClosed
 	default:
 		return core.StateUnknown
-	}
-}
-
-func sleep(ctx context.Context, d time.Duration) error {
-	t := time.NewTimer(d)
-	defer t.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-t.C:
-		return nil
 	}
 }
