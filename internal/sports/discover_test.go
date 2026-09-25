@@ -1,6 +1,10 @@
 package sports
 
 import (
+	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -273,5 +277,43 @@ func TestLiveCoversEveryLeague(t *testing.T) {
 	}
 	if Live("FED-DEC-CUT") || Live("MLB") {
 		t.Error("non-sports canonical reported live")
+	}
+}
+
+func TestPastRegulationLabels(t *testing.T) {
+	for _, p := range []string{"OT", "2OT", "OT2", "SO", "F/OT", "F/SO", "FT", "Shootout", "ot"} {
+		if !pastRegulation(p) {
+			t.Errorf("%q should read as past regulation", p)
+		}
+	}
+	for _, p := range []string{"", "NS", "P1", "P3", "Q4", "HT", "BOT 5", "TOP 9", "B9", "2nd", "SOON"} {
+		if pastRegulation(p) {
+			t.Errorf("%q must not read as past regulation", p)
+		}
+	}
+}
+
+// The live cutoff keys on the same canonical MatchGames produces, and an
+// OVERTIME period score (as Poly recorded for CGY@SEA, 2026-09-24) marks the
+// game past regulation even while the label still reads a regulation period.
+func TestPolyGameStatesOvertime(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, `{"events":[
+		 {"slug":"nhl-cgy-sea-2026-09-24","live":true,"period":"P3","eventState":{"periodScores":[
+		   {"type":"PERIOD_SCORE_TYPE_REGULATION"},{"type":"PERIOD_SCORE_TYPE_OVERTIME"}]}},
+		 {"slug":"nhl-bos-phi-2026-09-24","live":true,"period":"P2","eventState":{"periodScores":[
+		   {"type":"PERIOD_SCORE_TYPE_REGULATION"}]}}]}`)
+	}))
+	defer srv.Close()
+	c := &Client{HTTP: srv.Client(), PolyBase: srv.URL}
+	st, err := c.PolyGameStates(context.Background(), "nhl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st["NHL-20260924-CGY"].PastRegulation {
+		t.Error("CGY@SEA with an overtime period score must be past regulation")
+	}
+	if g, ok := st["NHL-20260924-BOS"]; !ok || g.PastRegulation || !g.Live {
+		t.Errorf("BOS@PHI in P2 = %+v; want live, in regulation", g)
 	}
 }

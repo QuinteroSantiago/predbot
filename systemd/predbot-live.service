@@ -47,6 +47,9 @@ WorkingDirectory=/opt/predbot
 #     santiago's call): config min_edge (1c) inside 24h, 2c inside 48h, 3c
 #     inside 72h... A pair locks capital until the game resolves, so a game days
 #     out must pay more to take one of the few slots buying power allows.
+#   (defaults, not flags here) no new pair once a game is past regulation (OT,
+#     shootout, extra innings) or over; and -slow-ack=1.5s / -slow-ack-pause=10m
+#     pause new pairs on a venue after a slow order ack (2026-09-25, NHL CGY).
 #   -sports=mlb,nfl,wnba,cfb,nhl  the universe: daily games discovered at runtime
 #     (markets.yaml is empty). Keep predbot-record.service's -sports in step.
 ExecStart=/opt/predbot/predbot-live \

@@ -69,6 +69,8 @@ func main() {
 	sportsLeagues := flag.String("sports", "", "also trade cross-listed daily games, e.g. \"mlb\" (fast + liquid; more chances to fire)")
 	maker := flag.Bool("maker", false, "MAKER mode: rest one leg (earn the Poly rebate) and hedge the other on fill, instead of taker/taker (design §9.2)")
 	restWait := flag.Duration("rest-wait", 30*time.Second, "maker: how long a resting leg sits on the book before it is cancelled")
+	slowAck := flag.Duration("slow-ack", 1500*time.Millisecond, "pause new pairs on a venue for -slow-ack-pause after an order ack slower than this; 0 = off")
+	slowAckPause := flag.Duration("slow-ack-pause", 10*time.Minute, "how long -slow-ack pauses a venue")
 	edgeStep := flag.Duration("edge-step", 0, "scale the min edge with time to game start: min_edge per started step (24h: 1c inside 24h, 2c inside 48h, ...); 0 = flat")
 	flag.Parse()
 
@@ -244,6 +246,7 @@ func main() {
 	bm := book.NewManager(markets)
 	trader := live.NewTrader(live.Executors{"kalshi": kEx, "polymarketus": pEx}, engine, bm, 2*time.Second)
 	trader.SetRestWait(*restWait)
+	trader.SetSlowAck(*slowAck, *slowAckPause)
 	// Execution-latency + order-outcome metrics from the REAL order path (populate
 	// once armed): predbot_decision_to_ack_seconds{venue} and
 	// predbot_orders_total{venue,outcome}. Same instruments the recorder feeds from
@@ -529,9 +532,20 @@ func main() {
 			if kOut.Down() || pOut.Down() {
 				continue
 			}
+			// A pair's second leg lands only as fast as its venue's ack; while
+			// either venue is acking slowly the gap closes before the hedge does.
+			if trader.VenueSlow("kalshi") || trader.VenueSlow("polymarketus") {
+				continue
+			}
 			for _, canonical := range bm.Canonicals() {
 				if _, in := entered[canonical]; in {
 					continue // hold to resolution; never re-enter
+				}
+				// No new pairs once a game is past regulation (OT, shootout,
+				// extra innings) or over: a coin flip, where a gap is confusion
+				// and settlements are likeliest to disagree (2026-09-25, CGY@SEA).
+				if sportsSup != nil && sportsSup.PastRegulation(canonical) {
+					continue
 				}
 				books, ok := bm.Pair(canonical)
 				if !ok || staleAny(books, now, maxAge) || skewExceeds(books, maxSkew) {

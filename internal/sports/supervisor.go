@@ -38,6 +38,55 @@ type Supervisor struct {
 
 	mu     sync.Mutex
 	starts map[string]time.Time // canonical -> scheduled start
+	states map[string]GameState // canonical -> live state, refreshed every StateRefresh
+
+	StateRefresh time.Duration // default 20s
+}
+
+// PastRegulation reports whether a game has gone past regulation (overtime,
+// shootout, extra innings) or ended. 2026-09-25: a pair was opened on NHL
+// CGY@SEA mid-shootout — a coin flip where a cross-venue gap is confusion,
+// not mispricing, and the venues' settlements are most likely to disagree.
+func (s *Supervisor) PastRegulation(canonical string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.states[canonical].PastRegulation
+}
+
+// pollStates keeps each listed game's live state current. A failed fetch keeps
+// the last known states: the cutoff only ever blocks trades, so stale data
+// errs toward the status quo rather than halting everything.
+func (s *Supervisor) pollStates(ctx context.Context) {
+	if s.StateRefresh == 0 {
+		s.StateRefresh = 20 * time.Second
+	}
+	t := time.NewTicker(s.StateRefresh)
+	defer t.Stop()
+	for {
+		next := map[string]GameState{}
+		ok := true
+		for _, lg := range s.Leagues {
+			st, err := s.client.PolyGameStates(ctx, lg)
+			if err != nil {
+				s.log.Debug("game-state poll failed; keeping last states", "league", lg, "err", err)
+				ok = false
+				break
+			}
+			for c, g := range st {
+				next[c] = g
+			}
+		}
+		if ok {
+			s.mu.Lock()
+			s.states = next
+			s.mu.Unlock()
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+	}
 }
 
 // StartTime is a discovered game's scheduled start, if known.
@@ -123,6 +172,7 @@ func (s *Supervisor) Run(ctx context.Context) {
 	}
 
 	discover()
+	go s.pollStates(ctx)
 	t := time.NewTicker(s.Refresh)
 	defer t.Stop()
 	for {

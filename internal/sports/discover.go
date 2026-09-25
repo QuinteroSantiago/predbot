@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -292,6 +293,68 @@ func (c *Client) DiscoverPoly(ctx context.Context, league string) ([]venueGame, 
 		}
 	}
 	return games, nil
+}
+
+// GameState is a game's live status from Poly's sports feed.
+type GameState struct {
+	Live, Ended bool
+	Period      string // Poly's period label, e.g. "NS", "P2", "OT", "FT"
+	// PastRegulation is set once any period outside regulation has been
+	// played — overtime, a shootout, extra innings — or the game has ended.
+	PastRegulation bool
+}
+
+// PolyGameStates returns each listed game's live state for a league, keyed by
+// the same canonical id MatchGames produces (the away team's).
+func (c *Client) PolyGameStates(ctx context.Context, league string) (map[string]GameState, error) {
+	body, err := c.get(ctx, fmt.Sprintf("%s/v2/leagues/%s/events?type=sport&limit=200", c.PolyBase, league))
+	if err != nil {
+		return nil, err
+	}
+	var resp struct {
+		Events []struct {
+			Slug       string `json:"slug"`
+			Live       bool   `json:"live"`
+			Ended      bool   `json:"ended"`
+			Period     string `json:"period"`
+			EventState struct {
+				PeriodScores []struct {
+					Type string `json:"type"`
+				} `json:"periodScores"`
+			} `json:"eventState"`
+		} `json:"events"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, err
+	}
+	out := map[string]GameState{}
+	for _, e := range resp.Events {
+		date, away := parsePolyEventSlug(league, e.Slug)
+		if away == "" {
+			continue
+		}
+		st := GameState{Live: e.Live, Ended: e.Ended, Period: e.Period}
+		st.PastRegulation = e.Ended || pastRegulation(e.Period)
+		for _, ps := range e.EventState.PeriodScores {
+			if ps.Type != "" && ps.Type != "PERIOD_SCORE_TYPE_REGULATION" {
+				st.PastRegulation = true
+			}
+		}
+		out[fmt.Sprintf("%s-%s-%s", strings.ToUpper(league), strings.ReplaceAll(date, "-", ""), away)] = st
+	}
+	return out, nil
+}
+
+// otLabel matches overtime period labels: OT, 2OT, OT2, F/OT, F/SO, SO.
+var otLabel = regexp.MustCompile(`^(F/)?(\d*OT\d*|SO)$`)
+
+// pastRegulation recognizes Poly period labels for overtime, shootouts and
+// finals, in case a state arrives before its periodScores entry does. Labels
+// are matched whole: a substring test would read baseball's "BOT 5" as OT.
+// Extra innings and the rest are caught by periodScores' type instead.
+func pastRegulation(period string) bool {
+	p := strings.ToUpper(strings.TrimSpace(period))
+	return p == "FT" || p == "SHOOTOUT" || otLabel.MatchString(p)
 }
 
 // PolySlugs lists a league's open moneyline market slugs on Poly — the ids the

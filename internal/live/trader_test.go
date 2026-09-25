@@ -774,3 +774,28 @@ func TestIOCSilentFillIgnoresWrongDirection(t *testing.T) {
 		t.Errorf("filled = %v; a short is not a BUY's fill", filled)
 	}
 }
+
+// 2026-09-25 (NHL CGY): the Poly hedge ack took ~3-4s and a 7c gap closed
+// before it landed. An ack over the limit pauses new pairs on that venue.
+func TestSlowAckPausesVenue(t *testing.T) {
+	tr, _, p, _ := setup(t)
+	tr.SetSlowAck(50*time.Millisecond, time.Minute)
+	p.placeFn = func(o core.Order) (string, error) {
+		time.Sleep(80 * time.Millisecond) // a slow venue ack
+		go tr.OnFill(Fill{Venue: "polymarketus", VenueID: o.VenueID, ClientOrderID: "poid", Side: o.Side, Px: o.Px, Qty: o.Qty})
+		return "poid", nil
+	}
+	if tr.VenueSlow("polymarketus") {
+		t.Fatal("venue slow before any order")
+	}
+	if err := tr.ExecutePair(context.Background(), "MKT", pair()); err != nil {
+		t.Fatalf("execute: %v", err)
+	}
+	tr.pending.Wait()
+	if !tr.VenueSlow("polymarketus") {
+		t.Error("an 80ms ack over a 50ms limit must pause the venue")
+	}
+	if tr.VenueSlow("kalshi") {
+		t.Error("kalshi acked fast; it must not be paused")
+	}
+}

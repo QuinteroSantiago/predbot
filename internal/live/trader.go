@@ -125,6 +125,11 @@ type Trader struct {
 	// rather than racing it to a kill (2026-09-24: drift killed 23s into a rest
 	// whose own silent-fill recovery would have run at 30s).
 	resting map[string]int
+	// slowUntil pauses new pairs per venue after an order ack slower than
+	// slowAck, for slowCooldown. 2026-09-25 (NHL CGY): the Poly hedge's ack took
+	// ~3-4s, the gap closed, and a 7c edge completed at -1c.
+	slowAck, slowCooldown time.Duration
+	slowUntil             map[string]time.Time
 }
 
 // parkedFills is a set of fills waiting for their order to be registered.
@@ -183,6 +188,7 @@ func NewTrader(ex Executors, engine *risk.Engine, bm *book.Manager, legWait time
 		parked:       map[string]parkedFills{},
 		posByVenueID: map[string]float64{},
 		resting:      map[string]int{},
+		slowUntil:    map[string]time.Time{},
 		log:          slog.With("component", "live-trader")}
 }
 
@@ -191,6 +197,31 @@ func (t *Trader) SetRestWait(d time.Duration) {
 	if d > 0 {
 		t.restWait = d
 	}
+}
+
+// SetSlowAck pauses new pairs on a venue for cooldown after any of its order
+// acks takes longer than max. max <= 0 disables it.
+func (t *Trader) SetSlowAck(max, cooldown time.Duration) {
+	t.slowAck, t.slowCooldown = max, cooldown
+}
+
+// VenueSlow reports whether a venue's order entry was recently too slow to
+// hedge on: the second leg of a pair lands only as fast as its ack.
+func (t *Trader) VenueSlow(venue string) bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return time.Now().Before(t.slowUntil[venue])
+}
+
+func (t *Trader) noteAck(venue string, d time.Duration) {
+	if t.slowAck <= 0 || d <= t.slowAck {
+		return
+	}
+	t.mu.Lock()
+	t.slowUntil[venue] = time.Now().Add(t.slowCooldown)
+	t.mu.Unlock()
+	t.log.Warn("slow order ack — pausing new pairs on this venue", "venue", venue,
+		"ack_ms", d.Milliseconds(), "max_ms", t.slowAck.Milliseconds(), "pause", t.slowCooldown.String())
 }
 
 // Resting reports whether a maker rest is working on venueID. The drift monitor
@@ -570,9 +601,11 @@ func (t *Trader) place(ctx context.Context, canonical string, i core.Intent) (co
 
 	ackStart := time.Now()
 	id, err := ex.Place(ctx, o)
+	ack := time.Since(ackStart)
 	if t.onAck != nil {
-		t.onAck(i.Venue, time.Since(ackStart).Seconds())
+		t.onAck(i.Venue, ack.Seconds())
 	}
+	t.noteAck(i.Venue, ack)
 	if err != nil {
 		// Design §11: never resubmit blind — the order may have landed.
 		if t.onOrder != nil {
@@ -590,7 +623,7 @@ func (t *Trader) place(ctx context.Context, canonical string, i core.Intent) (co
 	t.bump(func(s *Stats) { s.OrdersPlaced++ })
 	t.log.Info("order placed", "canonical", canonical, "venue", i.Venue,
 		"side", i.Side.String(), "px", i.Px.String(), "qty", i.Qty.String(),
-		"client_id", o.ClientID, "venue_order_id", id)
+		"client_id", o.ClientID, "venue_order_id", id, "ack_ms", ack.Milliseconds())
 
 	// Wait for the venue's authoritative fill events (design §11: fills come
 	// from the private stream, never assumed). An IOC either fills within this
