@@ -27,17 +27,19 @@ WorkingDirectory=/opt/predbot
 # hedge 7; the other 405 were one-sided bets (adverse selection). Taker on the
 # same archive: +$85 over 32 days, 37 completed / 7 legged.
 #
-# Caps (1 contract since 2026-08-28; 10 on 2026-09-13; 50 on 2026-09-23; back
-# to 10 on 2026-09-24 for the first taker sessions — each santiago's call):
-#   -max-order-contracts=10  up to 10 contracts per leg. Orders are sized
+# Caps (1 contract since 2026-08-28; 10 on 2026-09-13; 50 on 2026-09-23; taker
+# at 50 from 2026-09-24 — each santiago's call). 50 is the clip the taker
+# backtest ran at (+$83.49 after legging, peak capital ~$94 Kalshi / $140 Poly),
+# so live P&L per pair (~$1.85) is directly comparable:
+#   -max-order-contracts=50  up to 50 contracts per leg. Orders are sized
 #     min(top-of-book depth on both legs, this cap).
-#   -max-unhedged-contracts=20  2x the order cap: the Kalshi exchange-side order
+#   -max-unhedged-contracts=100  2x the order cap: the Kalshi exchange-side order
 #     group is sized to this cap (cmd/live ~L220), and the safety EXIT of a naked
 #     Kalshi leg is itself a Kalshi order. Equal to the order cap would let the
 #     entry through but block its own exit; 2x leaves room for entry + exit.
-#   -pnl-floor-usd=-5        halt after $5 of realized loss — a hard backstop.
-#     Scale caps and floor back up once live P&L per pair tracks the backtest
-#     (~$1.90/pair at up to 50 contracts).
+#   -pnl-floor-usd=-25       halt after $25 of realized loss — a hard backstop.
+#     A badly legged 50-contract pair can lose ~$5–10, so -$5 would halt on the
+#     first one; -$25 survives one and still stops a losing streak.
 #   -min-depth-contracts=10  both legs need 10 contracts of real depth before we
 #     act — the phantom-edge guard that the 2026-08-24 naked-leg incident was
 #     missing. A floor on depth, not the order size (that's the cap above).
@@ -52,9 +54,9 @@ ExecStart=/opt/predbot/predbot-live \
   -markets /opt/predbot/config/markets.yaml \
   -dry-run=false \
   -i-understand-this-places-real-orders \
-  -max-order-contracts=10 \
-  -max-unhedged-contracts=20 \
-  -pnl-floor-usd=-5 \
+  -max-order-contracts=50 \
+  -max-unhedged-contracts=100 \
+  -pnl-floor-usd=-25 \
   -min-depth-contracts=10 \
   -edge-step=24h \
   -sports=mlb,nfl,wnba,cfb,nhl
