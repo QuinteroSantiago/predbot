@@ -59,7 +59,7 @@ func (o *OutcomeReg) Observe(canonical string, s core.BookSnapshot) {
 		league, cluster = parts[0], parts[0]+"-"+parts[1]
 	}
 	o.obs[key] = &orObs{venue: s.Venue, cluster: cluster, league: league, p: p,
-		spread: cents(ask.Px) - cents(bid.Px), y: float64(y)}
+		spread: ask.Px.Cents() - bid.Px.Cents(), y: float64(y)}
 }
 
 // OutcomeRegResult is the outcome regression, for the text report and the

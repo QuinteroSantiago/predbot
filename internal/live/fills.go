@@ -121,5 +121,5 @@ func parseDollars(s string) float64 {
 	if err != nil {
 		return 0
 	}
-	return float64(p) / 1e4
+	return p.Dollars()
 }

@@ -22,7 +22,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"math"
 	"sync"
 	"time"
 
@@ -683,8 +682,8 @@ func (t *Trader) silentIOCFill(ctx context.Context, canonical string, i core.Int
 	}
 	// Only a move in the order's own direction is this order's fill; anything
 	// else is drift for the monitor, not something to explain away here.
-	extra := core.Qty(math.Round(diff * 100))
-	if extra <= silentFillTolerance*100 {
+	extra := core.QtyOf(diff)
+	if extra <= core.QtyOf(silentFillTolerance) {
 		return 0
 	}
 	extra = min(extra, i.Qty-seen)
@@ -701,8 +700,8 @@ func (t *Trader) OnFill(f Fill) {
 	// correlation check: a fill we cannot match to an in-flight order (restart,
 	// late fill, manual trade) still moved real money, and the P&L floor must
 	// see it. Buying YES pays out cash; selling YES takes it in.
-	cash := float64(f.Px) / 1e4 * (float64(f.Qty) / 100)
-	contracts := float64(f.Qty) / 100
+	cash := f.Px.Dollars() * f.Qty.Contracts()
+	contracts := f.Qty.Contracts()
 	t.mu.Lock()
 	if f.Side == core.BuyYes {
 		t.stats.RealizedUSD -= cash
@@ -850,7 +849,7 @@ func (t *Trader) completeOrExit(ctx context.Context, canonical string, held, mis
 		t.mu.Lock()
 		cur := t.posByVenueID[missing.VenueID]
 		t.mu.Unlock()
-		got := core.Qty(math.Round((cur - baseline) * sign * 100))
+		got := core.QtyOf((cur - baseline) * sign)
 		if got < 0 {
 			got = 0
 		}

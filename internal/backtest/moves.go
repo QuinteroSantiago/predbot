@@ -95,18 +95,16 @@ func (m *MoveStudy) get(venueName, venueID string) *mvSeries {
 
 // feeCents is the taker fee on one contract at px, in cents.
 func (m *MoveStudy) feeCents(venueName string, px core.Price) float64 {
-	return float64(m.fees.Fee(venueName, px, 100, false)) / 100
+	return core.Price(m.fees.Fee(venueName, px, core.QtyOf(1), false)).Cents()
 }
-
-func cents(p core.Price) float64 { return float64(p) / 100 }
 
 // roundTrip is the per-contract P&L of a taker trade in direction d (+1 buy
 // YES, -1 sell YES) entered against (bid0, ask0) and exited against (bid1, ask1).
 func (m *MoveStudy) roundTrip(venueName string, d int, bid0, ask0, bid1, ask1 core.Price) float64 {
 	if d > 0 {
-		return cents(bid1) - cents(ask0) - m.feeCents(venueName, ask0) - m.feeCents(venueName, bid1)
+		return bid1.Cents() - ask0.Cents() - m.feeCents(venueName, ask0) - m.feeCents(venueName, bid1)
 	}
-	return cents(bid0) - cents(ask1) - m.feeCents(venueName, bid0) - m.feeCents(venueName, ask1)
+	return bid0.Cents() - ask1.Cents() - m.feeCents(venueName, bid0) - m.feeCents(venueName, ask1)
 }
 
 // ObserveBook feeds one book snapshot.
@@ -119,7 +117,7 @@ func (m *MoveStudy) ObserveBook(b core.BookSnapshot) {
 	s := m.get(b.Venue, b.VenueID)
 	s.bid, s.ask, s.ok = bid.Px, ask.Px, true
 	sec := b.TsRecv / 1e9
-	mid := (cents(bid.Px) + cents(ask.Px)) / 2
+	mid := (bid.Px.Cents() + ask.Px.Cents()) / 2
 
 	// Resolve open probes whose horizon has arrived, against this book.
 	kept := s.open[:0]
@@ -134,7 +132,7 @@ func (m *MoveStudy) ObserveBook(b core.BookSnapshot) {
 				continue
 			}
 			e.res[h] = mvRes{
-				cont:   (mid - (cents(e.bid)+cents(e.ask))/2) * float64(e.dir),
+				cont:   (mid - (e.bid.Cents()+e.ask.Cents())/2) * float64(e.dir),
 				follow: m.roundTrip(e.venue, e.dir, e.bid, e.ask, bid.Px, ask.Px),
 				fade:   m.roundTrip(e.venue, -e.dir, e.bid, e.ask, bid.Px, ask.Px),
 			}
@@ -176,7 +174,7 @@ func (m *MoveStudy) ObserveTrade(t venue.Trade) {
 		ts = t.TsServer
 	}
 	sec := ts / 1e9
-	q := float64(t.Qty) / 100
+	q := t.Qty.Contracts()
 	if t.TakerSide == core.SellYes {
 		q = -q
 	}
@@ -297,9 +295,9 @@ func (m *MoveStudy) Result() MoveResult {
 		if res.Settlement {
 			if y, ok := m.outcomes[e.key]; ok {
 				pay := 100 * float64(y)
-				long := pay - cents(e.ask) - m.feeCents(e.venue, e.ask)
-				short := cents(e.bid) - pay - m.feeCents(e.venue, e.bid)
-				r := mvRes{cont: (pay - (cents(e.bid)+cents(e.ask))/2) * float64(e.dir), follow: long, fade: short}
+				long := pay - e.ask.Cents() - m.feeCents(e.venue, e.ask)
+				short := e.bid.Cents() - pay - m.feeCents(e.venue, e.bid)
+				r := mvRes{cont: (pay - (e.bid.Cents()+e.ask.Cents())/2) * float64(e.dir), follow: long, fade: short}
 				if e.dir < 0 {
 					r.follow, r.fade = short, long
 				}

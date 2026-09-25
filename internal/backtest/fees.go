@@ -29,7 +29,7 @@ const (
 
 // Fee returns the signed fee in $0.0001 units.
 func (f Fees) Fee(venue string, px core.Price, qty core.Qty, maker bool) int64 {
-	c := float64(qty) / 100 // contracts
+	c := qty.Contracts()
 	p := float64(px) / float64(core.OneDollar)
 	risk := c * p * (1 - p)
 	switch venue {

@@ -12,7 +12,6 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
-	"math"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -74,13 +73,13 @@ func main() {
 		b.LatencyMS = *latencyMS
 	}
 	if *minEdge >= 0 {
-		b.MinEdge = int64(math.Round(*minEdge * 100)) // cents -> $0.0001
+		b.MinEdge = core.FromCents(*minEdge)
 	}
 	if *maxClip >= 0 {
-		b.MaxClip = int64(math.Round(*maxClip * 100)) // contracts -> 0.01-contract Qty; 0 = no cap
+		b.MaxClip = int64(core.QtyOf(*maxClip)) // 0 = no cap
 	}
 	if *minDepth >= 0 {
-		b.MinDepth = int64(math.Round(*minDepth * 100)) // contracts -> 0.01-contract Qty
+		b.MinDepth = int64(core.QtyOf(*minDepth))
 	}
 	if *feeMult >= 0 {
 		b.KalshiFeeMult = *feeMult
@@ -181,9 +180,9 @@ func main() {
 			Variant:     *variant,
 			Params: backtest.RunParams{
 				LatencyMS:         b.LatencyMS,
-				MinEdgeCents:      float64(b.MinEdge) / 100,
-				MinDepthContracts: float64(b.MinDepth) / 100,
-				MaxClipContracts:  float64(b.MaxClip) / 100,
+				MinEdgeCents:      core.Price(b.MinEdge).Cents(),
+				MinDepthContracts: core.Qty(b.MinDepth).Contracts(),
+				MaxClipContracts:  core.Qty(b.MaxClip).Contracts(),
 				KalshiFeeMult:     b.KalshiFeeMult,
 				MaxSkewMS:         b.MaxSkewMS,
 				MaxBookAgeMS:      b.MaxBookAgeMS,
@@ -236,7 +235,7 @@ func main() {
 			if !okB || !okA {
 				return nil // one-sided book: no valid mid
 			}
-			mid := float64(int64(bid.Px)+int64(ask.Px)) / 2 / 100 // cents
+			mid := (bid.Px + ask.Px).Cents() / 2
 			ll.Observe(canonical, s.Venue, mid, s.TsRecv)
 			return nil
 		})

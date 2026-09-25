@@ -65,7 +65,7 @@ func MakerCrossVenue(canonical string, books map[string]core.BookSnapshot, exp E
 		if gross <= 0 {
 			return
 		}
-		c := contracts(qty)
+		c := qty.Contracts()
 		net := int64(float64(gross)*c) -
 			fees.Fee(rest.Venue, rest.Px, qty, true) - fees.Fee(take.Venue, take.Px, qty, false)
 		if net <= 0 || int64(float64(net)/c) < int64(cfg.MinEdge) || net <= bestNet {

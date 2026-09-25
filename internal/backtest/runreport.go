@@ -1,6 +1,7 @@
 package backtest
 
 import (
+	"predbot/internal/core"
 	"sort"
 	"time"
 )
@@ -131,18 +132,16 @@ type MarketOutcome struct {
 	CapitalUSD float64 `json:"capital_usd"`
 }
 
-func usd(v int64) float64 { return float64(v) / float64(1e4) }
-
 // NewRunReport builds the JSON report from a finalized TradingResult.
 func NewRunReport(meta RunMeta, res *TradingResult, maker bool) RunReport {
 	r := res.Report
 	sum := ReportSummary{
-		GrossUSD:         usd(r.GrossCaptured),
+		GrossUSD:         core.USD(r.GrossCaptured),
 		FeesByVenueUSD:   map[string]float64{},
-		SlippageUSD:      usd(r.Slippage),
-		LeggingCostUSD:   usd(r.LeggingCost),
-		NetPnLUSD:        usd(r.NetPnL),
-		CapitalLockedUSD: usd(r.CapitalLocked),
+		SlippageUSD:      core.USD(r.Slippage),
+		LeggingCostUSD:   core.USD(r.LeggingCost),
+		NetPnLUSD:        core.USD(r.NetPnL),
+		CapitalLockedUSD: core.USD(r.CapitalLocked),
 		PairsAttempted:   r.PairsAttempted,
 		PairsCompleted:   r.PairsCompleted,
 		PairsLegged:      r.PairsLegged,
@@ -154,13 +153,13 @@ func NewRunReport(meta RunMeta, res *TradingResult, maker bool) RunReport {
 		AvgHoldDays:      r.AvgHoldDays,
 		SharpePerTrade:   r.SharpePerTrade,
 		WinRate:          r.WinRate,
-		MaxDrawdownUSD:   usd(r.MaxDrawdown),
+		MaxDrawdownUSD:   core.USD(r.MaxDrawdown),
 		SettledPairs:     len(r.pairs),
 	}
 	sum.PeakCapitalUSD = map[string]float64{}
 	var peak int64
 	for v, c := range r.PeakCapital {
-		sum.PeakCapitalUSD[v] = usd(c)
+		sum.PeakCapitalUSD[v] = core.USD(c)
 		peak += c
 	}
 	if peak > 0 {
@@ -168,10 +167,10 @@ func NewRunReport(meta RunMeta, res *TradingResult, maker bool) RunReport {
 	}
 	var fees int64
 	for v, f := range r.FeesByVenue {
-		sum.FeesByVenueUSD[v] = usd(f)
+		sum.FeesByVenueUSD[v] = core.USD(f)
 		fees += f
 	}
-	sum.FeesUSD = usd(fees)
+	sum.FeesUSD = core.USD(fees)
 
 	out := RunReport{
 		Schema:        RunReportSchema,
@@ -201,12 +200,12 @@ func NewRunReport(meta RunMeta, res *TradingResult, maker bool) RunReport {
 	for _, p := range r.pairs {
 		out.Pairs = append(out.Pairs, PairOutcome{
 			Canonical: p.canonical, EntryMs: p.entryTs / 1e6,
-			NetUSD: usd(p.net), CapitalUSD: usd(p.capital),
+			NetUSD: core.USD(p.net), CapitalUSD: core.USD(p.capital),
 		})
 		m := market(p.canonical)
 		m.Pairs++
-		m.NetUSD += usd(p.net)
-		m.CapitalUSD += usd(p.capital)
+		m.NetUSD += core.USD(p.net)
+		m.CapitalUSD += core.USD(p.capital)
 	}
 	out.Markets = make([]MarketOutcome, 0, len(byMarket))
 	for _, m := range byMarket {

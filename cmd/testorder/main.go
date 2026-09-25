@@ -89,7 +89,7 @@ func main() {
 	}
 	o := core.Order{Intent: core.Intent{
 		Venue: *venueName, VenueID: *market, Side: side,
-		Px: px, Qty: core.Qty(*contracts * 100), TIF: core.GTC, // GTC so it rests, not IOC
+		Px: px, Qty: core.QtyOf(*contracts), TIF: core.GTC, // GTC so it rests, not IOC
 	}}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

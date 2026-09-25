@@ -48,6 +48,3 @@ func HorizonEdge(base core.Price, untilStart, step time.Duration) core.Price {
 	}
 	return base * core.Price((untilStart+step-1)/step)
 }
-
-// contracts converts fixed-point Qty (0.01-contract units) to whole contracts.
-func contracts(q core.Qty) float64 { return float64(q) / 100 }

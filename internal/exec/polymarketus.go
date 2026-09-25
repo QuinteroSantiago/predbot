@@ -88,7 +88,7 @@ func (p *PolyUSExecutor) body(o core.Order) polyCreateOrder {
 		MarketSlug: o.VenueID,
 		Type:       "ORDER_TYPE_LIMIT",
 		Price:      polyAmount{Value: o.Px.String(), Currency: "USD"},
-		Quantity:   float64(o.Qty) / 100, // 0.01-contract units -> contracts
+		Quantity:   o.Qty.Contracts(),
 		TIF:        polyTIF(o.TIF),
 		Intent:     polyIntent(o.Side),
 		Manual:     "MANUAL_ORDER_INDICATOR_AUTOMATED",

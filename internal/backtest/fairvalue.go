@@ -90,7 +90,7 @@ func (f *FairValue) Observe(canonical string, s core.BookSnapshot) {
 }
 
 func (f *FairValue) feeC(venueName string, px core.Price) float64 {
-	return float64(f.fees.Fee(venueName, px, core.Qty(f.clip*100), false)) / 100 / float64(f.clip)
+	return core.Price(f.fees.Fee(venueName, px, core.QtyOf(float64(f.clip)), false)).Cents() / float64(f.clip)
 }
 
 // FairValueResult is the fair-value study.
@@ -264,14 +264,14 @@ func (f *FairValue) crossValidate(rows []fvRow, res *FairValueResult) {
 					if taken[id] {
 						continue
 					}
-					buyEdge := F - cents(v.b.ask) - f.feeC(v.name, v.b.ask)
-					sellEdge := cents(v.b.bid) - F - f.feeC(v.name, v.b.bid)
+					buyEdge := F - v.b.ask.Cents() - f.feeC(v.name, v.b.ask)
+					sellEdge := v.b.bid.Cents() - F - f.feeC(v.name, v.b.bid)
 					var pnl, edge float64
 					switch {
 					case buyEdge >= tau:
-						pnl, edge = 100*r.y-cents(v.b.ask)-f.feeC(v.name, v.b.ask), buyEdge
+						pnl, edge = 100*r.y-v.b.ask.Cents()-f.feeC(v.name, v.b.ask), buyEdge
 					case sellEdge >= tau:
-						pnl, edge = cents(v.b.bid)-100*r.y-f.feeC(v.name, v.b.bid), sellEdge
+						pnl, edge = v.b.bid.Cents()-100*r.y-f.feeC(v.name, v.b.bid), sellEdge
 					default:
 						continue
 					}

@@ -87,7 +87,7 @@ func (s *Sim) settle(p pendingPair, bm *book.Manager) {
 	if sellQty < hedged {
 		hedged = sellQty
 	}
-	c := float64(hedged) / 100
+	c := hedged.Contracts()
 
 	// Gross uses realized fill prices, so it already reflects slippage.
 	gross := int64(float64(int64(sellPx)-int64(buyPx)) * c)
@@ -158,7 +158,7 @@ func (s *Sim) exitCost(leg core.Intent, qty core.Qty, b core.BookSnapshot) int64
 	// The exit fee stays inside the legging line (not FeesByVenue), so the
 	// report's waterfall gross − fees − legging = net counts it once.
 	fee := s.fees.Fee(leg.Venue, exit.Px, qty, false)
-	return int64(float64(loss)*float64(qty)/100) + fee
+	return core.Notional(core.Price(loss), qty) + fee
 }
 
 // fillBuy walks YES asks (ascending) taking levels priced <= limit, up to qty.
@@ -236,7 +236,7 @@ func (s *Sim) SettleMakerPair(canonical string, rested, taking core.Intent, rest
 	if takeQty < hedged {
 		hedged = takeQty
 	}
-	c := float64(hedged) / 100
+	c := hedged.Contracts()
 
 	// Determine buy/sell prices for the gross calculation.
 	buyPx, sellPx := rested.Px, takePx

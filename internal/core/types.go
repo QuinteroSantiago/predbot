@@ -7,6 +7,7 @@ package core
 import (
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 )
 
@@ -134,6 +135,35 @@ func (p Price) String() string { return fmtFixed(int64(p), pxScaleDigits, pxScal
 
 // String renders a Qty as a decimal contract string.
 func (q Qty) String() string { return fmtFixed(int64(q), qtyScaleDigits, qtyScale) }
+
+// Unit conversions. Price, fees and cash amounts are fixed-point $0.0001
+// units; Qty is 0.01-contract units. Convert through these, never a bare
+// /100 or *1e4: the two scales differ, and /100 means "to contracts" on a Qty
+// but "to cents" on a Price.
+
+// Contracts is q in whole contracts.
+func (q Qty) Contracts() float64 { return float64(q) / qtyScale }
+
+// QtyOf converts a contract count to Qty, rounded to the nearest 0.01.
+func QtyOf(contracts float64) Qty { return Qty(math.Round(contracts * qtyScale)) }
+
+// Dollars is p in dollars.
+func (p Price) Dollars() float64 { return float64(p) / pxScale }
+
+// Cents is p in cents.
+func (p Price) Cents() float64 { return float64(p) / (pxScale / 100) }
+
+// USD converts an amount in $0.0001 units (a fee, notional or P&L) to dollars.
+func USD(v int64) float64 { return float64(v) / pxScale }
+
+// FromUSD converts dollars to $0.0001 units, rounded to the nearest unit.
+func FromUSD(dollars float64) int64 { return int64(math.Round(dollars * pxScale)) }
+
+// FromCents converts cents to $0.0001 units, rounded to the nearest unit.
+func FromCents(cents float64) int64 { return int64(math.Round(cents * (pxScale / 100))) }
+
+// Notional is qty contracts at px, in $0.0001 units.
+func Notional(px Price, qty Qty) int64 { return int64(px) * int64(qty) / qtyScale }
 
 func fmtFixed(v int64, digits int, scale int64) string {
 	sign := ""

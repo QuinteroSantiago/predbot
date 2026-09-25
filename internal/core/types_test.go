@@ -108,3 +108,30 @@ func TestCrossed(t *testing.T) {
 		t.Error("normal book reported crossed")
 	}
 }
+
+func TestUnitConversions(t *testing.T) {
+	if got := Qty(2250).Contracts(); got != 22.5 {
+		t.Errorf("Contracts = %v; want 22.5", got)
+	}
+	if got := QtyOf(0.29); got != 29 { // 0.29*100 = 28.999…: truncating gave 28
+		t.Errorf("QtyOf(0.29) = %d; want 29", got)
+	}
+	if got := Price(3700).Dollars(); got != 0.37 {
+		t.Errorf("Dollars = %v; want 0.37", got)
+	}
+	if got := Price(3700).Cents(); got != 37 {
+		t.Errorf("Cents = %v; want 37", got)
+	}
+	if got := FromUSD(83.02); got != 830200 { // truncating gave 830199
+		t.Errorf("FromUSD(83.02) = %d; want 830200", got)
+	}
+	if got := FromCents(1.5); got != 150 {
+		t.Errorf("FromCents(1.5) = %d; want 150", got)
+	}
+	if got := USD(45918); got != 4.5918 {
+		t.Errorf("USD = %v; want 4.5918", got)
+	}
+	if got := Notional(3700, 2200); got != 81400 { // 22 contracts at $0.37 = $8.14
+		t.Errorf("Notional = %d; want 81400", got)
+	}
+}

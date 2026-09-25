@@ -71,7 +71,7 @@ func mid(b core.BookSnapshot) (float64, bool) {
 	if !okB || !okA {
 		return 0, false
 	}
-	return (float64(bid.Px) + float64(ask.Px)) / 2 / 100, true // cents
+	return (bid.Px + ask.Px).Cents() / 2, true
 }
 
 // ObserveBook keeps the running mid per market and advances open probes to their

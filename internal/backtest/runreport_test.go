@@ -3,6 +3,7 @@ package backtest
 import (
 	"encoding/json"
 	"math"
+	"predbot/internal/core"
 	"sort"
 	"testing"
 	"time"
@@ -39,7 +40,7 @@ func TestRunReportAgreesWithReport(t *testing.T) {
 			}
 		}
 		rep := rr.Report
-		near("net", rep.NetPnLUSD, usd(r.Report.NetPnL))
+		near("net", rep.NetPnLUSD, core.USD(r.Report.NetPnL))
 		var fees, marketNet, pairNet float64
 		for _, f := range rep.FeesByVenueUSD {
 			fees += f

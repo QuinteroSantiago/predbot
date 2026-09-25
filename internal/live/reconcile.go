@@ -169,7 +169,7 @@ func (k *KalshiAccount) BalanceUSD(ctx context.Context) (float64, error) {
 	if err := json.Unmarshal(b, &out); err != nil {
 		return 0, err
 	}
-	return float64(out.Balance) / 100, nil
+	return float64(out.Balance) / 100, nil // Kalshi reports balance in cents (its wire unit, not ours)
 }
 
 // --- Polymarket US ---

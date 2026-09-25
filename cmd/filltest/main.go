@@ -210,7 +210,7 @@ func main() {
 			fmt.Fprintln(os.Stderr, "bad -price:", err)
 			os.Exit(2)
 		}
-		qty := core.Qty(int64(*contracts * 100))
+		qty := core.QtyOf(*contracts)
 		tifVal := core.IOC
 		if strings.EqualFold(*tif, "gtc") {
 			tifVal = core.GTC

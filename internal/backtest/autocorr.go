@@ -104,7 +104,7 @@ func (a *Autocorr) Observe(market string, s core.BookSnapshot) {
 }
 
 func (a *Autocorr) feeC(venueName string, px core.Price) float64 {
-	return float64(a.fees.Fee(venueName, px, core.Qty(a.clip*100), false)) / 100 / float64(a.clip)
+	return core.Price(a.fees.Fee(venueName, px, core.QtyOf(float64(a.clip)), false)).Cents() / float64(a.clip)
 }
 
 func (a *Autocorr) sample(sr *acSeries, sec int64) {
@@ -142,11 +142,11 @@ func (a *Autocorr) sample(sr *acSeries, sec int64) {
 			d := sign(past)
 			var follow, fade float64
 			if d > 0 { // price rose: follow = buy at anchor's ask, sell at now's bid
-				follow = cents(now.bid) - cents(anchor.ask) - a.feeC(sr.venue, anchor.ask) - a.feeC(sr.venue, now.bid)
-				fade = cents(anchor.bid) - cents(now.ask) - a.feeC(sr.venue, anchor.bid) - a.feeC(sr.venue, now.ask)
+				follow = now.bid.Cents() - anchor.ask.Cents() - a.feeC(sr.venue, anchor.ask) - a.feeC(sr.venue, now.bid)
+				fade = anchor.bid.Cents() - now.ask.Cents() - a.feeC(sr.venue, anchor.bid) - a.feeC(sr.venue, now.ask)
 			} else {
-				follow = cents(anchor.bid) - cents(now.ask) - a.feeC(sr.venue, anchor.bid) - a.feeC(sr.venue, now.ask)
-				fade = cents(now.bid) - cents(anchor.ask) - a.feeC(sr.venue, anchor.ask) - a.feeC(sr.venue, now.bid)
+				follow = anchor.bid.Cents() - now.ask.Cents() - a.feeC(sr.venue, anchor.bid) - a.feeC(sr.venue, now.ask)
+				fade = now.bid.Cents() - anchor.ask.Cents() - a.feeC(sr.venue, anchor.ask) - a.feeC(sr.venue, now.bid)
 			}
 			tk := acTKey{sr.venue, h, thr, sr.market}
 			t := a.trades[tk]

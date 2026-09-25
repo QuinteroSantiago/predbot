@@ -347,7 +347,7 @@ func (t *Trader) recoverSilentFill(ctx context.Context, canonical string, rest, 
 			"canonical", canonical, "venue", rest.Venue, "rest_side", rest.Side.String(), "delta", delta)
 		return
 	}
-	recovered := core.Qty(math.Round(math.Abs(delta) * 100))
+	recovered := core.QtyOf(math.Abs(delta))
 	if recovered <= 0 {
 		return
 	}
@@ -383,8 +383,8 @@ func (t *Trader) recoverSilentFill(ctx context.Context, canonical string, rest, 
 // venue position read carries no fee, and under-crediting a rebate is the safe
 // direction for the P&L floor.
 func (t *Trader) bookSilentFill(leg core.Intent, qty core.Qty) {
-	cash := float64(leg.Px) / 1e4 * (float64(qty) / 100)
-	contracts := float64(qty) / 100
+	cash := leg.Px.Dollars() * qty.Contracts()
+	contracts := qty.Contracts()
 	t.mu.Lock()
 	if leg.Side == core.BuyYes {
 		t.stats.RealizedUSD -= cash

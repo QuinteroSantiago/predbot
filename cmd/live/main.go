@@ -18,7 +18,6 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
-	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -166,14 +165,14 @@ func main() {
 	}
 
 	engine := risk.New(risk.Config{
-		MaxOrderQty:   core.Qty(*maxOrderContracts * 100),
-		DefaultMaxPos: core.Qty(*maxOrderContracts * 100 * 4),
+		MaxOrderQty:   core.QtyOf(*maxOrderContracts),
+		DefaultMaxPos: core.QtyOf(*maxOrderContracts * 4),
 		// Keep a small reserve so we never spend a venue down to exactly zero.
 		MinBP:       map[string]int64{core.VenueKalshi: 10000, core.VenuePoly: 10000}, // $1
-		MaxUnhedged: core.Qty(*maxUnhedgedContracts * 100),
+		MaxUnhedged: core.QtyOf(*maxUnhedgedContracts),
 	}, map[string]int64{
-		core.VenueKalshi: int64(kBal * 1e4), // dollars -> $0.0001 units
-		core.VenuePoly:   int64(pBal * 1e4),
+		core.VenueKalshi: core.FromUSD(kBal),
+		core.VenuePoly:   core.FromUSD(pBal),
 	}, killFile)
 	if engine.Killed() {
 		slog.Error("KILLED marker present — a human must remove it", "file", killFile)
@@ -322,7 +321,7 @@ func main() {
 					"market", venueID, "contracts", contracts)
 				continue
 			}
-			byCanonical[canonical] += core.Qty(math.Round(contracts * 100))
+			byCanonical[canonical] += core.QtyOf(contracts)
 		}
 		for canonical, net := range byCanonical {
 			engine.AdoptPosition(canonical, net)
@@ -495,8 +494,8 @@ func main() {
 	fees := backtest.Fees{KalshiMult: cfg.Strategy.KalshiFeeMult}
 	scfg := strategy.Config{
 		MinEdge:  core.Price(cfg.Strategy.MinEdge),
-		MaxClip:  core.Qty(*maxOrderContracts * 100),
-		MinDepth: core.Qty(*minDepthContracts * 100),
+		MaxClip:  core.QtyOf(*maxOrderContracts),
+		MinDepth: core.QtyOf(*minDepthContracts),
 	}
 	maxAge := cfg.Strategy.MaxBookAgeMS * int64(time.Millisecond)
 	maxSkew := cfg.Strategy.MaxSkewMS * int64(time.Millisecond)

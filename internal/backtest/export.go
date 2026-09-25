@@ -33,13 +33,13 @@ type Opportunity struct {
 
 // BuildOpportunity computes the economics of a detected pair for the export.
 func BuildOpportunity(buy, sell core.Intent, fees strategy.FeeModel, tsNs int64, resolve time.Time) Opportunity {
-	contracts := float64(buy.Qty) / 100
-	gross := float64(int64(sell.Px)-int64(buy.Px)) / 1e4 * contracts
-	feeBuy := float64(fees.Fee(buy.Venue, buy.Px, buy.Qty, false)) / 1e4
-	feeSell := float64(fees.Fee(sell.Venue, sell.Px, buy.Qty, false)) / 1e4
+	contracts := buy.Qty.Contracts()
+	gross := core.USD(int64(sell.Px)-int64(buy.Px)) * contracts
+	feeBuy := core.USD(fees.Fee(buy.Venue, buy.Px, buy.Qty, false))
+	feeSell := core.USD(fees.Fee(sell.Venue, sell.Px, buy.Qty, false))
 	fee := feeBuy + feeSell
 	net := gross - fee
-	capital := float64(buy.Px)/1e4*contracts + float64(int64(core.OneDollar)-int64(sell.Px))/1e4*contracts
+	capital := buy.Px.Dollars()*contracts + (core.OneDollar-sell.Px).Dollars()*contracts
 
 	var ann, days float64
 	if !resolve.IsZero() {
@@ -62,8 +62,8 @@ func BuildOpportunity(buy, sell core.Intent, fees strategy.FeeModel, tsNs int64,
 		Category:      "",
 		BuyVenue:      buy.Venue,
 		SellVenue:     sell.Venue,
-		BuyCents:      float64(buy.Px) / 100,
-		SellCents:     float64(sell.Px) / 100,
+		BuyCents:      buy.Px.Cents(),
+		SellCents:     sell.Px.Cents(),
 		EdgeCents:     edgeCents,
 		Qty:           contracts,
 		GrossUSD:      gross,
@@ -132,7 +132,7 @@ func CrossGrossCents(books map[string]core.BookSnapshot) (float64, bool) {
 			}
 		}
 	}
-	return float64(best) / 100, found
+	return core.Price(best).Cents(), found
 }
 
 // WriteSpread dumps sampled spread points as JSON.

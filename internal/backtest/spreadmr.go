@@ -132,7 +132,7 @@ func (m *SpreadMR) Observe(canonical string, s core.BookSnapshot) {
 	}
 }
 
-func bookMid(b mrBook) float64 { return (cents(b.bid) + cents(b.ask)) / 2 }
+func bookMid(b mrBook) float64 { return (b.bid.Cents() + b.ask.Cents()) / 2 }
 
 func (m *SpreadMR) sample(mk *mrMarket, sec int64) {
 	ns := sec * 1e9
@@ -188,16 +188,16 @@ func (m *SpreadMR) sample(mk *mrMarket, sec int64) {
 
 // feeC is the per-contract taker fee in cents at a clip of m.clip contracts.
 func (m *SpreadMR) feeC(venueName string, px core.Price) float64 {
-	return float64(m.fees.Fee(venueName, px, core.Qty(m.clip*100), false)) / 100 / float64(m.clip)
+	return core.Price(m.fees.Fee(venueName, px, core.QtyOf(float64(m.clip)), false)).Cents() / float64(m.clip)
 }
 
 // closeTrade is the per-contract-pair P&L in cents, both legs taker, in and out.
 func (m *SpreadMR) closeTrade(t *mrTrade, k1, p1 mrBook) float64 {
 	if t.dir > 0 { // gap wide: sold Kalshi at bid, bought Poly at ask; now buy Kalshi back, sell Poly
-		return cents(t.k0.bid) - cents(k1.ask) + cents(p1.bid) - cents(t.p0.ask) -
+		return t.k0.bid.Cents() - k1.ask.Cents() + p1.bid.Cents() - t.p0.ask.Cents() -
 			m.feeC(core.VenueKalshi, t.k0.bid) - m.feeC(core.VenueKalshi, k1.ask) - m.feeC(core.VenuePoly, t.p0.ask) - m.feeC(core.VenuePoly, p1.bid)
 	}
-	return cents(k1.bid) - cents(t.k0.ask) + cents(t.p0.bid) - cents(p1.ask) -
+	return k1.bid.Cents() - t.k0.ask.Cents() + t.p0.bid.Cents() - p1.ask.Cents() -
 		m.feeC(core.VenueKalshi, t.k0.ask) - m.feeC(core.VenueKalshi, k1.bid) - m.feeC(core.VenuePoly, t.p0.bid) - m.feeC(core.VenuePoly, p1.ask)
 }
 

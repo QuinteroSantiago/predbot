@@ -140,11 +140,11 @@ func (p *PaperTrader) settle(pp pendingPair) {
 	if sellQty < hedged {
 		hedged = sellQty
 	}
-	c := float64(hedged) / 100
-	gross := float64(int64(sellPx)-int64(buyPx)) / 1e4 * c
-	feeBuy := float64(p.fees.Fee(buy.Venue, buyPx, hedged, false)) / 1e4
-	feeSell := float64(p.fees.Fee(sell.Venue, sellPx, hedged, false)) / 1e4
-	capital := float64(buyPx)/1e4*c + float64(int64(core.OneDollar)-int64(sellPx))/1e4*c
+	c := hedged.Contracts()
+	gross := core.USD(int64(sellPx)-int64(buyPx)) * c
+	feeBuy := core.USD(p.fees.Fee(buy.Venue, buyPx, hedged, false))
+	feeSell := core.USD(p.fees.Fee(sell.Venue, sellPx, hedged, false))
+	capital := buyPx.Dollars()*c + (core.OneDollar-sellPx).Dollars()*c
 
 	p.stat.GrossUSD += gross
 	p.stat.FeesUSD += feeBuy + feeSell
@@ -167,9 +167,9 @@ func (p *PaperTrader) writeLog(canonical string, buy, sell core.Intent, buyPx, s
 	}
 	line, _ := json.Marshal(map[string]any{
 		"ts_ms": time.Now().UnixMilli(), "canonical": canonical,
-		"buy_venue": buy.Venue, "buy_cents": float64(buyPx) / 100,
-		"sell_venue": sell.Venue, "sell_cents": float64(sellPx) / 100,
-		"qty": float64(qty) / 100, "gross_usd": gross, "fees_usd": fees, "net_usd": gross - fees,
+		"buy_venue": buy.Venue, "buy_cents": buyPx.Cents(),
+		"sell_venue": sell.Venue, "sell_cents": sellPx.Cents(),
+		"qty": qty.Contracts(), "gross_usd": gross, "fees_usd": fees, "net_usd": gross - fees,
 	})
 	_, _ = p.log.Write(append(line, '\n'))
 }

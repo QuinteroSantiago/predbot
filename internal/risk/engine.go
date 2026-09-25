@@ -84,12 +84,11 @@ func abs(q core.Qty) core.Qty {
 // SellYes at p costs (1−p)·qty (Poly US posts $1 margin, receives p; Kalshi
 // economics assumed equivalent — [VERIFY] field semantics before live, §8).
 func bpCost(i core.Intent) int64 {
-	c := int64(i.Qty) // 0.01-contract units
-	px := int64(i.Px) // $0.0001 units
+	px := i.Px
 	if i.Side == core.SellYes {
-		px = int64(core.OneDollar) - px
+		px = core.OneDollar - px
 	}
-	return px * c / 100 // ($0.0001 * 0.01-contract) -> $0.0001
+	return core.Notional(px, i.Qty)
 }
 
 // CheckAndReserve is the gate: it validates the intent against every limit and,
@@ -167,7 +166,7 @@ func (e *Engine) UnhedgedSnapshot() map[string]float64 {
 	defer e.mu.Unlock()
 	out := make(map[string]float64, len(e.unhedged))
 	for k, q := range e.unhedged {
-		out[k] = float64(q) / 100
+		out[k] = q.Contracts()
 	}
 	return out
 }

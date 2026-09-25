@@ -50,7 +50,7 @@ func CrossVenue(canonical string, books map[string]core.BookSnapshot, exp Exposu
 			if qty <= 0 {
 				continue
 			}
-			c := contracts(qty)
+			c := qty.Contracts()
 			grossTotal := int64(float64(gross) * c)
 			feeBuy := fees.Fee(buy.venue, ask.Px, qty, false)
 			feeSell := fees.Fee(sell.venue, bid.Px, qty, false)

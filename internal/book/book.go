@@ -142,7 +142,7 @@ func (m *Manager) CrossEdge(canonical string) (cents, sizeContracts float64, old
 	if !found {
 		return 0, 0, 0, false
 	}
-	return float64(best) / 100, float64(bestQty) / 100, oldest, true
+	return core.Price(best).Cents(), bestQty.Contracts(), oldest, true
 }
 
 // Canonicals returns all canonical ids known to the manager.
