@@ -1,9 +1,10 @@
 package backtest
 
 import (
-	"predbot/internal/core"
 	"sort"
 	"time"
+
+	"predbot/internal/core"
 )
 
 // RunReport is one backtest run's results as JSON: what the backtest runs page

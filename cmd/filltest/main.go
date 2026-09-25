@@ -43,11 +43,11 @@ import (
 	"net/http"
 	"os"
 	osexec "os/exec"
-	"predbot/internal/config"
 	"strings"
 	"sync"
 	"time"
 
+	"predbot/internal/config"
 	"predbot/internal/core"
 	"predbot/internal/exec"
 	"predbot/internal/live"

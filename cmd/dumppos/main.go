@@ -14,9 +14,9 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"predbot/internal/config"
 	"sort"
 
+	"predbot/internal/config"
 	"predbot/internal/live"
 	"predbot/internal/venue/kalshi"
 	"predbot/internal/venue/polymarketus"

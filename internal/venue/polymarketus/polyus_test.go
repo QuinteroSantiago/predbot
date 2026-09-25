@@ -1,9 +1,10 @@
 package polymarketus
 
 import (
-	"predbot/internal/core"
 	"testing"
 	"time"
+
+	"predbot/internal/core"
 )
 
 func TestParseMarketData(t *testing.T) {

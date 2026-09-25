@@ -6,11 +6,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"predbot/internal/config"
 	"regexp"
 	"sort"
 	"strings"
 	"time"
+
+	"predbot/internal/config"
 )
 
 // Match is one cross-listed game outcome: the same "team X wins" contract on

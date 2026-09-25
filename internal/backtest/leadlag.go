@@ -3,9 +3,10 @@ package backtest
 import (
 	"fmt"
 	"math"
-	"predbot/internal/core"
 	"sort"
 	"strings"
+
+	"predbot/internal/core"
 )
 
 // LeadLag measures whether one venue's YES mid moves BEFORE the other's, per

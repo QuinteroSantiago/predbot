@@ -3,11 +3,11 @@ package backtest
 import (
 	"encoding/json"
 	"math"
-	"predbot/internal/core"
 	"sort"
 	"testing"
 	"time"
 
+	"predbot/internal/core"
 	"predbot/internal/strategy"
 )
 

@@ -20,9 +20,9 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"predbot/internal/config"
 	"time"
 
+	"predbot/internal/config"
 	"predbot/internal/exec"
 	"predbot/internal/venue/polymarketus"
 )

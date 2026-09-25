@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"predbot/internal/config"
 
+	"predbot/internal/config"
 	"predbot/internal/venue/kalshi"
 	"predbot/internal/venue/polymarketus"
 )

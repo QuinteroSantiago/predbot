@@ -18,10 +18,11 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"predbot/internal/core"
 	"strings"
 	"sync"
 	"time"
+
+	"predbot/internal/core"
 )
 
 // Result is one market's final settlement.

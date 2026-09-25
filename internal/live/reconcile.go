@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"predbot/internal/core"
 	"strings"
+
+	"predbot/internal/core"
 )
 
 // AccountClient reads authoritative account state from a venue. Positions are

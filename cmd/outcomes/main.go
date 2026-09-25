@@ -14,12 +14,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"predbot/internal/core"
 	"regexp"
 	"strings"
 	"time"
 
 	"predbot/internal/config"
+	"predbot/internal/core"
 	"predbot/internal/outcome"
 	"predbot/internal/sports"
 )
