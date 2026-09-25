@@ -49,12 +49,12 @@ func (m *Manager) addLocked(markets []config.Market) {
 		}
 		m.venueIDByPair[mk.Canonical] = map[string]string{}
 		if t := mk.Venues.Kalshi.Ticker; t != "" {
-			m.canonByKey[key("kalshi", t)] = mk.Canonical
-			m.venueIDByPair[mk.Canonical]["kalshi"] = t
+			m.canonByKey[key(core.VenueKalshi, t)] = mk.Canonical
+			m.venueIDByPair[mk.Canonical][core.VenueKalshi] = t
 		}
 		if s := mk.Venues.PolymarketUS.Slug; s != "" {
-			m.canonByKey[key("polymarketus", s)] = mk.Canonical
-			m.venueIDByPair[mk.Canonical]["polymarketus"] = s
+			m.canonByKey[key(core.VenuePoly, s)] = mk.Canonical
+			m.venueIDByPair[mk.Canonical][core.VenuePoly] = s
 		}
 	}
 }

@@ -42,7 +42,7 @@ func NewKalshiExecutor(base string, sign func(method, path string) (http.Header,
 		client: &http.Client{Timeout: 5 * time.Second}}
 }
 
-func (k *KalshiExecutor) Name() string { return "kalshi" }
+func (k *KalshiExecutor) Name() string { return core.VenueKalshi }
 
 type kalshiCreateOrderV2 struct {
 	Ticker        string `json:"ticker"`

@@ -88,13 +88,13 @@ func replayRawFile(path string) ([]core.BookSnapshot, error) {
 		}
 		now := time.Unix(0, rl.TsRecvNs)
 		switch rl.Venue {
-		case "kalshi":
+		case core.VenueKalshi:
 			snap, emit, err := kState.ProcessFrame(rl.Frame, now)
 			if err != nil || !emit {
 				continue // gaps/non-book frames: skip, same as live
 			}
 			out = append(out, snap)
-		case "polymarketus":
+		case core.VenuePoly:
 			snap, ok, err := polymarketus.ParseMarketData(rl.Frame, now)
 			if err != nil || !ok {
 				continue

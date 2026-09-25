@@ -3,6 +3,7 @@ package backtest
 import (
 	"fmt"
 	"math"
+	"predbot/internal/core"
 	"sort"
 	"strings"
 )
@@ -48,18 +49,18 @@ func (l *LeadLag) Observe(canonical, venue string, midCents float64, tsRecvNs in
 		l.m[canonical] = mm
 	}
 	switch venue {
-	case "kalshi":
+	case core.VenueKalshi:
 		mm.k[sec] = midCents
-	case "polymarketus":
+	case core.VenuePoly:
 		mm.p[sec] = midCents
 	}
 }
 
 type llResult struct {
-	canonical           string
-	n                   int
-	peakLag             int     // grid steps; + = Kalshi leads
-	peakCorr, zeroCorr  float64 // corr at peak lag and at lag 0
+	canonical          string
+	n                  int
+	peakLag            int     // grid steps; + = Kalshi leads
+	peakCorr, zeroCorr float64 // corr at peak lag and at lag 0
 }
 
 // forwardFill materialises a venue's per-second map into a dense slice over

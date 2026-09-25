@@ -272,7 +272,7 @@ func main() {
 
 		fmt.Printf("=== placing REAL order: %s %s %.0f contracts @ %s\n", *side, *market, *contracts, *price)
 		timeFill("entry", core.Order{Intent: core.Intent{
-			Venue: "polymarketus", VenueID: *market, Side: s, Px: px, Qty: qty, TIF: tifVal,
+			Venue: core.VenuePoly, VenueID: *market, Side: s, Px: px, Qty: qty, TIF: tifVal,
 		}}, before[*market])
 		after, _ := acct.Positions(ctx)
 		fmt.Printf("=== REST position AFTER: %+v\n", after)
@@ -289,7 +289,7 @@ func main() {
 			}
 			fmt.Printf("=== placing REAL exit: %s %s %.0f contracts @ %s IOC\n", xs, *market, *contracts, *exitPrice)
 			timeFill("exit", core.Order{Intent: core.Intent{
-				Venue: "polymarketus", VenueID: *market, Side: xs, Px: xpx, Qty: qty, TIF: core.IOC,
+				Venue: core.VenuePoly, VenueID: *market, Side: xs, Px: xpx, Qty: qty, TIF: core.IOC,
 			}}, after[*market])
 			final, _ := acct.Positions(ctx)
 			fmt.Printf("=== REST position FINAL: %+v\n", final)

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"predbot/internal/core"
 	"strings"
 	"time"
 )
@@ -85,7 +86,7 @@ func (e *HTTPError) Error() string {
 type KalshiAccount struct{ httpAccount }
 
 func NewKalshiAccount(base string, sign func(string, string) (http.Header, error)) *KalshiAccount {
-	return &KalshiAccount{httpAccount{venue: "kalshi", base: base, sign: sign,
+	return &KalshiAccount{httpAccount{venue: core.VenueKalshi, base: base, sign: sign,
 		client: &http.Client{Timeout: 8 * time.Second}}}
 }
 
@@ -177,7 +178,7 @@ func (k *KalshiAccount) BalanceUSD(ctx context.Context) (float64, error) {
 type PolyUSAccount struct{ httpAccount }
 
 func NewPolyUSAccount(base string, sign func(string, string) (http.Header, error)) *PolyUSAccount {
-	return &PolyUSAccount{httpAccount{venue: "polymarketus", base: base, sign: sign,
+	return &PolyUSAccount{httpAccount{venue: core.VenuePoly, base: base, sign: sign,
 		client: &http.Client{Timeout: 8 * time.Second}, ua: true}}
 }
 

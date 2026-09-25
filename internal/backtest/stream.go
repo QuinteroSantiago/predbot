@@ -478,14 +478,14 @@ func (r *snapReader) advance() {
 		}
 		now := time.Unix(0, rl.TsRecvNs)
 		switch rl.Venue {
-		case "kalshi":
+		case core.VenueKalshi:
 			s, emit, err := r.kalsh.ProcessFrame(rl.Frame, now)
 			if err != nil || !emit {
 				continue
 			}
 			r.cur, r.ok = s, true
 			return
-		case "polymarketus":
+		case core.VenuePoly:
 			s, okp, err := polymarketus.ParseMarketData(rl.Frame, now)
 			if err != nil || !okp {
 				continue
@@ -500,10 +500,10 @@ func (r *snapReader) advance() {
 // readerHeap orders open readers by their current snapshot's receive time.
 type readerHeap []*snapReader
 
-func (h readerHeap) Len() int            { return len(h) }
-func (h readerHeap) Less(i, j int) bool  { return h[i].cur.TsRecv < h[j].cur.TsRecv }
-func (h readerHeap) Swap(i, j int)       { h[i], h[j] = h[j], h[i] }
-func (h *readerHeap) Push(x any)         { *h = append(*h, x.(*snapReader)) }
+func (h readerHeap) Len() int           { return len(h) }
+func (h readerHeap) Less(i, j int) bool { return h[i].cur.TsRecv < h[j].cur.TsRecv }
+func (h readerHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+func (h *readerHeap) Push(x any)        { *h = append(*h, x.(*snapReader)) }
 func (h *readerHeap) Pop() any {
 	old := *h
 	n := len(old)

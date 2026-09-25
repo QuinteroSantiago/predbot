@@ -18,6 +18,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"predbot/internal/core"
 	"strings"
 	"sync"
 	"time"
@@ -28,9 +29,9 @@ type Result struct {
 	Canonical  string `json:"canonical"`
 	Venue      string `json:"venue"`
 	VenueID    string `json:"venue_id"`
-	Outcome    string `json:"outcome"`      // "yes" | "no"
-	Status     string `json:"status"`       // venue's status string
-	RecordedAt string `json:"recorded_at"`  // RFC3339, when WE observed it
+	Outcome    string `json:"outcome"`     // "yes" | "no"
+	Status     string `json:"status"`      // venue's status string
+	RecordedAt string `json:"recorded_at"` // RFC3339, when WE observed it
 	CloseTime  string `json:"close_time,omitempty"`
 }
 
@@ -139,7 +140,7 @@ func FetchKalshi(ctx context.Context, base, ticker string) (Result, bool, error)
 		return Result{}, false, nil // not settled yet
 	}
 	return Result{
-		Venue: "kalshi", VenueID: m.Ticker, Outcome: m.Result, Status: m.Status,
+		Venue: core.VenueKalshi, VenueID: m.Ticker, Outcome: m.Result, Status: m.Status,
 		CloseTime: m.CloseTime, RecordedAt: time.Now().UTC().Format(time.RFC3339),
 	}, true, nil
 }
@@ -154,11 +155,11 @@ func FetchPolyUS(ctx context.Context, base, slug string) (Result, bool, error) {
 	}
 	var out struct {
 		Markets []struct {
-			Slug     string `json:"slug"`
-			Closed   bool   `json:"closed"`
-			Active   bool   `json:"active"`
-			Outcome  string `json:"resolvedOutcome"`
-			State    string `json:"state"`
+			Slug    string `json:"slug"`
+			Closed  bool   `json:"closed"`
+			Active  bool   `json:"active"`
+			Outcome string `json:"resolvedOutcome"`
+			State   string `json:"state"`
 		} `json:"markets"`
 	}
 	if err := json.Unmarshal(b, &out); err != nil {
@@ -173,7 +174,7 @@ func FetchPolyUS(ctx context.Context, base, slug string) (Result, bool, error) {
 			return Result{}, false, nil // closed but outcome not exposed here
 		}
 		return Result{
-			Venue: "polymarketus", VenueID: m.Slug, Outcome: o, Status: m.State,
+			Venue: core.VenuePoly, VenueID: m.Slug, Outcome: o, Status: m.State,
 			RecordedAt: time.Now().UTC().Format(time.RFC3339),
 		}, true, nil
 	}

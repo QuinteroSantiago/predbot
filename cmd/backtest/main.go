@@ -141,9 +141,9 @@ func main() {
 		if !seenID[id] {
 			seenID[id] = true
 			switch s.Venue {
-			case "kalshi":
+			case core.VenueKalshi:
 				kTickers = append(kTickers, s.VenueID)
-			case "polymarketus":
+			case core.VenuePoly:
 				pSlugs = append(pSlugs, s.VenueID)
 			}
 		}

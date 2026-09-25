@@ -22,7 +22,7 @@ import (
 	"predbot/internal/venue"
 )
 
-const name = "polymarketus"
+const name = core.VenuePoly
 
 // Ingester streams Polymarket US order books.
 type Ingester struct {
@@ -136,11 +136,11 @@ type levelMsg struct {
 }
 
 type marketData struct {
-	Type   string          `json:"type"`
-	Slug   string          `json:"marketSlug"`
-	Bids   []levelMsg      `json:"bids"`
-	Offers []levelMsg      `json:"offers"`
-	State  string          `json:"state"`
+	Type   string     `json:"type"`
+	Slug   string     `json:"marketSlug"`
+	Bids   []levelMsg `json:"bids"`
+	Offers []levelMsg `json:"offers"`
+	State  string     `json:"state"`
 	// transactTime is an RFC3339 string on the public gateway
 	// (e.g. "2026-08-22T17:05:58.304480956Z") but may be epoch ms on the WS
 	// feed [VERIFY]; parseTransactTime accepts either.

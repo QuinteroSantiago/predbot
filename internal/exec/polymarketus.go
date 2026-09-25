@@ -41,7 +41,7 @@ func NewPolyUSExecutor(base string, sign func(method, path string) (http.Header,
 		markets: map[string]string{}}
 }
 
-func (p *PolyUSExecutor) Name() string { return "polymarketus" }
+func (p *PolyUSExecutor) Name() string { return core.VenuePoly }
 
 type polyAmount struct {
 	Value    string `json:"value"`

@@ -52,7 +52,7 @@ const parkRetention = 30 * time.Second
 //  2. If the follow hedge then falls short, the naked exposure sits on Kalshi,
 //     which has the exchange-side order-group backstop and is the faster venue
 //     to IOC-exit — a better place to be stranded than Polymarket.
-const leadVenue = "kalshi"
+const leadVenue = core.VenueKalshi
 
 // Executors holds the per-venue order clients.
 type Executors map[string]exec.Executor

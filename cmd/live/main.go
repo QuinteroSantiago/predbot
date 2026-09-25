@@ -169,11 +169,11 @@ func main() {
 		MaxOrderQty:   core.Qty(*maxOrderContracts * 100),
 		DefaultMaxPos: core.Qty(*maxOrderContracts * 100 * 4),
 		// Keep a small reserve so we never spend a venue down to exactly zero.
-		MinBP:       map[string]int64{"kalshi": 10000, "polymarketus": 10000}, // $1
+		MinBP:       map[string]int64{core.VenueKalshi: 10000, core.VenuePoly: 10000}, // $1
 		MaxUnhedged: core.Qty(*maxUnhedgedContracts * 100),
 	}, map[string]int64{
-		"kalshi":       int64(kBal * 1e4), // dollars -> $0.0001 units
-		"polymarketus": int64(pBal * 1e4),
+		core.VenueKalshi: int64(kBal * 1e4), // dollars -> $0.0001 units
+		core.VenuePoly:   int64(pBal * 1e4),
 	}, killFile)
 	if engine.Killed() {
 		slog.Error("KILLED marker present — a human must remove it", "file", killFile)
@@ -243,7 +243,7 @@ func main() {
 	}
 
 	bm := book.NewManager(markets)
-	trader := live.NewTrader(live.Executors{"kalshi": kEx, "polymarketus": pEx}, engine, bm)
+	trader := live.NewTrader(live.Executors{core.VenueKalshi: kEx, core.VenuePoly: pEx}, engine, bm)
 	trader.Tune(cfg.Live)
 	trader.SetRestWait(*restWait)
 	// Execution-latency + order-outcome metrics from the REAL order path (populate
@@ -263,7 +263,7 @@ func main() {
 	// 5xx a venue is DOWN: the periodic pollers below go through a GuardedAccount
 	// and drop to one probe per 15 min instead of warning every tick, and the
 	// trading loop opens no new pair while either venue is down.
-	kOut, pOut := live.NewOutage("kalshi"), live.NewOutage("polymarketus")
+	kOut, pOut := live.NewOutage(core.VenueKalshi), live.NewOutage(core.VenuePoly)
 	kGuard, pGuard := live.Guard(kAcct, kOut), live.Guard(pAcct, pOut)
 
 	// A fill stream can fail silently, so the venue's own position is the final
@@ -274,7 +274,7 @@ func main() {
 	verify := func(vctx context.Context, venueName, venueID string) (float64, error) {
 		var a live.AccountClient = kAcct
 		out := kOut
-		if venueName == "polymarketus" {
+		if venueName == core.VenuePoly {
 			a, out = pAcct, pOut
 		}
 		pos, err := a.Positions(vctx)
@@ -287,7 +287,7 @@ func main() {
 	trader.SetVerifier(verify)
 	trader.SetOrderChecker(func(octx context.Context, venueName, orderID string) (bool, error) {
 		var a live.AccountClient = kAcct
-		if venueName == "polymarketus" {
+		if venueName == core.VenuePoly {
 			a = pAcct
 		}
 		ids, err := a.OpenOrders(octx)
@@ -346,7 +346,7 @@ func main() {
 	// values rather than blanking what is a safety view of real exposure.
 	{
 		canonicalOf := config.CanonicalByVenueID(markets)
-		accts := map[string]live.AccountClient{"kalshi": kGuard, "polymarketus": pGuard}
+		accts := map[string]live.AccountClient{core.VenueKalshi: kGuard, core.VenuePoly: pGuard}
 		var posMu sync.Mutex
 		posByVenue := map[string]map[string]float64{} // venue -> venueID -> contracts
 		if err := obs.RegisterPositionsGauge(func() []obs.Position {
@@ -408,7 +408,7 @@ func main() {
 	polyFills := live.NewPolyUSFills(pPrivDial, func() []string {
 		var out []string
 		for _, c := range bm.Canonicals() {
-			if id, ok := bm.VenueID(c, "polymarketus"); ok {
+			if id, ok := bm.VenueID(c, core.VenuePoly); ok {
 				out = append(out, id)
 			}
 		}
@@ -455,7 +455,7 @@ func main() {
 					return
 				case s := <-sportsSnaps:
 					dst := kalshiSnaps
-					if s.Venue == "polymarketus" {
+					if s.Venue == core.VenuePoly {
 						dst = polySnaps
 					}
 					select {
@@ -539,7 +539,7 @@ func main() {
 			}
 			// A pair's second leg lands only as fast as its venue's ack; while
 			// either venue is acking slowly the gap closes before the hedge does.
-			if trader.VenueSlow("kalshi") || trader.VenueSlow("polymarketus") {
+			if trader.VenueSlow(core.VenueKalshi) || trader.VenueSlow(core.VenuePoly) {
 				continue
 			}
 			for _, canonical := range bm.Canonicals() {
@@ -580,7 +580,7 @@ func main() {
 				// (no entry mark, no error) when the strategy's cheaper rest is Kalshi.
 				if *maker {
 					ri := strategy.RestingLeg(legs)
-					if ri < 0 || legs[ri].Venue != "polymarketus" {
+					if ri < 0 || legs[ri].Venue != core.VenuePoly {
 						continue
 					}
 					// A rest priced through its own book fills at once as a taker
@@ -599,7 +599,7 @@ func main() {
 				// the book (and this loop) before the fill stream's periodic
 				// re-subscribe covers it; skip it and poke an immediate
 				// re-subscribe so a later tick can trade it safely.
-				if slug, ok := bm.VenueID(canonical, "polymarketus"); !ok || !polyFills.Covers(slug) {
+				if slug, ok := bm.VenueID(canonical, core.VenuePoly); !ok || !polyFills.Covers(slug) {
 					polyFills.Resubscribe()
 					slog.Warn("skip: Poly fill stream not yet subscribed to slug — deferring to avoid a silent fill",
 						"canonical", canonical, "slug", slug)

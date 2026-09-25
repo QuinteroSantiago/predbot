@@ -104,7 +104,7 @@ func (k *KalshiTrades) Run(ctx context.Context, markets []string, h TradeHandler
 			if ts == 0 {
 				ts = m.Msg.Ts * int64(time.Second)
 			}
-			h(Trade{Venue: "kalshi", VenueID: m.Msg.MarketTicker, Px: px, Qty: qty,
+			h(Trade{Venue: core.VenueKalshi, VenueID: m.Msg.MarketTicker, Px: px, Qty: qty,
 				TakerSide: side, TsServer: ts, TsRecv: now.UnixNano()})
 		}
 		_ = conn.Close()
@@ -193,7 +193,7 @@ func (p *PolyUSTrades) Run(ctx context.Context, markets []string, h TradeHandler
 			if t, err := time.Parse(time.RFC3339Nano, m.Trade.TradeTime); err == nil {
 				ts = t.UnixNano()
 			}
-			h(Trade{Venue: "polymarketus", VenueID: m.Trade.MarketSlug, Px: px, Qty: qty,
+			h(Trade{Venue: core.VenuePoly, VenueID: m.Trade.MarketSlug, Px: px, Qty: qty,
 				TakerSide: side, TsServer: ts, TsRecv: now.UnixNano()})
 		}
 		_ = conn.Close()

@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"predbot/internal/core"
 	"regexp"
 	"strings"
 	"time"
@@ -85,7 +86,7 @@ func main() {
 	const pBase = "https://gateway.polymarket.us"
 	settled := 0
 	for _, t := range targets {
-		if t.kTicker != "" && !store.Has("kalshi", t.kTicker) {
+		if t.kTicker != "" && !store.Has(core.VenueKalshi, t.kTicker) {
 			if r, ok, err := outcome.FetchKalshi(ctx, kBase, t.kTicker); err == nil && ok {
 				r.Canonical = t.canonical
 				if store.Put(r) == nil {
@@ -94,7 +95,7 @@ func main() {
 				}
 			}
 		}
-		if t.pSlug != "" && !store.Has("polymarketus", t.pSlug) {
+		if t.pSlug != "" && !store.Has(core.VenuePoly, t.pSlug) {
 			if r, ok, err := outcome.FetchPolyUS(ctx, pBase, t.pSlug); err == nil && ok {
 				r.Canonical = t.canonical
 				if store.Put(r) == nil {
@@ -108,9 +109,9 @@ func main() {
 	// them directly (append-only store dedups on the ticker).
 	now := time.Now().UTC().Format(time.RFC3339)
 	for _, sr := range settledSports {
-		if !store.Has("kalshi", sr.Ticker) {
+		if !store.Has(core.VenueKalshi, sr.Ticker) {
 			r := outcome.Result{
-				Canonical: sr.Canonical, Venue: "kalshi", VenueID: sr.Ticker,
+				Canonical: sr.Canonical, Venue: core.VenueKalshi, VenueID: sr.Ticker,
 				Outcome: sr.Result, Status: sr.Status, CloseTime: sr.CloseTime,
 				RecordedAt: now,
 			}
@@ -122,9 +123,9 @@ func main() {
 		// Co-listed Poly market resolves to the same game (away=YES on both), so
 		// record the Kalshi result against the Poly slug. Only away-team
 		// canonicals match — Poly lists just the away-team YES instrument.
-		if slug, ok := polySlug[sr.Canonical]; ok && !store.Has("polymarketus", slug) {
+		if slug, ok := polySlug[sr.Canonical]; ok && !store.Has(core.VenuePoly, slug) {
 			r := outcome.Result{
-				Canonical: sr.Canonical, Venue: "polymarketus", VenueID: slug,
+				Canonical: sr.Canonical, Venue: core.VenuePoly, VenueID: slug,
 				Outcome: sr.Result, Status: "kalshi-colisted", RecordedAt: now,
 			}
 			if store.Put(r) == nil {

@@ -23,6 +23,14 @@ type Qty int64
 // NO quotes are derived: NoBid = OneDollar - YesAsk, NoAsk = OneDollar - YesBid.
 const OneDollar Price = 10000
 
+// Venue names: the Venue field of every quote, order and fill, and the key of
+// every per-venue map. Compare and key against these, never a string literal —
+// a typo in a literal compiles fine and silently misses the map.
+const (
+	VenueKalshi = "kalshi"
+	VenuePoly   = "polymarketus"
+)
+
 const (
 	pxScaleDigits  = 4 // Price granularity: $0.0001
 	qtyScaleDigits = 2 // Qty granularity:   0.01 contract
@@ -176,12 +184,12 @@ type Level struct {
 // invariant 1).
 type BookSnapshot struct {
 	Venue    string      `json:"venue"`
-	VenueID  string      `json:"venue_id"` // Kalshi market_ticker / Polymarket US market slug
-	YesBids  []Level     `json:"yes_bids"` // descending px
-	YesAsks  []Level     `json:"yes_asks"` // ascending px
-	TsServer int64       `json:"ts_server"`// venue timestamp, unix nanos, 0 if absent
-	TsRecv   int64       `json:"ts_recv"`  // our receive time, unix nanos
-	Seq      uint64      `json:"seq"`      // Kalshi seq; 0 for Polymarket
+	VenueID  string      `json:"venue_id"`  // Kalshi market_ticker / Polymarket US market slug
+	YesBids  []Level     `json:"yes_bids"`  // descending px
+	YesAsks  []Level     `json:"yes_asks"`  // ascending px
+	TsServer int64       `json:"ts_server"` // venue timestamp, unix nanos, 0 if absent
+	TsRecv   int64       `json:"ts_recv"`   // our receive time, unix nanos
+	Seq      uint64      `json:"seq"`       // Kalshi seq; 0 for Polymarket
 	State    MarketState `json:"state"`
 }
 

@@ -26,7 +26,7 @@ import (
 	"predbot/internal/venue"
 )
 
-const name = "kalshi"
+const name = core.VenueKalshi
 
 // Ingester streams Kalshi order books.
 type Ingester struct {

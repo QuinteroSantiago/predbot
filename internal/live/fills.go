@@ -13,8 +13,8 @@ import (
 // Fill is a venue-reported execution, normalized across venues.
 type Fill struct {
 	Venue         string
-	VenueID       string    // market ticker / slug
-	ClientOrderID string    // ties the fill back to the order we placed
+	VenueID       string // market ticker / slug
+	ClientOrderID string // ties the fill back to the order we placed
 	OrderID       string
 	Side          core.Side // BuyYes / SellYes
 	Px            core.Price
@@ -107,7 +107,7 @@ func (k *KalshiFills) Run(ctx context.Context, h FillHandler) {
 			}
 			post, _ := core.ParseQty(m.PostPosition)
 			h(Fill{
-				Venue: "kalshi", VenueID: m.MarketTicker, ClientOrderID: m.ClientOrderID,
+				Venue: core.VenueKalshi, VenueID: m.MarketTicker, ClientOrderID: m.ClientOrderID,
 				OrderID: m.OrderID, Side: side, Px: px, Qty: qty,
 				FeeUSD: parseDollars(m.FeeCost), IsTaker: m.IsTaker,
 				PostPosition: post, TsMs: m.TsMs,

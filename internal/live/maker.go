@@ -65,7 +65,7 @@ func (t *Trader) ExecuteMakerPair(ctx context.Context, canonical string, legs []
 	// Polymarket. A Kalshi rest earns no Poly rebate and cannot attach to the
 	// Kalshi exchange-side order group (order_group_not_found). Refuse cleanly —
 	// no order, no error, nothing at risk — rather than spam failed placements.
-	if rest.Venue != "polymarketus" {
+	if rest.Venue != core.VenuePoly {
 		t.log.Debug("maker: skipping non-Poly resting leg", "canonical", canonical, "rest_venue", rest.Venue)
 		return nil
 	}

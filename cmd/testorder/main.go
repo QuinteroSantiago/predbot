@@ -28,7 +28,7 @@ import (
 
 func main() {
 	mode := flag.String("mode", "preview", "preview | place")
-	venueName := flag.String("venue", "polymarketus", "polymarketus | kalshi")
+	venueName := flag.String("venue", core.VenuePoly, "polymarketus | kalshi")
 	market := flag.String("market", "", "market slug (poly) or ticker (kalshi)")
 	priceStr := flag.String("price", "0.0100", "limit price in dollars (keep FAR from market so it cannot fill)")
 	contracts := flag.Float64("contracts", 1, "contracts")
@@ -46,7 +46,7 @@ func main() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		var err error
-		if *venueName == "kalshi" {
+		if *venueName == core.VenueKalshi {
 			err = exec.NewKalshiExecutor("https://api.elections.kalshi.com/trade-api/v2",
 				func(m, p string) (http.Header, error) { return kalshi.AuthHeaders(m, "/trade-api/v2"+p) }, "").Cancel(ctx, *cancelID)
 		} else {
@@ -98,7 +98,7 @@ func main() {
 		*venueName, *market, side.String(), px.String(), *contracts, *mode)
 
 	switch *venueName {
-	case "polymarketus":
+	case core.VenuePoly:
 		ex := exec.NewPolyUSExecutor("https://api.polymarket.us",
 			func(m, p string) (http.Header, error) { return polymarketus.AuthHeaders(m, p) })
 		if *mode == "preview" {
@@ -129,7 +129,7 @@ func main() {
 		}
 		fmt.Println("cancelled cleanly")
 
-	case "kalshi":
+	case core.VenueKalshi:
 		ex := exec.NewKalshiExecutor("https://api.elections.kalshi.com/trade-api/v2",
 			func(m, p string) (http.Header, error) { return kalshi.AuthHeaders(m, "/trade-api/v2"+p) }, "")
 		if *mode == "preview" {

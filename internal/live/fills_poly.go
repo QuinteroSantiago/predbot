@@ -261,7 +261,7 @@ func (p *PolyUSFills) Run(ctx context.Context, h FillHandler) {
 				"side", side.String(), "qty", qty.String(), "px", px.String(),
 				"exec_type", e.Type)
 			h(Fill{
-				Venue: "polymarketus", VenueID: e.Order.MarketSlug,
+				Venue: core.VenuePoly, VenueID: e.Order.MarketSlug,
 				// No client_order_id on this venue — correlate by exchange order id.
 				ClientOrderID: e.Order.ID, OrderID: e.Order.ID,
 				Side: side, Px: px, Qty: qty, TsMs: time.Now().UnixMilli(),

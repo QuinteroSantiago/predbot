@@ -13,7 +13,7 @@ import (
 	"predbot/internal/venue/polymarketus"
 )
 
-const polyName = "polymarketus"
+const polyName = core.VenuePoly
 
 // PolyUSREST polls Polymarket US's public gateway order-book endpoint:
 //

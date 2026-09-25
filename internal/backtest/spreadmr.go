@@ -105,7 +105,7 @@ func (m *SpreadMR) market(canonical string) *mrMarket {
 
 // Observe feeds one snapshot, already mapped to its canonical market.
 func (m *SpreadMR) Observe(canonical string, s core.BookSnapshot) {
-	if s.Venue != "kalshi" && s.Venue != "polymarketus" {
+	if s.Venue != core.VenueKalshi && s.Venue != core.VenuePoly {
 		return
 	}
 	mk := m.market(canonical)
@@ -125,7 +125,7 @@ func (m *SpreadMR) Observe(canonical string, s core.BookSnapshot) {
 	if okB && okA && ask.Px > bid.Px {
 		b.bid, b.ask, b.ok = bid.Px, ask.Px, true
 	}
-	if s.Venue == "kalshi" {
+	if s.Venue == core.VenueKalshi {
 		mk.k = b
 	} else {
 		mk.p = b
@@ -195,10 +195,10 @@ func (m *SpreadMR) feeC(venueName string, px core.Price) float64 {
 func (m *SpreadMR) closeTrade(t *mrTrade, k1, p1 mrBook) float64 {
 	if t.dir > 0 { // gap wide: sold Kalshi at bid, bought Poly at ask; now buy Kalshi back, sell Poly
 		return cents(t.k0.bid) - cents(k1.ask) + cents(p1.bid) - cents(t.p0.ask) -
-			m.feeC("kalshi", t.k0.bid) - m.feeC("kalshi", k1.ask) - m.feeC("polymarketus", t.p0.ask) - m.feeC("polymarketus", p1.bid)
+			m.feeC(core.VenueKalshi, t.k0.bid) - m.feeC(core.VenueKalshi, k1.ask) - m.feeC(core.VenuePoly, t.p0.ask) - m.feeC(core.VenuePoly, p1.bid)
 	}
 	return cents(k1.bid) - cents(t.k0.ask) + cents(t.p0.bid) - cents(p1.ask) -
-		m.feeC("kalshi", t.k0.ask) - m.feeC("kalshi", k1.bid) - m.feeC("polymarketus", t.p0.bid) - m.feeC("polymarketus", p1.ask)
+		m.feeC(core.VenueKalshi, t.k0.ask) - m.feeC(core.VenueKalshi, k1.bid) - m.feeC(core.VenuePoly, t.p0.bid) - m.feeC(core.VenuePoly, p1.ask)
 }
 
 // SpreadMRResult is the mean-reversion study, for the text report and the

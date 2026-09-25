@@ -56,7 +56,7 @@ func NewFairValue(fees Fees, outcomes map[string]int) *FairValue {
 
 // Observe feeds one snapshot, mapped to its canonical market.
 func (f *FairValue) Observe(canonical string, s core.BookSnapshot) {
-	if s.Venue != "kalshi" && s.Venue != "polymarketus" {
+	if s.Venue != core.VenueKalshi && s.Venue != core.VenuePoly {
 		return
 	}
 	m := f.markets[canonical]
@@ -82,7 +82,7 @@ func (f *FairValue) Observe(canonical string, s core.BookSnapshot) {
 		b.bid, b.ask, b.ok = bid.Px, ask.Px, true
 	}
 	key := s.Venue + "|" + s.VenueID
-	if s.Venue == "kalshi" {
+	if s.Venue == core.VenueKalshi {
 		m.k, m.kKey = b, key
 	} else {
 		m.p, m.pKey = b, key
@@ -258,7 +258,7 @@ func (f *FairValue) crossValidate(rows []fvRow, res *FairValueResult) {
 			for _, v := range []struct {
 				name string
 				b    mrBook
-			}{{"kalshi", r.k}, {"polymarketus", r.p}} {
+			}{{core.VenueKalshi, r.k}, {core.VenuePoly, r.p}} {
 				for _, tau := range f.margins {
 					id := fmt.Sprintf("%s|%s|%g", r.market, v.name, tau)
 					if taken[id] {
@@ -287,14 +287,14 @@ func (f *FairValue) crossValidate(rows []fvRow, res *FairValueResult) {
 	n := float64(res.CVN)
 	res.LLFair, res.LLKalshi, res.LLPoly, res.LLAverage = ll[0]/n, ll[1]/n, ll[2]/n, ll[3]/n
 	if res.LLKalshi <= res.LLPoly {
-		res.BestSingle = "kalshi"
+		res.BestSingle = core.VenueKalshi
 		res.GainVsBest, res.GainSE = clusteredMean(gainK, groups)
 	} else {
-		res.BestSingle = "polymarketus"
+		res.BestSingle = core.VenuePoly
 		res.GainVsBest, res.GainSE = clusteredMean(gainP, groups)
 	}
 	for _, tau := range f.margins {
-		for _, v := range []string{"kalshi", "polymarketus"} {
+		for _, v := range []string{core.VenueKalshi, core.VenuePoly} {
 			ts := trades[tKey{tau, v}]
 			row := FVRow{MarginC: tau, Venue: v, Trades: len(ts)}
 			var xs []float64

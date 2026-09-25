@@ -33,14 +33,14 @@ func (f Fees) Fee(venue string, px core.Price, qty core.Qty, maker bool) int64 {
 	p := float64(px) / float64(core.OneDollar)
 	risk := c * p * (1 - p)
 	switch venue {
-	case "polymarketus":
+	case core.VenuePoly:
 		theta := polyTakerTheta
 		if maker {
 			theta = polyMakerTheta
 		}
 		dollars := bankersRound2(theta * risk)
 		return int64(math.Round(dollars * float64(core.OneDollar)))
-	case "kalshi":
+	case core.VenueKalshi:
 		mult := f.KalshiMult
 		if mult == 0 {
 			mult = 0.07

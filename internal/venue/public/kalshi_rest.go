@@ -13,7 +13,7 @@ import (
 	"predbot/internal/venue"
 )
 
-const kalshiName = "kalshi"
+const kalshiName = core.VenueKalshi
 
 // KalshiREST polls Kalshi's public order-book endpoint:
 //

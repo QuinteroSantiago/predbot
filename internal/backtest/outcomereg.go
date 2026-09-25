@@ -148,7 +148,7 @@ func (o *OutcomeReg) Result() OutcomeRegResult {
 	res.YesRate = yes / float64(len(rows))
 
 	// Calibration per venue.
-	for _, v := range []string{"kalshi", "polymarketus"} {
+	for _, v := range []string{core.VenueKalshi, core.VenuePoly} {
 		var X [][]float64
 		var y []float64
 		var cl []string
@@ -195,9 +195,9 @@ func (o *OutcomeReg) columns(rows []*orObs) []orCol {
 	for _, r := range rows {
 		venues[r.venue], leagues[r.league] = true, true
 	}
-	if venues["kalshi"] && venues["polymarketus"] {
+	if venues[core.VenueKalshi] && venues[core.VenuePoly] {
 		poly := func(r *orObs) float64 {
-			if r.venue == "polymarketus" {
+			if r.venue == core.VenuePoly {
 				return 1
 			}
 			return 0
@@ -321,7 +321,7 @@ func (o *OutcomeReg) points(rows []*orObs) []ORPoint {
 		b.sy += r.y
 	}
 	var out []ORPoint
-	for _, v := range []string{"kalshi", "polymarketus"} {
+	for _, v := range []string{core.VenueKalshi, core.VenuePoly} {
 		for i, b := range bins[v] {
 			if b.n > 0 {
 				out = append(out, ORPoint{Venue: v, Lo: float64(i) / 10, Hi: float64(i+1) / 10, N: int(b.n), MeanP: b.sp / b.n, Realized: b.sy / b.n})
