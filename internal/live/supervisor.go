@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"predbot/internal/config"
 	"predbot/internal/risk"
 )
 
@@ -50,14 +51,20 @@ func (s *Supervisor) PreExisting() map[string]float64 {
 }
 
 func NewSupervisor(accounts []AccountClient, engine *risk.Engine, trader *Trader) *Supervisor {
-	return &Supervisor{
+	s := &Supervisor{
 		accounts: accounts, engine: engine, trader: trader,
-		log:            slog.With("component", "live-supervisor"),
-		MaxUnhedgedFor: 60 * time.Second,
-		MaxErrors:      10,
-		ErrorWindow:    60 * time.Second,
-		PnLFloorUSD:    -25,
+		log:         slog.With("component", "live-supervisor"),
+		PnLFloorUSD: -25,
 	}
+	s.Tune(config.DefaultLive())
+	return s
+}
+
+// Tune applies the kill-condition tuning from config.yaml's live: block.
+func (s *Supervisor) Tune(l config.Live) {
+	s.MaxUnhedgedFor = l.MaxUnhedgedFor
+	s.MaxErrors = l.MaxErrors
+	s.ErrorWindow = l.ErrorWindow
 }
 
 // Reconcile pulls authoritative state from every venue before any intent is

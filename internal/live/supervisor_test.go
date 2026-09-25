@@ -67,7 +67,7 @@ func TestAdoptedPositionsAreReportedForSeeding(t *testing.T) {
 // of adopting rather than refusing.
 func TestAdoptedPositionsDoNotReadAsDrift(t *testing.T) {
 	eng := risk.New(risk.Config{}, nil, "")
-	tr := NewTrader(Executors{}, eng, nil, 0)
+	tr := NewTrader(Executors{}, eng, nil)
 	tr.Adopt(map[string]float64{"KXGROK-GROK5-26OCT01": 5})
 
 	if got := tr.Positions()["KXGROK-GROK5-26OCT01"]; got != 5 {

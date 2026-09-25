@@ -95,7 +95,7 @@ func setup(t *testing.T) (*Trader, *fakeExec, *fakeExec, *risk.Engine) {
 
 	k := &fakeExec{name: "kalshi"}
 	p := &fakeExec{name: "polymarketus"}
-	tr := NewTrader(Executors{"kalshi": k, "polymarketus": p}, eng, bm, time.Second)
+	tr := NewTrader(Executors{"kalshi": k, "polymarketus": p}, eng, bm)
 	tr.fillWait = 200 * time.Millisecond
 	tr.hedgeGrace = 300 * time.Millisecond
 	tr.hedgeRetry = 20 * time.Millisecond
@@ -213,7 +213,7 @@ func TestRiskRejectionPlacesNothing(t *testing.T) {
 		map[string]int64{"kalshi": 1e9, "polymarketus": 1}, "")
 	k := &fakeExec{name: "kalshi"}
 	p := &fakeExec{name: "polymarketus"}
-	tr := NewTrader(Executors{"kalshi": k, "polymarketus": p}, eng, bm, time.Second)
+	tr := NewTrader(Executors{"kalshi": k, "polymarketus": p}, eng, bm)
 	tr.fillWait = 200 * time.Millisecond
 	k.tr, p.tr = tr, tr
 
@@ -469,7 +469,7 @@ func TestGraceExpiryDumpsNakedLeg(t *testing.T) {
 // The grace window must stay strictly inside the supervisor's unhedged kill
 // timer, or the bot kills itself in the middle of its own recovery.
 func TestHedgeGraceIsShorterThanSupervisorKill(t *testing.T) {
-	tr := NewTrader(Executors{}, risk.New(risk.Config{}, nil, ""), nil, time.Second)
+	tr := NewTrader(Executors{}, risk.New(risk.Config{}, nil, ""), nil)
 	sup := &Supervisor{}
 	sup.MaxUnhedgedFor = 60 * time.Second // the production default
 	if tr.hedgeGrace >= sup.MaxUnhedgedFor {
@@ -691,7 +691,7 @@ func TestLateFillEventStopsTheGraceWindowReplacing(t *testing.T) {
 // fillWait bounds how long a naked leg goes UNNOTICED, so it must stay well
 // inside the grace window it feeds.
 func TestFillWaitIsShorterThanHedgeGrace(t *testing.T) {
-	tr := NewTrader(Executors{}, nil, nil, time.Second)
+	tr := NewTrader(Executors{}, nil, nil)
 	if tr.fillWait >= tr.hedgeGrace {
 		t.Errorf("fillWait %v >= hedgeGrace %v — a leg would be dumped before it was noticed",
 			tr.fillWait, tr.hedgeGrace)
@@ -779,7 +779,9 @@ func TestIOCSilentFillIgnoresWrongDirection(t *testing.T) {
 // before it landed. An ack over the limit pauses new pairs on that venue.
 func TestSlowAckPausesVenue(t *testing.T) {
 	tr, _, p, _ := setup(t)
-	tr.SetSlowAck(50*time.Millisecond, time.Minute)
+	tun := config.DefaultLive()
+	tun.SlowAck, tun.SlowAckPause = 50*time.Millisecond, time.Minute
+	tr.Tune(tun)
 	p.placeFn = func(o core.Order) (string, error) {
 		time.Sleep(80 * time.Millisecond) // a slow venue ack
 		go tr.OnFill(Fill{Venue: "polymarketus", VenueID: o.VenueID, ClientOrderID: "poid", Side: o.Side, Px: o.Px, Qty: o.Qty})

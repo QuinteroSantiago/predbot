@@ -313,8 +313,8 @@ func main() {
 	// Phase 3a paper trading: run the strategy live against the shared Book
 	// Manager and simulate fills (no real orders). Reuses the whole live feed.
 	if *paperMode {
-		fees := backtest.Fees{KalshiMult: cfg.Backtest.KalshiFeeMult}
-		pt := exec.NewPaperTrader(fees, cfg.Backtest.LatencyMS, bm, filepath.Join(cfg.DataDir, "paper-fills.jsonl"))
+		fees := backtest.Fees{KalshiMult: cfg.Strategy.KalshiFeeMult}
+		pt := exec.NewPaperTrader(fees, cfg.Strategy.LatencyMS, bm, filepath.Join(cfg.DataDir, "paper-fills.jsonl"))
 		// Turn the paper sim into a live order-flow feed: every settled pair bumps
 		// predbot_orders_total{venue="paper",outcome}. Same outcome vocabulary the
 		// real path uses, so the execution panels light up safely from the always-on
@@ -330,9 +330,9 @@ func main() {
 			slog.Warn("paper gauges disabled", "err", err)
 		}
 		go pt.Run(rootCtx)
-		scfg := strategy.Config{MinEdge: core.Price(cfg.Backtest.MinEdge), MaxClip: core.Qty(cfg.Backtest.MaxClip), MinDepth: core.Qty(cfg.Backtest.MinDepth)}
-		maxAge := cfg.Backtest.MaxBookAgeMS * int64(time.Millisecond)
-		maxSkew := cfg.Backtest.MaxSkewMS * int64(time.Millisecond)
+		scfg := strategy.Config{MinEdge: core.Price(cfg.Strategy.MinEdge), MaxClip: core.Qty(cfg.Strategy.MaxClip), MinDepth: core.Qty(cfg.Strategy.MinDepth)}
+		maxAge := cfg.Strategy.MaxBookAgeMS * int64(time.Millisecond)
+		maxSkew := cfg.Strategy.MaxSkewMS * int64(time.Millisecond)
 		go runPaper(rootCtx, bm, fees, scfg, maxAge, maxSkew, pt, met)
 		slog.Info("paper trading ON (live SimExecutor, no real orders)")
 	}

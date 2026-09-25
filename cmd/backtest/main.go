@@ -69,7 +69,7 @@ func main() {
 	}
 	// Overrides replace the config values outright, so every consumer below
 	// sees the effective settings and the report records what actually ran.
-	b := &cfg.Backtest
+	b := &cfg.Strategy
 	if *latencyMS >= 0 {
 		b.LatencyMS = *latencyMS
 	}
@@ -291,7 +291,7 @@ func main() {
 		return
 	}
 
-	fees := backtest.Fees{KalshiMult: cfg.Backtest.KalshiFeeMult}
+	fees := backtest.Fees{KalshiMult: cfg.Strategy.KalshiFeeMult}
 
 	// Fair value: standalone read-only pass; needs settled outcomes.
 	if *fairValue {
@@ -439,17 +439,17 @@ func main() {
 
 	opts := backtest.TradingOpts{
 		Fees:      fees,
-		LatencyMS: cfg.Backtest.LatencyMS,
+		LatencyMS: cfg.Strategy.LatencyMS,
 		Strategy: strategy.Config{
-			MinEdge: core.Price(cfg.Backtest.MinEdge),
-			MaxClip: core.Qty(cfg.Backtest.MaxClip),
+			MinEdge: core.Price(cfg.Strategy.MinEdge),
+			MaxClip: core.Qty(cfg.Strategy.MaxClip),
 			// The liquidity floor the paper and live traders apply (config
 			// backtest.min_depth). Missing here until 2026-09-22, so earlier
 			// backtests counted trades against books too thin to hedge.
-			MinDepth: core.Qty(cfg.Backtest.MinDepth),
+			MinDepth: core.Qty(cfg.Strategy.MinDepth),
 		},
-		MaxAge:     cfg.Backtest.MaxBookAgeMS * int64(time.Millisecond),
-		MaxSkew:    cfg.Backtest.MaxSkewMS * int64(time.Millisecond),
+		MaxAge:     cfg.Strategy.MaxBookAgeMS * int64(time.Millisecond),
+		MaxSkew:    cfg.Strategy.MaxSkewMS * int64(time.Millisecond),
 		Resolution: map[string]time.Time{},
 		Maker:      *maker,
 		Spread:     *spreadPath != "",
@@ -504,7 +504,7 @@ func main() {
 		}
 	}
 
-	rep.Finalize(opts.Resolution, cfg.Backtest.IdleYield)
+	rep.Finalize(opts.Resolution, cfg.Strategy.IdleYield)
 
 	if *reportJSON != "" {
 		mode := "taker"

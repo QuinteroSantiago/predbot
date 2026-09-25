@@ -29,6 +29,7 @@ import (
 	"github.com/google/uuid"
 
 	"predbot/internal/book"
+	"predbot/internal/config"
 	"predbot/internal/core"
 	"predbot/internal/exec"
 	"predbot/internal/risk"
@@ -58,11 +59,10 @@ type Executors map[string]exec.Executor
 
 // Trader turns approved Intents into real orders.
 type Trader struct {
-	ex      Executors
-	engine  *risk.Engine
-	bm      *book.Manager
-	log     *slog.Logger
-	legWait time.Duration // how long to wait for leg 2 before exiting (design §8)
+	ex     Executors
+	engine *risk.Engine
+	bm     *book.Manager
+	log    *slog.Logger
 
 	fillWait time.Duration // how long to wait for venue fill events per order
 	// restWait is how long a MAKER resting leg is left on the book before it is
@@ -167,29 +167,31 @@ func (t *Trader) HasUnhedged() bool {
 	return t.stats.UnhedgedQty != 0
 }
 
-func NewTrader(ex Executors, engine *risk.Engine, bm *book.Manager, legWait time.Duration) *Trader {
-	return &Trader{ex: ex, engine: engine, bm: bm, legWait: legWait,
-		// 1s, not 3s. With awaitFills returning early on a full fill, this timer
-		// no longer bounds a GOOD pair — it only bounds how long we sit unaware
-		// that a leg is naked. Live fill events arrive in ~1ms; anything slower
-		// is a lost event, and the venue position query resolves that far better
-		// than waiting longer for a message that may never come.
-		fillWait:   1 * time.Second,
-		restWait:   30 * time.Second, // maker: how long a rest sits before cancel
-		restPoll:   2 * time.Second,
-		hedgeGrace: 30 * time.Second, // < supervisor MaxUnhedgedFor (60s)
-		hedgeRetry: 2 * time.Second,
-		// 2c/contract: wider than normal fee drag, tighter than a real dislocation.
-		maxCompletionLoss: 200,
-		// 2c: cross two 1c levels. Enough to clear a touch that repriced a tick or
-		// a thin top level, small enough that walking that far is never costly.
-		hedgeSlip:    200,
+// NewTrader builds a trader with the default live tuning (config.DefaultLive);
+// Tune applies config.yaml's.
+func NewTrader(ex Executors, engine *risk.Engine, bm *book.Manager) *Trader {
+	t := &Trader{ex: ex, engine: engine, bm: bm,
+		restWait:     30 * time.Second, // maker: how long a rest sits before cancel (-rest-wait)
 		awaiting:     map[string]chan Fill{},
 		parked:       map[string]parkedFills{},
 		posByVenueID: map[string]float64{},
 		resting:      map[string]int{},
 		slowUntil:    map[string]time.Time{},
 		log:          slog.With("component", "live-trader")}
+	t.Tune(config.DefaultLive())
+	return t
+}
+
+// Tune applies the live tuning (config.yaml's live: block, defaults filled and
+// validated by config.Load). Set once before trading.
+func (t *Trader) Tune(l config.Live) {
+	t.fillWait = l.FillWait
+	t.restPoll = l.RestPoll
+	t.hedgeGrace = l.HedgeGrace
+	t.hedgeRetry = l.HedgeRetry
+	t.hedgeSlip = core.Price(l.HedgeSlip)
+	t.maxCompletionLoss = core.Price(l.MaxCompletionLoss)
+	t.slowAck, t.slowCooldown = l.SlowAck, l.SlowAckPause
 }
 
 // SetRestWait sets how long a maker resting leg sits before it is cancelled.
@@ -197,12 +199,6 @@ func (t *Trader) SetRestWait(d time.Duration) {
 	if d > 0 {
 		t.restWait = d
 	}
-}
-
-// SetSlowAck pauses new pairs on a venue for cooldown after any of its order
-// acks takes longer than max. max <= 0 disables it.
-func (t *Trader) SetSlowAck(max, cooldown time.Duration) {
-	t.slowAck, t.slowCooldown = max, cooldown
 }
 
 // VenueSlow reports whether a venue's order entry was recently too slow to

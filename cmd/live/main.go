@@ -69,8 +69,6 @@ func main() {
 	sportsLeagues := flag.String("sports", "", "also trade cross-listed daily games, e.g. \"mlb\" (fast + liquid; more chances to fire)")
 	maker := flag.Bool("maker", false, "MAKER mode: rest one leg (earn the Poly rebate) and hedge the other on fill, instead of taker/taker (design §9.2)")
 	restWait := flag.Duration("rest-wait", 30*time.Second, "maker: how long a resting leg sits on the book before it is cancelled")
-	slowAck := flag.Duration("slow-ack", 1500*time.Millisecond, "pause new pairs on a venue for -slow-ack-pause after an order ack slower than this; 0 = off")
-	slowAckPause := flag.Duration("slow-ack-pause", 10*time.Minute, "how long -slow-ack pauses a venue")
 	edgeStep := flag.Duration("edge-step", 0, "scale the min edge with time to game start: min_edge per started step (24h: 1c inside 24h, 2c inside 48h, ...); 0 = flat")
 	flag.Parse()
 
@@ -186,6 +184,7 @@ func main() {
 	kAcct := live.NewKalshiAccount("https://api.elections.kalshi.com/trade-api/v2", kSign)
 	pAcct := live.NewPolyUSAccount("https://api.polymarket.us", pSign)
 	sup := live.NewSupervisor([]live.AccountClient{kAcct, pAcct}, engine, nil)
+	sup.Tune(cfg.Live)
 	sup.PnLFloorUSD = *pnlFloor
 
 	// One-shot adoption, mirroring the KILLED marker in reverse: a human puts the
@@ -244,9 +243,9 @@ func main() {
 	}
 
 	bm := book.NewManager(markets)
-	trader := live.NewTrader(live.Executors{"kalshi": kEx, "polymarketus": pEx}, engine, bm, 2*time.Second)
+	trader := live.NewTrader(live.Executors{"kalshi": kEx, "polymarketus": pEx}, engine, bm)
+	trader.Tune(cfg.Live)
 	trader.SetRestWait(*restWait)
-	trader.SetSlowAck(*slowAck, *slowAckPause)
 	// Execution-latency + order-outcome metrics from the REAL order path (populate
 	// once armed): predbot_decision_to_ack_seconds{venue} and
 	// predbot_orders_total{venue,outcome}. Same instruments the recorder feeds from
@@ -493,23 +492,29 @@ func main() {
 	}()
 
 	// --- trading loop -------------------------------------------------------
-	fees := backtest.Fees{KalshiMult: cfg.Backtest.KalshiFeeMult}
+	fees := backtest.Fees{KalshiMult: cfg.Strategy.KalshiFeeMult}
 	scfg := strategy.Config{
-		MinEdge:  core.Price(cfg.Backtest.MinEdge),
+		MinEdge:  core.Price(cfg.Strategy.MinEdge),
 		MaxClip:  core.Qty(*maxOrderContracts * 100),
 		MinDepth: core.Qty(*minDepthContracts * 100),
 	}
-	maxAge := cfg.Backtest.MaxBookAgeMS * int64(time.Millisecond)
-	maxSkew := cfg.Backtest.MaxSkewMS * int64(time.Millisecond)
+	maxAge := cfg.Strategy.MaxBookAgeMS * int64(time.Millisecond)
+	maxSkew := cfg.Strategy.MaxSkewMS * int64(time.Millisecond)
 	// `entered` enforces hold-to-resolution (never re-enter a market we are
 	// already in). Sports games END, so their entries must age out or the set
 	// grows without bound and a genuinely new game could be skipped.
 	entered := map[string]time.Time{}
-	const sportsEntryTTL = 12 * time.Hour
 
 	slog.Info("live loop starting", "markets", len(markets), "dry_run", *dryRun,
 		"mode", modeName(*maker), "rest_wait", restWait.String(), "edge_step", edgeStep.String())
-	tick := time.NewTicker(500 * time.Millisecond)
+	l := cfg.Live
+	slog.Info("live tuning", "fill_wait", l.FillWait.String(), "hedge_grace", l.HedgeGrace.String(),
+		"hedge_retry", l.HedgeRetry.String(), "hedge_slip", core.Price(l.HedgeSlip).String(),
+		"max_completion_loss", core.Price(l.MaxCompletionLoss).String(), "max_unhedged_for", l.MaxUnhedgedFor.String(),
+		"max_errors", l.MaxErrors, "error_window", l.ErrorWindow.String(), "slow_ack", l.SlowAck.String(),
+		"slow_ack_pause", l.SlowAckPause.String(), "sports_entry_ttl", l.SportsEntryTTL.String(),
+		"loop_tick", l.LoopTick.String(), "min_edge", core.Price(cfg.Strategy.MinEdge).String())
+	tick := time.NewTicker(cfg.Live.LoopTick)
 	defer tick.Stop()
 	for {
 		select {
@@ -523,7 +528,7 @@ func main() {
 			now := time.Now().UnixNano()
 			// Age out finished sports entries.
 			for c, at := range entered {
-				if sports.Live(c) && time.Since(at) > sportsEntryTTL {
+				if sports.Live(c) && time.Since(at) > cfg.Live.SportsEntryTTL {
 					delete(entered, c)
 				}
 			}

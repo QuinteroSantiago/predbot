@@ -111,6 +111,10 @@ case "${1:-status}" in
     echo "Copying to $REMOTE…"
     scp -o BatchMode=yes -q "$tmp"/* "$REMOTE:/tmp/"
     scp -o BatchMode=yes -q systemd/predbot-live.service "$REMOTE:/tmp/predbot-live.service"
+    # The trader reads config.yaml (strategy: and live: tuning), so ship it with
+    # the build — otherwise a tuning change would only land on the next recorder
+    # redeploy. Same files and path redeploy.sh installs.
+    scp -o BatchMode=yes -q config/config.yaml config/markets.yaml "$REMOTE:/tmp/"
     "${SSH[@]}" '
       set -e
       for b in predbot-live dumppos preflight cancelopen; do
@@ -118,6 +122,8 @@ case "${1:-status}" in
         sudo chmod 0755 /opt/predbot/$b
         sudo chown predbot:predbot /opt/predbot/$b
       done
+      sudo install -m 0644 /tmp/config.yaml /tmp/markets.yaml /opt/predbot/config/
+      rm -f /tmp/config.yaml /tmp/markets.yaml
       sudo mv -f /tmp/predbot-live.service /etc/systemd/system/predbot-live.service
       sudo systemctl daemon-reload
       # Must stay static: a reboot must never silently resume trading.
