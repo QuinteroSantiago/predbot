@@ -85,7 +85,7 @@ func (d *DriftMonitor) check(ctx context.Context) {
 		want = d.expected()
 	}
 	for _, a := range d.accounts {
-		cctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		cctx, cancel := context.WithTimeout(ctx, positionReadTimeout)
 		actual, err := a.Positions(cctx)
 		cancel()
 		if errors.Is(err, ErrVenueUnavailable) {

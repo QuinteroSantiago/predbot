@@ -72,14 +72,12 @@ func (p *Ingester) Stream(ctx context.Context, markets []string, out chan<- core
 // markets it sends multiple subscribe frames on the same connection (design §6.2).
 // Wire format per docs.polymarket.us: everything nests under a "subscribe" key.
 func (p *Ingester) subscribe(ctx context.Context, c venue.Conn, markets []string) error {
-	const batch = 100
-	for i := 0; i < len(markets); i += batch {
-		end := min(i+batch, len(markets))
+	for n, chunk := range venue.ChunkSlugs(markets) {
 		req := map[string]any{
 			"subscribe": map[string]any{
-				"requestId":        fmt.Sprintf("md-sub-%d", i/batch),
+				"requestId":        fmt.Sprintf("md-sub-%d", n),
 				"subscriptionType": "SUBSCRIPTION_TYPE_MARKET_DATA",
-				"marketSlugs":      markets[i:end],
+				"marketSlugs":      chunk,
 			},
 		}
 		b, _ := json.Marshal(req)

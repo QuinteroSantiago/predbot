@@ -112,7 +112,7 @@ func main() {
 		} else {
 			slugs = append([]string{*market}, others...)
 		}
-		fmt.Printf("=== %d slugs in %d chunk(s); -market is in the %s chunk\n", len(slugs), (len(slugs)+99)/100, *targetChunk)
+		fmt.Printf("=== %d slugs in %d chunk(s); -market is in the %s chunk\n", len(slugs), len(venue.ChunkSlugs(slugs)), *targetChunk)
 	}
 	subscribe := func() {
 		for i, st := range strings.Split(*subtypes, ",") {
@@ -126,15 +126,15 @@ func main() {
 				send(ctx, conn, map[string]any{"requestId": fmt.Sprintf("filltest-%d", i), "subscriptionType": st})
 				continue
 			}
-			for c := 0; c < len(slugs); c += 100 {
+			for n, chunk := range venue.ChunkSlugs(slugs) {
 				id := fmt.Sprintf("filltest-%d", i)
 				if st == "SUBSCRIPTION_TYPE_ORDER" {
-					id = fmt.Sprintf("order-sub-%d", c/100) // the trader's ids
-				} else if c > 0 {
-					id = fmt.Sprintf("filltest-%d-%d", i, c/100)
+					id = fmt.Sprintf("order-sub-%d", n) // the trader's ids
+				} else if n > 0 {
+					id = fmt.Sprintf("filltest-%d-%d", i, n)
 				}
 				send(ctx, conn, map[string]any{"requestId": id, "subscriptionType": st,
-					"marketSlugs": slugs[c:min(c+100, len(slugs))]})
+					"marketSlugs": chunk})
 			}
 		}
 	}

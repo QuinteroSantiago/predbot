@@ -42,9 +42,12 @@ type Client struct {
 	PolyBase   string // https://gateway.polymarket.us
 }
 
+// discoverHTTPTimeout bounds one venue listing request during discovery.
+const discoverHTTPTimeout = 15 * time.Second
+
 func New() *Client {
 	return &Client{
-		HTTP:       &http.Client{Timeout: 15 * time.Second},
+		HTTP:       &http.Client{Timeout: discoverHTTPTimeout},
 		KalshiBase: config.KalshiAPI,
 		PolyBase:   config.PolyGateway,
 	}

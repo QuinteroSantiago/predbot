@@ -96,7 +96,7 @@ func (t *Trader) ExecuteMakerPair(ctx context.Context, canonical string, legs []
 	o := core.Order{Intent: rest, ClientID: uuid.NewString()}
 	ch := t.registerSink(o.ClientID)
 
-	placeCtx, cancelPlace := context.WithTimeout(ctx, 5*time.Second)
+	placeCtx, cancelPlace := context.WithTimeout(ctx, orderTimeout)
 	id, err := ex.Place(placeCtx, o)
 	cancelPlace()
 	if err != nil {
@@ -154,7 +154,7 @@ func (t *Trader) restLifecycle(ctx context.Context, canonical string, rest, take
 	// A fill can race the cancel: drain briefly for anything that landed just
 	// before the venue acknowledged the cancel.
 	if rem := rest.Qty - filled; rem > 0 {
-		filled += drain(ch, rem, 500*time.Millisecond)
+		filled += drain(ch, rem, cancelRaceDrain)
 	}
 	if filled > rest.Qty {
 		filled = rest.Qty
@@ -222,9 +222,9 @@ func (t *Trader) cancelRest(ctx context.Context, canonical string, rest core.Int
 	var cerr error
 	for attempt := 0; attempt < 3; attempt++ {
 		if attempt > 0 {
-			time.Sleep(500 * time.Millisecond)
+			time.Sleep(cancelRetryDelay)
 		}
-		cctx, cc := context.WithTimeout(dctx, 5*time.Second)
+		cctx, cc := context.WithTimeout(dctx, orderTimeout)
 		cerr = ex.Cancel(cctx, orderID)
 		cc()
 		if cerr == nil {
@@ -235,7 +235,7 @@ func (t *Trader) cancelRest(ctx context.Context, canonical string, rest core.Int
 	// venue before deciding anything.
 	open, oerr := true, error(nil)
 	if t.orderOpen != nil {
-		octx, oc := context.WithTimeout(dctx, 5*time.Second)
+		octx, oc := context.WithTimeout(dctx, orderTimeout)
 		open, oerr = t.orderOpen(octx, rest.Venue, orderID)
 		oc()
 	}

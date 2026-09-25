@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"predbot/internal/core"
 	"strings"
-	"time"
 )
 
 // AccountClient reads authoritative account state from a venue. Positions are
@@ -87,7 +86,7 @@ type KalshiAccount struct{ httpAccount }
 
 func NewKalshiAccount(base string, sign func(string, string) (http.Header, error)) *KalshiAccount {
 	return &KalshiAccount{httpAccount{venue: core.VenueKalshi, base: base, sign: sign,
-		client: &http.Client{Timeout: 8 * time.Second}}}
+		client: &http.Client{Timeout: accountHTTPTimeout}}}
 }
 
 func (k *KalshiAccount) Positions(ctx context.Context) (map[string]float64, error) {
@@ -179,7 +178,7 @@ type PolyUSAccount struct{ httpAccount }
 
 func NewPolyUSAccount(base string, sign func(string, string) (http.Header, error)) *PolyUSAccount {
 	return &PolyUSAccount{httpAccount{venue: core.VenuePoly, base: base, sign: sign,
-		client: &http.Client{Timeout: 8 * time.Second}, ua: true}}
+		client: &http.Client{Timeout: accountHTTPTimeout}, ua: true}}
 }
 
 func (p *PolyUSAccount) Positions(ctx context.Context) (map[string]float64, error) {

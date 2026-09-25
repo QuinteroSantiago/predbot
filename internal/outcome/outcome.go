@@ -98,7 +98,10 @@ func (s *Store) Count() int {
 	return len(s.seen)
 }
 
-var httpClient = &http.Client{Timeout: 15 * time.Second}
+// outcomeHTTPTimeout bounds one settled-outcome lookup.
+const outcomeHTTPTimeout = 15 * time.Second
+
+var httpClient = &http.Client{Timeout: outcomeHTTPTimeout}
 
 func get(ctx context.Context, url string) ([]byte, error) {
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)

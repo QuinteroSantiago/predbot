@@ -587,7 +587,7 @@ func (t *Trader) place(ctx context.Context, canonical string, i core.Intent) (co
 		return 0, fmt.Errorf("live: no executor for venue %q", i.Venue)
 	}
 	o := core.Order{Intent: i, ClientID: uuid.NewString()}
-	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, orderTimeout)
 	defer cancel()
 
 	// Register the client id BEFORE placing, so a fill that arrives while

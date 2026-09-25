@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"sync"
-	"time"
 
 	"predbot/internal/core"
 )
@@ -37,7 +36,7 @@ type PolyUSExecutor struct {
 }
 
 func NewPolyUSExecutor(base string, sign func(method, path string) (http.Header, error)) *PolyUSExecutor {
-	return &PolyUSExecutor{base: base, sign: sign, client: &http.Client{Timeout: 5 * time.Second},
+	return &PolyUSExecutor{base: base, sign: sign, client: &http.Client{Timeout: orderHTTPTimeout},
 		markets: map[string]string{}}
 }
 

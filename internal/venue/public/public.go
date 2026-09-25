@@ -33,7 +33,10 @@ func emit(ctx context.Context, out chan<- core.BookSnapshot, s core.BookSnapshot
 }
 
 // httpClient is shared; short timeout because these are small book snapshots.
-var httpClient = &http.Client{Timeout: 8 * time.Second}
+// pollHTTPTimeout bounds one public-REST book poll.
+const pollHTTPTimeout = 8 * time.Second
+
+var httpClient = &http.Client{Timeout: pollHTTPTimeout}
 
 func getJSON(ctx context.Context, url string) ([]byte, int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)

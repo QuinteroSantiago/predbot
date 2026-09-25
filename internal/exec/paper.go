@@ -49,6 +49,11 @@ type PaperTrader struct {
 // ("filled", "partial", or "faded"), so a caller can bump an execution-outcome
 // metric without the exec package depending on the obs package. Not safe to call
 // concurrently with Run; set it once at construction.
+
+// paperSettleTick is how often the paper trader settles fills whose simulated
+// latency has elapsed.
+const paperSettleTick = 50 * time.Millisecond
+
 func (p *PaperTrader) OnOutcome(f func(outcome string)) { p.onOutcome = f }
 
 // outcome invokes the callback if one is registered.
@@ -89,7 +94,7 @@ func (p *PaperTrader) Submit(canonical string, legs []core.Intent) {
 
 // Run settles due fills every 50ms until ctx is done.
 func (p *PaperTrader) Run(ctx context.Context) {
-	t := time.NewTicker(50 * time.Millisecond)
+	t := time.NewTicker(paperSettleTick)
 	defer t.Stop()
 	for {
 		select {

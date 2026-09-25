@@ -52,6 +52,15 @@ import (
 // without a stamp there is nothing tying a trade to the code that placed it.
 var build = "dev"
 
+// Startup and dashboard timings. Trading tuning is config.yaml's live: block.
+const (
+	startupBalanceTimeout   = 30 * time.Second // read both venues' buying power
+	startupReconcileTimeout = 45 * time.Second // positions + open orders on both venues
+	orderGroupTimeout       = 15 * time.Second // create the Kalshi exchange-side backstop
+	positionsGaugeEvery     = 15 * time.Second // refresh the dashboard's per-venue positions
+	positionsGaugeTimeout   = 15 * time.Second // one venue's positions read for that gauge
+)
+
 func main() {
 	cfgPath := flag.String("config", "config/config.yaml", "path to config.yaml")
 	mktPath := flag.String("markets", "config/markets.yaml", "path to markets.yaml")
@@ -148,7 +157,7 @@ func main() {
 	// bot would run forever and never trade.
 	kAcctBP := live.NewKalshiAccount(cfg.Kalshi.APIURL, kSign)
 	pAcctBP := live.NewPolyUSAccount(cfg.PolymarketUS.APIURL, pSign)
-	bpCtx, bpCancel := context.WithTimeout(rootCtx, 30*time.Second)
+	bpCtx, bpCancel := context.WithTimeout(rootCtx, startupBalanceTimeout)
 	kBal, kErr := kAcctBP.BalanceUSD(bpCtx)
 	pBal, pErr := pAcctBP.BalanceUSD(bpCtx)
 	bpCancel()
@@ -205,7 +214,7 @@ func main() {
 	}
 	sup.AdoptExisting = adopt
 
-	recCtx, recCancel := context.WithTimeout(rootCtx, 45*time.Second)
+	recCtx, recCancel := context.WithTimeout(rootCtx, startupReconcileTimeout)
 	if err := sup.Reconcile(recCtx); err != nil {
 		recCancel()
 		slog.Error("RECONCILIATION FAILED — refusing to trade", "err", err)
@@ -220,7 +229,7 @@ func main() {
 		// Exchange-side backstop (design §8): a Kalshi order group whose rolling
 		// 15-second contract limit cuts us off even if THIS process misbehaves.
 		// Sized to the unhedged cap. Refuse to arm without it.
-		ogCtx, ogCancel := context.WithTimeout(rootCtx, 15*time.Second)
+		ogCtx, ogCancel := context.WithTimeout(rootCtx, orderGroupTimeout)
 		gid, err := kx.CreateOrderGroup(ogCtx, int64(*maxUnhedgedContracts))
 		ogCancel()
 		if err != nil {
@@ -371,7 +380,7 @@ func main() {
 		go func() {
 			poll := func() {
 				for venueName, a := range accts {
-					cctx, cancel := context.WithTimeout(rootCtx, 15*time.Second)
+					cctx, cancel := context.WithTimeout(rootCtx, positionsGaugeTimeout)
 					pos, err := a.Positions(cctx)
 					cancel()
 					if errors.Is(err, live.ErrVenueUnavailable) {
@@ -387,7 +396,7 @@ func main() {
 				}
 			}
 			poll()
-			t := time.NewTicker(15 * time.Second)
+			t := time.NewTicker(positionsGaugeEvery)
 			defer t.Stop()
 			for {
 				select {

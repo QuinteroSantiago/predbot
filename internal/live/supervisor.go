@@ -148,7 +148,7 @@ func (s *Supervisor) NoteError() {
 
 // Run checks the kill conditions on a loop until ctx is done.
 func (s *Supervisor) Run(ctx context.Context, pnl func() float64, unhedged func() bool) {
-	t := time.NewTicker(5 * time.Second)
+	t := time.NewTicker(killCheckEvery)
 	defer t.Stop()
 	for {
 		select {

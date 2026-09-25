@@ -23,8 +23,12 @@ type MLB struct {
 }
 
 // NewMLB returns a client with a 15s timeout.
+
+// statsAPITimeout bounds one MLB Stats API request.
+const statsAPITimeout = 15 * time.Second
+
 func NewMLB() *MLB {
-	return &MLB{HTTP: &http.Client{Timeout: 15 * time.Second}, Base: "https://statsapi.mlb.com"}
+	return &MLB{HTTP: &http.Client{Timeout: statsAPITimeout}, Base: "https://statsapi.mlb.com"}
 }
 
 func (c *MLB) get(ctx context.Context, path string, q url.Values, v any) error {

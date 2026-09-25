@@ -155,13 +155,12 @@ func (p *PolyUSTrades) Run(ctx context.Context, markets []string, h TradeHandler
 		backoff.Reset()
 		// EXPLICIT slug list: an empty list subscribes to NOTHING on this venue
 		// (learned the hard way — see the private fill stream).
-		for i := 0; i < len(markets); i += 100 {
-			end := min(i+100, len(markets))
+		for n, chunk := range ChunkSlugs(markets) {
 			sub, _ := json.Marshal(map[string]any{
 				"subscribe": map[string]any{
-					"requestId":        fmt.Sprintf("trade-sub-%d", i/100),
+					"requestId":        fmt.Sprintf("trade-sub-%d", n),
 					"subscriptionType": "SUBSCRIPTION_TYPE_TRADE",
-					"marketSlugs":      markets[i:end],
+					"marketSlugs":      chunk,
 				},
 			})
 			_ = conn.Write(ctx, sub)

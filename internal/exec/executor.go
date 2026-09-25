@@ -2,6 +2,7 @@ package exec
 
 import (
 	"context"
+	"time"
 
 	"predbot/internal/core"
 )
@@ -10,6 +11,10 @@ import (
 // SimExecutor is NOT an Executor — it never talks to a venue. A real Executor is
 // used only from Phase 3b (Kalshi demo, fake money) onward, always behind the
 // risk gate (internal/risk).
+// orderHTTPTimeout bounds one order-entry request to a venue. A timeout means
+// "unknown", not "failed": the order may have landed (see Place).
+const orderHTTPTimeout = 5 * time.Second
+
 type Executor interface {
 	// Name identifies the venue (and environment, e.g. "kalshi-demo").
 	Name() string

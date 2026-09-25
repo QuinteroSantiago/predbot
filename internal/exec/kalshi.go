@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"time"
 
 	"predbot/internal/core"
 )
@@ -39,7 +38,7 @@ type KalshiExecutor struct {
 // https://api.elections.kalshi.com/trade-api/v2. groupID may be "".
 func NewKalshiExecutor(base string, sign func(method, path string) (http.Header, error), groupID string) *KalshiExecutor {
 	return &KalshiExecutor{base: base, sign: sign, groupID: groupID,
-		client: &http.Client{Timeout: 5 * time.Second}}
+		client: &http.Client{Timeout: orderHTTPTimeout}}
 }
 
 func (k *KalshiExecutor) Name() string { return core.VenueKalshi }

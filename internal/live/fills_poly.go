@@ -177,14 +177,13 @@ func (p *PolyUSFills) Run(ctx context.Context, h FillHandler) {
 				return 0
 			}
 			p.everCovered.Store(true)
-			// Chunk to stay within the documented 100-market subscription limit.
-			for i := 0; i < len(slugs); i += 100 {
-				end := min(i+100, len(slugs))
+			// One subscription per PolyMarketsPerSubscription slugs.
+			for n, chunk := range venue.ChunkSlugs(slugs) {
 				sub, _ := json.Marshal(map[string]any{
 					"subscribe": map[string]any{
-						"requestId":        fmt.Sprintf("order-sub-%d", i/100),
+						"requestId":        fmt.Sprintf("order-sub-%d", n),
 						"subscriptionType": "SUBSCRIPTION_TYPE_ORDER",
-						"marketSlugs":      slugs[i:end], // EXPLICIT — empty means NOTHING
+						"marketSlugs":      chunk, // EXPLICIT — empty means NOTHING
 					},
 				})
 				_ = conn.Write(ctx, sub)
@@ -215,7 +214,7 @@ func (p *PolyUSFills) Run(ctx context.Context, h FillHandler) {
 		// Re-subscribe periodically so newly discovered markets are covered.
 		reSub, stopReSub := context.WithCancel(ctx)
 		go func() {
-			t := time.NewTicker(2 * time.Minute)
+			t := time.NewTicker(polyResubscribeEvery)
 			defer t.Stop()
 			for {
 				select {
