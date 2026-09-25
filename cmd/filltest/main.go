@@ -43,6 +43,7 @@ import (
 	"net/http"
 	"os"
 	osexec "os/exec"
+	"predbot/internal/config"
 	"strings"
 	"sync"
 	"time"
@@ -84,7 +85,7 @@ func main() {
 	if *endpoint == "markets" {
 		path = "/v1/ws/markets"
 	}
-	wsURL := "wss://api.polymarket.us" + path
+	wsURL := config.PolyWS + path
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2**wait+*resubAfter+2*time.Minute)
 	defer cancel()
@@ -218,13 +219,13 @@ func main() {
 		if *side == "buy" {
 			s = core.BuyYes
 		}
-		acct := live.NewPolyUSAccount("https://api.polymarket.us",
+		acct := live.NewPolyUSAccount(config.PolyAPI,
 			func(m, p string) (http.Header, error) { return polymarketus.AuthHeaders(m, p) })
 		before, _ := acct.Positions(ctx)
 		fmt.Printf("=== REST position BEFORE: %+v\n", before)
 
 		time.Sleep(2 * time.Second) // let the subscription settle
-		ex := exec.NewPolyUSExecutor("https://api.polymarket.us",
+		ex := exec.NewPolyUSExecutor(config.PolyAPI,
 			func(m, p string) (http.Header, error) { return polymarketus.AuthHeaders(m, p) })
 		firstExecAfter := func(t0 time.Time) time.Duration {
 			execMu.Lock()

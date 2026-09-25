@@ -14,6 +14,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"predbot/internal/config"
 	"sort"
 
 	"predbot/internal/live"
@@ -68,14 +69,14 @@ func main() {
 		fmt.Println("poly auth:", err)
 		os.Exit(1)
 	}
-	raw("POLY /v1/portfolio/positions", "https://api.polymarket.us/v1/portfolio/positions", ph)
-	parsed("POLY", live.NewPolyUSAccount("https://api.polymarket.us", pSign))
+	raw("POLY /v1/portfolio/positions", config.PolyAPI+"/v1/portfolio/positions", ph)
+	parsed("POLY", live.NewPolyUSAccount(config.PolyAPI, pSign))
 
 	kh, err := kSign("GET", "/portfolio/positions")
 	if err != nil {
 		fmt.Println("kalshi auth:", err)
 		os.Exit(1)
 	}
-	raw("KALSHI /portfolio/positions", "https://api.elections.kalshi.com/trade-api/v2/portfolio/positions", kh)
-	parsed("KALSHI", live.NewKalshiAccount("https://api.elections.kalshi.com/trade-api/v2", kSign))
+	raw("KALSHI /portfolio/positions", config.KalshiAPI+"/portfolio/positions", kh)
+	parsed("KALSHI", live.NewKalshiAccount(config.KalshiAPI, kSign))
 }

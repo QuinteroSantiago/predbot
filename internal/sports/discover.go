@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"predbot/internal/config"
 	"regexp"
 	"sort"
 	"strings"
@@ -44,8 +45,8 @@ type Client struct {
 func New() *Client {
 	return &Client{
 		HTTP:       &http.Client{Timeout: 15 * time.Second},
-		KalshiBase: "https://api.elections.kalshi.com/trade-api/v2",
-		PolyBase:   "https://gateway.polymarket.us",
+		KalshiBase: config.KalshiAPI,
+		PolyBase:   config.PolyGateway,
 	}
 }
 

@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"predbot/internal/config"
 	"time"
 
 	"predbot/internal/core"
@@ -47,7 +48,7 @@ func main() {
 		defer cancel()
 		var err error
 		if *venueName == core.VenueKalshi {
-			err = exec.NewKalshiExecutor("https://api.elections.kalshi.com/trade-api/v2",
+			err = exec.NewKalshiExecutor(config.KalshiAPI,
 				func(m, p string) (http.Header, error) { return kalshi.AuthHeaders(m, "/trade-api/v2"+p) }, "").Cancel(ctx, *cancelID)
 		} else {
 			// Polymarket's cancel REQUIRES the market slug in the body; an empty
@@ -56,7 +57,7 @@ func main() {
 				fmt.Fprintln(os.Stderr, "-market is required to cancel a polymarketus order")
 				os.Exit(2)
 			}
-			err = exec.NewPolyUSExecutor("https://api.polymarket.us",
+			err = exec.NewPolyUSExecutor(config.PolyAPI,
 				func(m, p string) (http.Header, error) { return polymarketus.AuthHeaders(m, p) }).
 				CancelInMarket(ctx, *cancelID, *market)
 		}
@@ -99,7 +100,7 @@ func main() {
 
 	switch *venueName {
 	case core.VenuePoly:
-		ex := exec.NewPolyUSExecutor("https://api.polymarket.us",
+		ex := exec.NewPolyUSExecutor(config.PolyAPI,
 			func(m, p string) (http.Header, error) { return polymarketus.AuthHeaders(m, p) })
 		if *mode == "preview" {
 			raw, err := ex.Preview(ctx, o)
@@ -130,7 +131,7 @@ func main() {
 		fmt.Println("cancelled cleanly")
 
 	case core.VenueKalshi:
-		ex := exec.NewKalshiExecutor("https://api.elections.kalshi.com/trade-api/v2",
+		ex := exec.NewKalshiExecutor(config.KalshiAPI,
 			func(m, p string) (http.Header, error) { return kalshi.AuthHeaders(m, "/trade-api/v2"+p) }, "")
 		if *mode == "preview" {
 			fmt.Println("kalshi has no preview endpoint — use -mode=place with a far-from-market price")

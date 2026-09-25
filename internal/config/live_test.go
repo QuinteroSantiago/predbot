@@ -47,6 +47,9 @@ func TestOldConfigLoadsWithLiveDefaults(t *testing.T) {
 	if c.Live != DefaultLive() {
 		t.Errorf("live = %+v; want defaults %+v", c.Live, DefaultLive())
 	}
+	if c.Kalshi.APIURL != KalshiAPI || c.PolymarketUS.APIURL != PolyAPI {
+		t.Errorf("api urls = %q / %q; want the KalshiAPI / PolyAPI defaults", c.Kalshi.APIURL, c.PolymarketUS.APIURL)
+	}
 }
 
 func TestLiveOverridesAndDurations(t *testing.T) {

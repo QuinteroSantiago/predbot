@@ -20,13 +20,14 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"predbot/internal/config"
 	"time"
 
 	"predbot/internal/exec"
 	"predbot/internal/venue/polymarketus"
 )
 
-const base = "https://api.polymarket.us"
+const base = config.PolyAPI
 
 type openOrder struct {
 	ID         string          `json:"id"`

@@ -82,8 +82,8 @@ func main() {
 		polySlug = scanRecordedPolySlugs(*dataDir, splitCSV(*withSports))
 	}
 
-	const kBase = "https://api.elections.kalshi.com/trade-api/v2"
-	const pBase = "https://gateway.polymarket.us"
+	const kBase = config.KalshiAPI
+	const pBase = config.PolyGateway
 	settled := 0
 	for _, t := range targets {
 		if t.kTicker != "" && !store.Has(core.VenueKalshi, t.kTicker) {

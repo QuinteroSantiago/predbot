@@ -183,8 +183,8 @@ func main() {
 		// Guarded: during venue maintenance (5xx) the poll drops to one probe per
 		// 15 min instead of warning every minute, keeping the last-known values.
 		accts := []live.AccountClient{
-			live.Guard(live.NewKalshiAccount("https://api.elections.kalshi.com/trade-api/v2", kSign), live.NewOutage(core.VenueKalshi)),
-			live.Guard(live.NewPolyUSAccount("https://api.polymarket.us", pSign), live.NewOutage(core.VenuePoly)),
+			live.Guard(live.NewKalshiAccount(cfg.Kalshi.APIURL, kSign), live.NewOutage(core.VenueKalshi)),
+			live.Guard(live.NewPolyUSAccount(cfg.PolymarketUS.APIURL, pSign), live.NewOutage(core.VenuePoly)),
 		}
 		var balMu sync.Mutex
 		balances := map[string]float64{}

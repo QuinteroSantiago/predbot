@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"predbot/internal/config"
 	"time"
 
 	"predbot/internal/live"
@@ -29,9 +30,9 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 
-	kAcct := live.NewKalshiAccount("https://api.elections.kalshi.com/trade-api/v2",
+	kAcct := live.NewKalshiAccount(config.KalshiAPI,
 		func(m, p string) (http.Header, error) { return kalshi.AuthHeaders(m, "/trade-api/v2"+p) })
-	pAcct := live.NewPolyUSAccount("https://api.polymarket.us",
+	pAcct := live.NewPolyUSAccount(config.PolyAPI,
 		func(m, p string) (http.Header, error) { return polymarketus.AuthHeaders(m, p) })
 
 	eng := risk.New(risk.Config{}, nil, "")

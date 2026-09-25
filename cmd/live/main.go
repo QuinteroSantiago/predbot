@@ -147,8 +147,8 @@ func main() {
 	// Read REAL buying power from both venues before constructing the engine.
 	// Starting at zero would make every order fail the buying-power check — the
 	// bot would run forever and never trade.
-	kAcctBP := live.NewKalshiAccount("https://api.elections.kalshi.com/trade-api/v2", kSign)
-	pAcctBP := live.NewPolyUSAccount("https://api.polymarket.us", pSign)
+	kAcctBP := live.NewKalshiAccount(cfg.Kalshi.APIURL, kSign)
+	pAcctBP := live.NewPolyUSAccount(cfg.PolymarketUS.APIURL, pSign)
 	bpCtx, bpCancel := context.WithTimeout(rootCtx, 30*time.Second)
 	kBal, kErr := kAcctBP.BalanceUSD(bpCtx)
 	pBal, pErr := pAcctBP.BalanceUSD(bpCtx)
@@ -181,8 +181,8 @@ func main() {
 	}
 
 	// --- startup reconciliation (design §8) ---------------------------------
-	kAcct := live.NewKalshiAccount("https://api.elections.kalshi.com/trade-api/v2", kSign)
-	pAcct := live.NewPolyUSAccount("https://api.polymarket.us", pSign)
+	kAcct := live.NewKalshiAccount(cfg.Kalshi.APIURL, kSign)
+	pAcct := live.NewPolyUSAccount(cfg.PolymarketUS.APIURL, pSign)
 	sup := live.NewSupervisor([]live.AccountClient{kAcct, pAcct}, engine, nil)
 	sup.Tune(cfg.Live)
 	sup.PnLFloorUSD = *pnlFloor
@@ -217,7 +217,7 @@ func main() {
 	// --- executors ----------------------------------------------------------
 	var kEx, pEx exec.Executor = exec.NopExecutor{}, exec.NopExecutor{}
 	if !*dryRun {
-		kx := exec.NewKalshiExecutor("https://api.elections.kalshi.com/trade-api/v2", kSign, "")
+		kx := exec.NewKalshiExecutor(cfg.Kalshi.APIURL, kSign, "")
 		// Exchange-side backstop (design §8): a Kalshi order group whose rolling
 		// 15-second contract limit cuts us off even if THIS process misbehaves.
 		// Sized to the unhedged cap. Refuse to arm without it.
@@ -232,7 +232,7 @@ func main() {
 		slog.Info("exchange-side backstop armed", "order_group_id", gid,
 			"contracts_limit_per_15s", int64(*maxUnhedgedContracts))
 		kEx = kx
-		pEx = exec.NewPolyUSExecutor("https://api.polymarket.us", pSign)
+		pEx = exec.NewPolyUSExecutor(cfg.PolymarketUS.APIURL, pSign)
 		slog.Warn("LIVE MODE ARMED — real orders will be placed",
 			"build", build,
 			"max_order_contracts", *maxOrderContracts,

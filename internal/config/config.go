@@ -14,6 +14,17 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// Venue API bases: the defaults for config.yaml's api_url keys, and what the
+// operator tools (which load no config) use directly. Kalshi serves trading,
+// account and public market data from one base; Polymarket US splits the
+// authenticated API from the public gateway.
+const (
+	KalshiAPI   = "https://api.elections.kalshi.com/trade-api/v2"
+	PolyAPI     = "https://api.polymarket.us"     // authenticated trading + account
+	PolyWS      = "wss://api.polymarket.us"       // private and markets WebSockets
+	PolyGateway = "https://gateway.polymarket.us" // public market and sports data
+)
+
 // Config is config.yaml.
 type Config struct {
 	DataDir string `yaml:"data_dir"`
@@ -23,10 +34,12 @@ type Config struct {
 		WSURL   string `yaml:"ws_url"`
 		Path    string `yaml:"ws_path"`  // path used for request signing
 		RESTURL string `yaml:"rest_url"` // public REST base (no auth)
+		APIURL  string `yaml:"api_url"`  // authenticated trading/account base, default KalshiAPI
 	} `yaml:"kalshi"`
 	PolymarketUS struct {
 		WSURL   string `yaml:"ws_url"`
 		RESTURL string `yaml:"rest_url"` // public gateway base (no auth)
+		APIURL  string `yaml:"api_url"`  // authenticated trading/account base, default PolyAPI
 	} `yaml:"polymarketus"`
 
 	// Strategy is shared by the live trader, the recorder's paper trader and
@@ -245,6 +258,12 @@ func Load(path string) (*Config, error) {
 	}
 	if c.PollIntervalMS <= 0 {
 		c.PollIntervalMS = 3000
+	}
+	if c.Kalshi.APIURL == "" {
+		c.Kalshi.APIURL = KalshiAPI
+	}
+	if c.PolymarketUS.APIURL == "" {
+		c.PolymarketUS.APIURL = PolyAPI
 	}
 	if err := c.resolveStrategy(); err != nil {
 		return nil, err

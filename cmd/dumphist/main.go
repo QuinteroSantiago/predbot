@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"predbot/internal/config"
 
 	"predbot/internal/venue/kalshi"
 	"predbot/internal/venue/polymarketus"
@@ -37,7 +38,7 @@ func kGET(path, query string) {
 		fmt.Println("kalshi auth:", err)
 		return
 	}
-	raw("KALSHI "+path, "https://api.elections.kalshi.com/trade-api/v2"+path+query, h)
+	raw("KALSHI "+path, config.KalshiAPI+path+query, h)
 }
 
 func pGET(path, query string) {
@@ -46,7 +47,7 @@ func pGET(path, query string) {
 		fmt.Println("poly auth:", err)
 		return
 	}
-	raw("POLY "+path, "https://api.polymarket.us"+path+query, h)
+	raw("POLY "+path, config.PolyAPI+path+query, h)
 }
 
 func main() {
