@@ -61,6 +61,14 @@ const (
 	positionsGaugeTimeout   = 15 * time.Second // one venue's positions read for that gauge
 )
 
+// kalshiShards are the Kalshi exchange shards the sports universe trades on:
+// 0 (NFL, NHL, college football, ...) and 3 (baseball since 2026-08-24,
+// basketball since 2026-09-10). Each gets its own order group, because a group
+// only covers orders on its own shard. A ticker discovered on any other shard
+// is refused at placement (exec.KalshiExecutor.groupFor) rather than traded
+// without the backstop.
+var kalshiShards = []int{0, 3}
+
 func main() {
 	cfgPath := flag.String("config", "config/config.yaml", "path to config.yaml")
 	mktPath := flag.String("markets", "config/markets.yaml", "path to markets.yaml")
@@ -167,6 +175,20 @@ func main() {
 		os.Exit(1)
 	}
 	slog.Info("venue buying power", "kalshi_usd", kBal, "polymarketus_usd", pBal)
+	// The engine budgets Kalshi as one pot, but Kalshi funds are per shard: an
+	// empty shard means its orders are rejected. Surface it at arm time.
+	shardCtx, shardCancel := context.WithTimeout(rootCtx, startupBalanceTimeout)
+	if byShard, err := kAcctBP.BalanceByShard(shardCtx); err != nil {
+		slog.Warn("could not read Kalshi per-shard balance", "err", err)
+	} else {
+		for _, sh := range kalshiShards {
+			if byShard[sh] <= 0 {
+				slog.Warn("Kalshi shard has no funds — its markets will be rejected", "exchange_index", sh)
+			}
+		}
+		slog.Info("kalshi balance by shard", "usd", byShard)
+	}
+	shardCancel()
 	if kBal <= 0 || pBal <= 0 {
 		slog.Error("a venue has no buying power — a two-leg arb needs funds on BOTH",
 			"kalshi_usd", kBal, "polymarketus_usd", pBal)
@@ -224,21 +246,28 @@ func main() {
 
 	// --- executors ----------------------------------------------------------
 	var kEx, pEx exec.Executor = exec.NopExecutor{}, exec.NopExecutor{}
+	var kalshiEx *exec.KalshiExecutor // nil in dry-run; fed ticker shards by discovery
 	if !*dryRun {
 		kx := exec.NewKalshiExecutor(cfg.Kalshi.APIURL, kSign, "")
 		// Exchange-side backstop (design §8): a Kalshi order group whose rolling
 		// 15-second contract limit cuts us off even if THIS process misbehaves.
-		// Sized to the unhedged cap. Refuse to arm without it.
-		ogCtx, ogCancel := context.WithTimeout(rootCtx, orderGroupTimeout)
-		gid, err := kx.CreateOrderGroup(ogCtx, int64(*maxUnhedgedContracts))
-		ogCancel()
-		if err != nil {
-			slog.Error("could not create Kalshi order group — refusing to arm without the exchange-side backstop", "err", err)
-			os.Exit(1)
+		// Sized to the unhedged cap, one per shard. Refuse to arm without them.
+		groups := make(map[int]string, len(kalshiShards))
+		for _, sh := range kalshiShards {
+			ogCtx, ogCancel := context.WithTimeout(rootCtx, orderGroupTimeout)
+			gid, err := kx.CreateOrderGroup(ogCtx, int64(*maxUnhedgedContracts), sh)
+			ogCancel()
+			if err != nil {
+				slog.Error("could not create Kalshi order group — refusing to arm without the exchange-side backstop",
+					"exchange_index", sh, "err", err)
+				os.Exit(1)
+			}
+			groups[sh] = gid
+			slog.Info("exchange-side backstop armed", "exchange_index", sh, "order_group_id", gid,
+				"contracts_limit_per_15s", int64(*maxUnhedgedContracts))
 		}
-		kx.SetOrderGroup(gid)
-		slog.Info("exchange-side backstop armed", "order_group_id", gid,
-			"contracts_limit_per_15s", int64(*maxUnhedgedContracts))
+		kx.SetOrderGroups(groups)
+		kalshiEx = kx
 		kEx = kx
 		pEx = exec.NewPolyUSExecutor(cfg.PolymarketUS.APIURL, pSign)
 		slog.Warn("LIVE MODE ARMED — real orders will be placed",
@@ -476,6 +505,9 @@ func main() {
 		}()
 		sportsSup = &sports.Supervisor{Leagues: leagues, KDial: kDial, PDial: pDial,
 			Rec: venue.NopRecorder(), Met: met, BM: bm, Out: sportsSnaps}
+		if kalshiEx != nil {
+			sportsSup.OnKalshiShards = kalshiEx.SetShards
+		}
 		go sportsSup.Run(rootCtx)
 		slog.Info("sports trading enabled", "leagues", leagues)
 	}

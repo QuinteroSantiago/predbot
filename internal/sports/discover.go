@@ -34,6 +34,7 @@ type venueGame struct {
 	outcomes map[string]string
 	opp      map[string]string
 	start    time.Time
+	shards   map[string]int // Kalshi only: market ticker -> exchange_index
 }
 
 // Client discovers games from the venues' public APIs.
@@ -94,8 +95,9 @@ func (c *Client) DiscoverKalshi(ctx context.Context, league string) ([]venueGame
 		Events []struct {
 			EventTicker string `json:"event_ticker"`
 			Markets     []struct {
-				Ticker      string `json:"ticker"`
-				YesSubTitle string `json:"yes_sub_title"`
+				Ticker        string `json:"ticker"`
+				YesSubTitle   string `json:"yes_sub_title"`
+				ExchangeIndex int    `json:"exchange_index"` // shard; see exec/kalshi.go
 			} `json:"markets"`
 		} `json:"events"`
 	}
@@ -108,12 +110,14 @@ func (c *Client) DiscoverKalshi(ctx context.Context, league string) ([]venueGame
 		if date == "" {
 			continue
 		}
-		g := venueGame{league: league, date: date, outcomes: map[string]string{}, opp: map[string]string{}}
+		g := venueGame{league: league, date: date, outcomes: map[string]string{}, opp: map[string]string{},
+			shards: map[string]int{}}
 		for _, m := range e.Markets {
 			team := kalshiTeam(league, m.YesSubTitle, m.Ticker)
 			if team != "" {
 				g.outcomes[team] = m.Ticker
 				g.opp[team] = kalshiOpponent(league, series, m.Ticker)
+				g.shards[m.Ticker] = m.ExchangeIndex
 			}
 		}
 		if len(g.outcomes) > 0 {

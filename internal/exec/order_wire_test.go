@@ -102,3 +102,22 @@ func TestPolyRestIsPostOnly(t *testing.T) {
 		t.Error("IOC take must not be post-only")
 	}
 }
+
+// An order group only covers its own Kalshi shard; baseball on shard 3 with a
+// shard-0 group was rejected order_group_not_found (2026-08-31..09-26).
+func TestKalshiGroupPerShard(t *testing.T) {
+	k := NewKalshiExecutor("https://x", nil, "")
+	if g, err := k.groupFor("ANY"); err != nil || g != "" {
+		t.Fatalf("no groups set: got %q, %v; want no group, no error", g, err)
+	}
+	k.SetOrderGroups(map[int]string{0: "g0", 3: "g3"})
+	k.SetShards(map[string]int{"KXMLBGAME-X": 3, "KXNHLGAME-Y": 0, "ODD": 2})
+	for ticker, want := range map[string]string{"KXMLBGAME-X": "g3", "KXNHLGAME-Y": "g0", "UNSEEN": "g0"} {
+		if g, err := k.groupFor(ticker); err != nil || g != want {
+			t.Errorf("%s: got %q, %v; want %q", ticker, g, err, want)
+		}
+	}
+	if _, err := k.groupFor("ODD"); err == nil {
+		t.Error("shard with no group: want an error, not an order without the backstop")
+	}
+}

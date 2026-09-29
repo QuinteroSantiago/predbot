@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"predbot/internal/core"
@@ -170,6 +171,35 @@ func (k *KalshiAccount) BalanceUSD(ctx context.Context) (float64, error) {
 		return 0, err
 	}
 	return float64(out.Balance) / 100, nil // Kalshi reports balance in cents (its wire unit, not ours)
+}
+
+// BalanceByShard returns available USD per Kalshi exchange shard. Kalshi
+// balances are local to a shard ("subaccount balances are local to a specific
+// exchange instance"), so a shard with no funds rejects its orders even when
+// BalanceUSD's total looks healthy.
+func (k *KalshiAccount) BalanceByShard(ctx context.Context) (map[int]float64, error) {
+	b, err := k.get(ctx, "/portfolio/balance")
+	if err != nil {
+		return nil, err
+	}
+	var out struct {
+		Breakdown []struct {
+			ExchangeIndex int    `json:"exchange_index"`
+			Balance       string `json:"balance"` // fixed-point dollars
+		} `json:"balance_breakdown"`
+	}
+	if err := json.Unmarshal(b, &out); err != nil {
+		return nil, err
+	}
+	res := make(map[int]float64, len(out.Breakdown))
+	for _, e := range out.Breakdown {
+		v, err := strconv.ParseFloat(e.Balance, 64)
+		if err != nil {
+			return nil, fmt.Errorf("kalshi: shard %d balance %q: %w", e.ExchangeIndex, e.Balance, err)
+		}
+		res[e.ExchangeIndex] = v
+	}
+	return res, nil
 }
 
 // --- Polymarket US ---

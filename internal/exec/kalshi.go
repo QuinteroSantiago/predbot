@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 
 	"predbot/internal/core"
 )
@@ -25,13 +26,24 @@ import (
 //   - client_order_id is the idempotency key (design §5, §11).
 //   - order_group_id ties orders to a group whose rolling 15s contract limit acts
 //     as an exchange-side kill backstop (design §8).
+//   - Kalshi is sharded (docs: getting_started/exchange_sharding): since
+//     2026-08-24 new baseball events live on exchange_index 3 (basketball since
+//     2026-09-10), most other sports on 0. Orders auto-route by ticker, but an
+//     order group lives on ONE shard and "order groups do not function across
+//     exchange instances": a shard-0 group on an MLB order is rejected 404
+//     order_group_not_found (every MLB lead from 2026-08-31 to 2026-09-26).
+//     So there is one group per shard, picked by the ticker's shard.
 //
 // Auth is the same RSA-PSS signing as the market-data WS: sign(method, path).
 type KalshiExecutor struct {
 	base    string
 	sign    func(method, path string) (http.Header, error)
 	client  *http.Client
-	groupID string // optional order group for the exchange-side backstop
+	groupID string // single order group, used when no per-shard groups are set
+
+	mu     sync.RWMutex
+	groups map[int]string // exchange shard -> order group id (the backstop)
+	shards map[string]int // market ticker -> exchange shard; absent = shard 0
 }
 
 // NewKalshiExecutor builds an executor. base is e.g.
@@ -83,15 +95,37 @@ func (k *KalshiExecutor) body(o core.Order) kalshiCreateOrderV2 {
 		Price:         o.Px.String(),  // Price.String() emits 4 decimals ("0.5600")
 		TimeInForce:   kalshiTIF(o.TIF),
 		SelfTradePrev: "taker_at_cross",
-		OrderGroupID:  k.groupID,
 	}
+}
+
+// groupFor returns the order group for ticker's exchange shard. With per-shard
+// groups set, a shard that has no group is an error: placing the order would
+// either be rejected by Kalshi or, worse, go through without the backstop.
+func (k *KalshiExecutor) groupFor(ticker string) (string, error) {
+	k.mu.RLock()
+	defer k.mu.RUnlock()
+	if len(k.groups) == 0 {
+		return k.groupID, nil
+	}
+	shard := k.shards[ticker]
+	id, ok := k.groups[shard]
+	if !ok {
+		return "", fmt.Errorf("kalshi: no order group on exchange shard %d for %s — refusing to place without the backstop", shard, ticker)
+	}
+	return id, nil
 }
 
 // Place submits an order. On timeout/5xx it returns an error and does NOT
 // resubmit — the caller must reconcile by client_order_id first (design §11).
 func (k *KalshiExecutor) Place(ctx context.Context, o core.Order) (string, error) {
 	const path = "/portfolio/events/orders"
-	body, err := json.Marshal(k.body(o))
+	b := k.body(o)
+	gid, err := k.groupFor(o.VenueID)
+	if err != nil {
+		return "", err
+	}
+	b.OrderGroupID = gid
+	body, err := json.Marshal(b)
 	if err != nil {
 		return "", err
 	}
@@ -161,10 +195,12 @@ func (k *KalshiExecutor) Cancel(ctx context.Context, venueOrderID string) error 
 // even when our own process is the problem.
 //
 // Verified against docs.kalshi.com/api-reference/order-groups/create-order-group
-// (2026-08-24): POST /portfolio/order_groups/create {contracts_limit:int>=1}.
-func (k *KalshiExecutor) CreateOrderGroup(ctx context.Context, contractsLimit int64) (string, error) {
+// (2026-08-24, exchange_index 2026-09-28): POST /portfolio/order_groups/create
+// {contracts_limit:int>=1, exchange_index:int (default 0)}. A group only covers
+// orders on its own shard.
+func (k *KalshiExecutor) CreateOrderGroup(ctx context.Context, contractsLimit int64, shard int) (string, error) {
 	const path = "/portfolio/order_groups/create"
-	body, _ := json.Marshal(map[string]any{"contracts_limit": contractsLimit})
+	body, _ := json.Marshal(map[string]any{"contracts_limit": contractsLimit, "exchange_index": shard})
 	hdr, err := k.sign(http.MethodPost, path)
 	if err != nil {
 		return "", err
@@ -196,5 +232,22 @@ func (k *KalshiExecutor) CreateOrderGroup(ctx context.Context, contractsLimit in
 	return out.ID, nil
 }
 
-// SetOrderGroup attaches subsequent orders to an order group.
-func (k *KalshiExecutor) SetOrderGroup(id string) { k.groupID = id }
+// SetOrderGroups attaches subsequent orders to the group for their shard.
+func (k *KalshiExecutor) SetOrderGroups(groups map[int]string) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	k.groups = groups
+}
+
+// SetShards records which exchange shard each ticker trades on (from market
+// discovery). Merged, so a refresh that drops a ticker keeps its last shard.
+func (k *KalshiExecutor) SetShards(shards map[string]int) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if k.shards == nil {
+		k.shards = make(map[string]int, len(shards))
+	}
+	for t, s := range shards {
+		k.shards[t] = s
+	}
+}

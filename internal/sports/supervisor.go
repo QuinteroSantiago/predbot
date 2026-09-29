@@ -32,6 +32,9 @@ type Supervisor struct {
 	BM      *book.Manager
 	Out     chan<- core.BookSnapshot
 	Refresh time.Duration // default 5m
+	// OnKalshiShards, if set, receives every discovered Kalshi ticker's exchange
+	// shard each refresh, before the ingesters (and so any trading) start.
+	OnKalshiShards func(map[string]int)
 
 	client *Client
 	log    *slog.Logger
@@ -115,6 +118,7 @@ func (s *Supervisor) Run(ctx context.Context) {
 
 	discover := func() {
 		var matches []Match
+		shards := map[string]int{}
 		for _, lg := range s.Leagues {
 			k, ek := s.client.DiscoverKalshi(ctx, lg)
 			p, ep := s.client.DiscoverPoly(ctx, lg)
@@ -123,6 +127,14 @@ func (s *Supervisor) Run(ctx context.Context) {
 				return
 			}
 			matches = append(matches, MatchGames(k, p)...)
+			for _, g := range k {
+				for t, sh := range g.shards {
+					shards[t] = sh
+				}
+			}
+		}
+		if s.OnKalshiShards != nil {
+			s.OnKalshiShards(shards)
 		}
 		starts := make(map[string]time.Time, len(matches))
 		for _, m := range matches {
