@@ -632,7 +632,12 @@ func main() {
 				}
 				if err := exec(rootCtx, canonical, legs); err != nil {
 					slog.Warn("pair failed", "canonical", canonical, "err", err)
-					sup.NoteError()
+					// Our own risk engine refusing for buying power is not a venue
+					// error: the loop retries every tick, so one unaffordable game
+					// tripped the error-storm kill in ~5s (2026-09-26).
+					if !errors.Is(err, risk.ErrBuyingPower) {
+						sup.NoteError()
+					}
 					continue
 				}
 				entered[canonical] = holdFrom(sportsSup, canonical)
