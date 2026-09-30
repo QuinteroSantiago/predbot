@@ -586,10 +586,8 @@ func main() {
 				if _, in := entered[canonical]; in {
 					continue // hold to resolution; never re-enter
 				}
-				// No new pairs once a game is past regulation (OT, shootout,
-				// extra innings) or over: a coin flip, where a gap is confusion
-				// and settlements are likeliest to disagree (2026-09-25, CGY@SEA).
-				if sportsSup != nil && sportsSup.PastRegulation(canonical) {
+				// Sports pairs open only before the game starts; see PreGame.
+				if sports.Live(canonical) && (sportsSup == nil || !sportsSup.PreGame(canonical, time.Now())) {
 					continue
 				}
 				books, ok := bm.Pair(canonical)

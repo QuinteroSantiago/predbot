@@ -46,14 +46,20 @@ type Supervisor struct {
 	StateRefresh time.Duration // default 20s
 }
 
-// PastRegulation reports whether a game has gone past regulation (overtime,
-// shootout, extra innings) or ended. 2026-09-25: a pair was opened on NHL
-// CGY@SEA mid-shootout — a coin flip where a cross-venue gap is confusion,
-// not mispricing, and the venues' settlements are most likely to disagree.
-func (s *Supervisor) PastRegulation(canonical string) bool {
+// PreGame reports whether a game has not started yet: its scheduled start is
+// known and still ahead, and Poly's feed doesn't show it live or ended. The
+// live trader opens sports pairs only pre-game. In play, a cross-venue gap is
+// one venue repricing a game event before the other — a latency race the bot
+// loses (2026-09-29, MTL@TOR: Poly's 0.36 ask was gone 70ms after Kalshi
+// moved) — and past regulation it's a coin flip where the venues' settlements
+// are likeliest to disagree (2026-09-25, CGY@SEA). An unknown start is not
+// pre-game.
+func (s *Supervisor) PreGame(canonical string, now time.Time) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.states[canonical].PastRegulation
+	start, ok := s.starts[canonical]
+	st := s.states[canonical]
+	return ok && now.Before(start) && !st.Live && !st.Ended
 }
 
 // pollStates keeps each listed game's live state current. A failed fetch keeps
