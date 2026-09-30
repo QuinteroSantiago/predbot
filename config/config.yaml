@@ -1,0 +1,19 @@
+# etfbot configuration. Anything left out takes the default in
+# internal/config/config.go.
+
+strategy:
+  # Stocks, bonds, gold, commodities, real estate.
+  universe: [SPY, QQQ, IWM, EFA, EEM, TLT, IEF, GLD, DBC, VNQ]
+  cash: BIL              # a slot that fails the trend check is held here
+  top_n: 3               # hold the 3 strongest
+  lookbacks: [63, 126, 252]   # momentum: average of 3-, 6- and 12-month returns
+  sma: 200               # trend check: price above its 200-day average
+
+rebalance:
+  min_trade_usd: 25      # skip smaller adjustments
+  cash_buffer: 0.005     # keep 0.5% in cash so buys fit after sells
+
+risk:
+  max_weight: 0.40       # no single fund above 40% (the cash fund is exempt)
+  max_order_usd: 5000    # no single order above $5,000
+  max_drawdown: 0.25     # engage the kill switch 25% below the high-water mark

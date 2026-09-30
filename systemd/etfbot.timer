@@ -1,0 +1,10 @@
+[Unit]
+Description=Run etfbot each weekday near the close; it trades only on month ends
+
+[Timer]
+OnCalendar=Mon..Fri 15:45 America/New_York
+# No catch-up after downtime: a run after the close must not happen.
+Persistent=false
+
+[Install]
+WantedBy=timers.target
