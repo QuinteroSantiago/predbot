@@ -21,7 +21,7 @@ import (
 	"time"
 
 	"predbot/internal/games"
-	"predbot/internal/journal"
+	"tradekit/journal"
 )
 
 func main() {

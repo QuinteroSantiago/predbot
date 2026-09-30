@@ -35,6 +35,7 @@ import (
 	"predbot/internal/venue/kalshi"
 	"predbot/internal/venue/polymarketus"
 	"predbot/internal/venue/public"
+	tkjournal "tradekit/journal"
 )
 
 func main() {
@@ -82,7 +83,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	keeper, err := journal.NewKeeper(cfg.DataDir)
+	keeper, err := tkjournal.NewKeeper(cfg.DataDir)
 	if err != nil {
 		slog.Error("keeper init failed", "err", err)
 		os.Exit(1)

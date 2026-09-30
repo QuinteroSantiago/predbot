@@ -7,10 +7,10 @@ package risk
 
 import (
 	"errors"
-	"os"
 	"sync"
 
 	"predbot/internal/core"
+	"tradekit/killswitch"
 )
 
 // Typed rejections (design §8). Every path to an order returns one of these or nil.
@@ -34,15 +34,13 @@ type Config struct {
 
 // Engine is safe for concurrent use.
 type Engine struct {
-	mu         sync.Mutex
-	cfg        Config
-	pos        map[string]core.Qty // canonical -> filled net YES contracts (signed)
-	inflight   map[string]core.Qty // canonical -> approved-but-unfilled, signed
-	bp         map[string]int64    // venue -> buying power, $0.0001
-	unhedged   map[string]core.Qty // pairID -> unhedged qty (abs)
-	killed     bool
-	killReason string
-	killFile   string // marker persisted so a restart stays killed (§8)
+	mu       sync.Mutex
+	cfg      Config
+	pos      map[string]core.Qty // canonical -> filled net YES contracts (signed)
+	inflight map[string]core.Qty // canonical -> approved-but-unfilled, signed
+	bp       map[string]int64    // venue -> buying power, $0.0001
+	unhedged map[string]core.Qty // pairID -> unhedged qty (abs)
+	kill     *killswitch.Switch  // persisted so a restart stays killed (§8)
 }
 
 // New builds an engine with starting per-venue buying power (in $0.0001 units).
@@ -50,18 +48,12 @@ type Engine struct {
 // the engine killed until a human removes it (design §8, §14).
 func New(cfg Config, startingBP map[string]int64, killFile string) *Engine {
 	e := &Engine{
-		cfg: cfg, killFile: killFile,
+		cfg: cfg, kill: killswitch.New(killFile),
 		pos: map[string]core.Qty{}, inflight: map[string]core.Qty{},
 		bp: map[string]int64{}, unhedged: map[string]core.Qty{},
 	}
 	for v, b := range startingBP {
 		e.bp[v] = b
-	}
-	if killFile != "" {
-		if _, err := os.Stat(killFile); err == nil {
-			e.killed = true
-			e.killReason = "KILLED marker present at startup — remove " + killFile + " to re-enable"
-		}
 	}
 	return e
 }
@@ -100,7 +92,7 @@ func (e *Engine) CheckAndReserve(canonical string, i core.Intent) error {
 	defer e.mu.Unlock()
 
 	switch {
-	case e.killed:
+	case e.kill.Killed():
 		return ErrKilled
 	case i.Qty <= 0 || i.Qty > e.cfg.MaxOrderQty:
 		return ErrOrderTooBig
@@ -180,25 +172,10 @@ func (e *Engine) totalUnhedgedLocked() core.Qty {
 }
 
 // Kill engages the kill switch and persists the marker (design §8). Idempotent.
-func (e *Engine) Kill(reason string) {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if e.killed {
-		return
-	}
-	e.killed = true
-	e.killReason = reason
-	if e.killFile != "" {
-		_ = os.WriteFile(e.killFile, []byte(reason+"\n"), 0o640)
-	}
-}
+func (e *Engine) Kill(reason string) { e.kill.Kill(reason) }
 
 // Killed reports whether the kill switch is engaged.
-func (e *Engine) Killed() bool {
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	return e.killed
-}
+func (e *Engine) Killed() bool { return e.kill.Killed() }
 
 // AdoptPosition seeds a filled net position this process did not open, so the
 // position cap accounts for exposure that already existed at startup.

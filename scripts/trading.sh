@@ -96,7 +96,15 @@ case "${1:-status}" in
       git status --short >&2
       exit 1
     fi
-    BUILD_ID="$(git rev-parse --short HEAD)"
+    # tradekit is built in from ../tradekit (go.mod replace), so it must be just
+    # as traceable: committed, and named in the build id.
+    TK=../tradekit
+    if [[ -n "$(git -C "$TK" status --porcelain)" ]]; then
+      echo "refusing: $TK has uncommitted changes. Commit them before deploying live:" >&2
+      git -C "$TK" status --short >&2
+      exit 1
+    fi
+    BUILD_ID="$(git rev-parse --short HEAD)+tradekit.$(git -C "$TK" rev-parse --short HEAD)"
     echo "Build $BUILD_ID"
 
     echo "Running tests…"

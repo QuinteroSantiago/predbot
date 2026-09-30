@@ -40,12 +40,13 @@ import (
 	"predbot/internal/venue"
 	"predbot/internal/venue/kalshi"
 	"predbot/internal/venue/polymarketus"
+	"tradekit/killswitch"
 )
 
 // build identifies the source state this binary was compiled from. Set at link
 // time by scripts/trading.sh deploy-live via
 //
-//	-ldflags "-X main.build=<short-sha>"
+//	-ldflags "-X main.build=<short-sha>+tradekit.<short-sha>"
 //
 // It defaults to "dev" for a hand-built binary. This exists so a journal line
 // can name its own source: `start` runs whatever is already on the host, so
@@ -223,14 +224,13 @@ func main() {
 	// that a human has just looked at — it must never become a standing setting,
 	// which is exactly what carrying -adopt-positions in the unit would make it.
 	adopt := *adoptPositions
-	if _, err := os.Stat(*adoptFile); err == nil {
+	if ok, err := killswitch.ConsumeMarker(*adoptFile); err != nil {
+		// If it cannot be consumed it would silently adopt on every restart.
+		slog.Error("adoption marker could not be removed — refusing to adopt on a permission it cannot give back",
+			"file", *adoptFile, "err", err)
+		os.Exit(1)
+	} else if ok {
 		adopt = true
-		if err := os.Remove(*adoptFile); err != nil {
-			// If it cannot be consumed it would silently adopt on every restart.
-			slog.Error("adoption marker could not be removed — refusing to adopt on a permission it cannot give back",
-				"file", *adoptFile, "err", err)
-			os.Exit(1)
-		}
 		slog.Warn("one-shot adoption marker consumed — this start may adopt; the next may not",
 			"file", *adoptFile)
 	}
