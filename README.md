@@ -117,8 +117,9 @@ Under `data_dir` (`/var/lib/predbot/data` on the VM):
 - `trades/<venue>-trades-<YYYY-MM-DDTHH>.jsonl.gz` holds trade prints. These are
   the only way to measure adverse selection, because a book can't tell a trade
   from a cancel.
-- `keep/<YYYY-MM-DDTHH>.keep` pins an hour (±1h) against pruning when any edge
-  is at or above `-keep-edge-cents` (default 2¢).
+- `keep/<YYYY-MM-DDTHH>.keep` marks an hour (±1h) where any edge was at or
+  above `-keep-edge-cents` (default 2¢). VM pruning ignores it; the Pi backup
+  keeps every hour forever.
 - `paper-fills.jsonl` is the paper trader's fills. `outcomes.jsonl` holds
   settlements.
 
