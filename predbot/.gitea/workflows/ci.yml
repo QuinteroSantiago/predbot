@@ -1,0 +1,49 @@
+name: ci
+on:
+  push:
+    branches: [main]
+
+# TESTS ONLY — this pipeline deliberately does NOT deploy.
+#
+# predbot places real orders with real money. Installing code and arming trading
+# are two separate human acts (scripts/trading.sh deploy-live, then start), and a
+# runner must never collapse them into a git push. CI's job is the opposite: make
+# sure a broken build can never REACH deploy-live.
+#
+# Host-mode runner (label `host`), same as the learning-companion/orcastrator
+# pipelines. Go comes from the host toolchain; the race detector needs cgo, which
+# is why this runs on the Pi runner rather than the amd64 one (which has no Go).
+jobs:
+  test:
+    runs-on: host
+    steps:
+      - name: Checkout the pushed commit
+        run: |
+          set -e
+          # cd out FIRST: the step starts inside $GITHUB_WORKSPACE, and removing
+          # the directory you are standing in leaves the shell with no cwd, which
+          # git reports as "Unable to read current working directory".
+          cd /
+          rm -rf "$GITHUB_WORKSPACE"
+          mkdir -p "$GITHUB_WORKSPACE"
+          cd "$GITHUB_WORKSPACE"
+          git clone --quiet \
+            "http://oauth2:${{ secrets.GITEA_TOKEN }}@localhost:8802/${{ gitea.repository }}.git" .
+          git checkout --quiet "${{ gitea.sha }}"
+          echo "testing $(git rev-parse --short HEAD)"
+
+      - name: Vet
+        run: cd "$GITHUB_WORKSPACE" && go vet ./...
+
+      - name: Test with the race detector
+        # -race and -count=1 are not optional here: this bot is concurrent by
+        # design (parallel leg placement, background hedge grace, fill streams on
+        # their own goroutines) and a cached pass proves nothing about the commit.
+        run: cd "$GITHUB_WORKSPACE" && go test ./... -race -count=1
+
+      - name: Cross-compile the live binary
+        # deploy-live builds static linux/amd64. Catch a build that only works on
+        # the dev box here, not at deploy time.
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -o /dev/null ./cmd/live

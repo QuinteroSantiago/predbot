@@ -1,0 +1,21 @@
+# Retention on the predbot VM: deletes all recorder data older than KEEP_DAYS
+# (edge-pinned hours included). Safe because the
+# Pi pulls everything daily (predbot-backup, rsync without --delete) and keeps
+# it forever. Runs daily via predbot-prune.timer. Deploy: copy
+# scripts/prune-data.sh to /opt/predbot/ and this unit + the timer to
+# /etc/systemd/system.
+[Unit]
+Description=Prune predbot recorder data (keeps hours where an arb edge appeared)
+
+[Service]
+Type=oneshot
+User=predbot
+Group=predbot
+ExecStart=/opt/predbot/prune-data.sh --apply
+Environment=KEEP_DAYS=14
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/predbot/data

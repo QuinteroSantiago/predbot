@@ -1,0 +1,21 @@
+# The weekly maker-rebate go/no-go (scripts/maker-analysis.sh): taker baseline +
+# -maker -adverse replay, dated report in /var/lib/predbot/reports/. Runs on the
+# PI (the archive lives there; the cloud has no network and the predbot VM must
+# never run heavy replays). Install: copy this + the timer to /etc/systemd/system.
+#
+# HOURS=168 bounds each run to the last 7 days, so a weekly run covers exactly
+# the week since the previous report. The full archive (HOURS=0) outgrew the
+# Pi — it hit the old 3h timeout on 2026-09-04 and 2026-09-11. For a
+# full-history run use the Arch compute box (see the operator manual §11).
+[Unit]
+Description=predbot maker-rebate + adverse-selection analysis (the maker go/no-go)
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=predbot
+# CPU-heavy single-threaded JSON replay; stay polite to the Pi's other services.
+Nice=10
+Environment=HOURS=168
+TimeoutStartSec=6h
+ExecStart=/opt/predbot/src/scripts/maker-analysis.sh

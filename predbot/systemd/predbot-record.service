@@ -1,0 +1,41 @@
+# Phase 1 recorder, authenticated WebSocket mode (design §6.1/§6.2, §7).
+# Runs on the dedicated predbot VM (predbot-vm); credentials in
+# /etc/predbot/env (0600). Full-depth Kalshi deltas + Poly snapshot pushes.
+# Deployed by scripts/redeploy.sh (which installs this file).
+#
+# -sports must cover every league predbot-live trades (its unit has
+# -sports=mlb,nfl,wnba,cfb,nhl): a league the live bot trades but the recorder skips has no
+# recorded books/trades, no backup, and no arb-surface or Fee Wall coverage.
+[Unit]
+Description=predbot Phase 1 feed recorder (WebSocket: Kalshi + Polymarket US)
+After=network-online.target chronyd.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=predbot
+Group=predbot
+WorkingDirectory=/opt/predbot
+ExecStart=/opt/predbot/predbot-record -config /opt/predbot/config/config.yaml -markets /opt/predbot/config/markets.yaml -sports mlb,nfl,wnba,cfb,nhl -paper
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+
+# Secrets (0600 root:root): KALSHI_API_KEY_ID, KALSHI_PRIVATE_KEY_PATH,
+# POLYMARKET_US_KEY_ID, POLYMARKET_US_SECRET.
+EnvironmentFile=/etc/predbot/env
+Environment=OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+Environment=OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+Environment=OTEL_SERVICE_NAME=predbot
+Environment=OTEL_METRIC_EXPORT_INTERVAL=10000
+Environment=PREDBOT_HEALTH_ADDR=127.0.0.1:9487
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/predbot/data
+StateDirectory=predbot
+
+[Install]
+WantedBy=multi-user.target

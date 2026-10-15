@@ -1,0 +1,40 @@
+# FALLBACK recorder, PUBLIC-REST mode (no credentials; design §16 open item #5).
+# NOT installed anywhere: predbot-record.service (authenticated WS) replaced it
+# on 2026-08-23. Kept for a credential-free recording if the venue keys are ever
+# unavailable — install it IN PLACE of predbot-record (both bind :9487 and write
+# the same data dir; never run the two together). No sports discovery (-sports
+# is WS-only), no paper trader, no trade prints. Ships telemetry to the Pi's
+# LGTM over the LAN. Hardened: dedicated user, no secrets, writable path scoped
+# to the data dir.
+[Unit]
+Description=predbot Phase 1 feed recorder (public REST: Kalshi + Polymarket US)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=predbot
+Group=predbot
+WorkingDirectory=/opt/predbot
+ExecStart=/opt/predbot/predbot-record -public -config /opt/predbot/config/config.yaml -markets /opt/predbot/config/markets.yaml
+# SIGHUP flushes/rotates the open gzip files without stopping the service.
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+
+# Telemetry to the Pi's LGTM over the LAN (OTLP 4318 is LAN-bound).
+Environment=OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+Environment=OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+Environment=OTEL_SERVICE_NAME=predbot
+Environment=PREDBOT_HEALTH_ADDR=127.0.0.1:9487
+
+# Hardening (no secrets in public mode — no EnvironmentFile needed).
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/predbot/data
+StateDirectory=predbot
+
+[Install]
+WantedBy=multi-user.target

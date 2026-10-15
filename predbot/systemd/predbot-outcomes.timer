@@ -1,0 +1,8 @@
+[Unit]
+Description=Check for settled markets hourly
+[Timer]
+OnCalendar=hourly
+Persistent=true
+RandomizedDelaySec=5m
+[Install]
+WantedBy=timers.target

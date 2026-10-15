@@ -1,0 +1,8 @@
+[Unit]
+Description=Rebuild the predbot Fee Wall arbitrage dashboard from latest data
+After=predbot-backup.service network-online.target
+
+[Service]
+Type=oneshot
+User=predbot
+ExecStart=/opt/predbot/src/scripts/gen-dashboard.sh

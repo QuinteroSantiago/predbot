@@ -1,0 +1,9 @@
+[Unit]
+Description=Pull predbot recorder data from the predbot VM to the Pi
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=predbot
+ExecStart=/opt/predbot/src/scripts/pull-backup.sh

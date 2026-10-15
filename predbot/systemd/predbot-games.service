@@ -1,0 +1,45 @@
+# Records live MLB game events beside the predbot market data, for price studies:
+# schedule/status, in-game state, every completed play, and MLB's per-at-bat
+# win probability -> <data>/games/mlb-<YYYY-MM-DDTHH>.jsonl.gz. Reads MLB's
+# public Stats API only; never touches a venue or the live trader.
+#
+# Runs on the PI (not the VM): the data lands in the backup tree, so the nightly
+# VM->Pi rsync and the Pi->arch rsync carry it with everything else.
+# Install (as the predbot user):
+#   go build -o /opt/predbot/src/games ./cmd/games   (from the repo)
+#   mkdir -p /var/lib/predbot/archive/games
+#   sudo cp systemd/predbot-games.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now predbot-games.service
+[Unit]
+Description=Record live MLB game events for predbot price studies
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=predbot
+Group=predbot
+WorkingDirectory=/opt/predbot/src
+ExecStart=/opt/predbot/src/games -data /var/lib/predbot/archive
+Restart=on-failure
+RestartSec=30
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=false
+# Must exist before start (else 226/NAMESPACE); see the install steps above.
+ReadWritePaths=/var/lib/predbot/archive/games
+InaccessiblePaths=-/home/predbot/.ssh
+InaccessiblePaths=-/home/predbot/.claude
+InaccessiblePaths=-/home/predbot/.config
+InaccessiblePaths=-/home/predbot/.gnupg
+InaccessiblePaths=-/home/predbot/.aws
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictRealtime=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

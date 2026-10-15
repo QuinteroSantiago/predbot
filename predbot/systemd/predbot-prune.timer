@@ -1,0 +1,8 @@
+[Unit]
+Description=Daily predbot data retention
+[Timer]
+OnCalendar=*-*-* 04:20:00
+Persistent=true
+RandomizedDelaySec=15m
+[Install]
+WantedBy=timers.target

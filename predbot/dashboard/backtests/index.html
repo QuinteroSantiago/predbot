@@ -1,0 +1,1417 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Backtest runs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="predbot backtest results: run history, maker vs taker, and per-run detail.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Tokens follow the Fee Wall page (dashboard/template.html). Chart colors were
+   checked with the dataviz palette validator against each mode's surface:
+   gain/loss = blue/red (diverging), maker = accent, taker = gray (emphasis). */
+:root{
+  color-scheme: light;
+  --ground:#f4f1ea; --surface:#ffffff; --surface-2:#faf8f2; --border:#e5e0d4;
+  --ink:#181c20; --ink-2:#4c5660; --muted:#8a94a0;
+  --accent:#9a6a12; --mark-accent:#9a6a12; --mark-muted:#8a94a0;
+  --gain:#2a78d6; --loss:#c0463f; --grid:#ece7db;
+  --kalshi:#2a78d6; --poly:#9a6a12;
+  --size1:#d0a04a; --size2:#9a6a12; --size3:#5c3d05;
+  --shadow: 0 1px 2px rgba(20,24,28,.05), 0 8px 24px rgba(20,24,28,.06);
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  color-scheme: dark;
+  --ground:#0d1116; --surface:#151b21; --surface-2:#1b232b; --border:#28313b;
+  --ink:#eef1f4; --ink-2:#aeb8c2; --muted:#78828e;
+  --accent:#e0a95e; --mark-accent:#c08433; --mark-muted:#78828e;
+  --gain:#3987e5; --loss:#e0685f; --grid:#1f2831;
+  --kalshi:#3987e5; --poly:#c08433;
+  --size1:#7a5319; --size2:#c08433; --size3:#efc583;
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+}}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --ground:#0d1116; --surface:#151b21; --surface-2:#1b232b; --border:#28313b;
+  --ink:#eef1f4; --ink-2:#aeb8c2; --muted:#78828e;
+  --accent:#e0a95e; --mark-accent:#c08433; --mark-muted:#78828e;
+  --gain:#3987e5; --loss:#e0685f; --grid:#1f2831;
+  --kalshi:#3987e5; --poly:#c08433;
+  --size1:#7a5319; --size2:#c08433; --size3:#efc583;
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box}
+html,body{overflow-x:hidden}
+body{margin:0; background:var(--ground); color:var(--ink);
+  font-family:"IBM Plex Sans", ui-sans-serif, system-ui, sans-serif; line-height:1.55; -webkit-font-smoothing:antialiased}
+a{color:inherit}
+.mono{font-family:"IBM Plex Mono", ui-monospace, monospace}
+.num{font-family:"IBM Plex Mono", ui-monospace, monospace; font-variant-numeric:tabular-nums}
+.wrap{max-width:1060px; margin:0 auto; padding:clamp(20px,4vw,52px) 16px 80px}
+@media (min-width:700px){ .wrap{padding-left:clamp(16px,4vw,40px); padding-right:clamp(16px,4vw,40px)} }
+.eyebrow{font-family:"IBM Plex Mono",monospace; font-size:12px; letter-spacing:.18em; text-transform:uppercase; color:var(--accent); font-weight:600}
+h1{font-family:"IBM Plex Mono",monospace; font-weight:700; font-size:clamp(30px,5.5vw,52px); line-height:1.04; letter-spacing:-.02em; margin:.35em 0 .1em; text-wrap:balance; overflow-wrap:anywhere}
+.lede{font-size:clamp(15px,2vw,18px); color:var(--ink-2); max-width:62ch; margin:.6em 0 0}
+h2{font-family:"IBM Plex Mono",monospace; font-size:13px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-2); font-weight:600; margin:44px 0 4px}
+.h2note{font-size:14px; color:var(--muted); margin:0 0 16px; max-width:66ch}
+.card{background:var(--surface); border:1px solid var(--border); border-radius:14px; box-shadow:var(--shadow); padding:18px 20px}
+.back{display:inline-block; font-family:"IBM Plex Mono",monospace; font-size:13px; color:var(--ink-2); text-decoration:none; margin-bottom:6px}
+.back:hover{color:var(--ink)}
+.badge{display:inline-flex; align-items:center; gap:6px; font-family:"IBM Plex Mono",monospace; font-size:12px; letter-spacing:.06em; text-transform:uppercase;
+  border:1px solid var(--border); border-radius:999px; padding:2px 10px; color:var(--ink-2); background:var(--surface-2); vertical-align:middle}
+.key{display:inline-block; width:10px; height:10px; flex:none}
+.key.maker{background:var(--mark-accent); border-radius:50%}
+.key.taker{background:var(--mark-muted); border-radius:2px}
+.key.kalshi{background:var(--kalshi); border-radius:2px}
+.key.poly{background:var(--poly); border-radius:2px}
+.key.together{background:var(--mark-muted); border-radius:2px}
+.key.fade{background:var(--mark-accent); border-radius:50%}
+.key.follow{background:var(--mark-muted); border-radius:2px}
+.lk.s1{background:var(--size1)} .lk.s2{background:var(--size2)} .lk.s3{background:var(--size3)}
+.multi{display:grid; grid-template-columns:1fr; gap:18px}
+@media (min-width:860px){ .multi{grid-template-columns:1fr 1fr} }
+.multi h3{font-family:"IBM Plex Mono",monospace; font-size:12px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-2); margin:0 0 6px; font-weight:600}
+.key.analysis{background:var(--ink-2); border-radius:2px; transform:rotate(45deg); width:8px; height:8px}
+.acards{display:grid; grid-template-columns:1fr; gap:16px}
+@media (min-width:760px){ .acards{grid-template-columns:1fr 1fr} }
+.acard{display:block; text-decoration:none}
+.acard:hover{border-color:var(--accent)}
+.acard h3{font-family:"IBM Plex Mono",monospace; font-size:14px; letter-spacing:.06em; text-transform:uppercase; margin:0 0 8px; color:var(--ink-2); font-weight:600}
+.acard .big{font-size:20px; font-weight:600; line-height:1.3}
+.acard .sub{font-size:13px; color:var(--muted); margin-top:6px}
+.verdict{font-size:17px; line-height:1.45; max-width:70ch; margin:18px 0 0}
+.verdict b{font-weight:600}
+.meta{display:flex; flex-wrap:wrap; gap:6px 18px; color:var(--ink-2); font-size:14px; margin-top:12px}
+.meta b{color:var(--ink); font-weight:600}
+.dirty{color:var(--loss)}
+
+/* filters: one row above everything they scope */
+.filters{display:flex; flex-wrap:wrap; gap:10px 16px; align-items:center; margin:28px 0 0}
+.filters label{font-size:13px; color:var(--ink-2); display:flex; gap:8px; align-items:center}
+select{font:inherit; font-size:14px; color:var(--ink); background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:6px 10px; max-width:100%}
+
+/* stat tiles */
+.stats{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:1px; background:var(--surface); border:1px solid var(--border); border-radius:12px; overflow:hidden; margin-top:18px}
+/* Each tile outlines itself, so a part-filled last row stays surface, not a gray block. */
+.stat{background:var(--surface); padding:16px 18px; min-width:0; outline:1px solid var(--border)}
+.stat .v{font-family:"IBM Plex Sans",sans-serif; font-size:26px; font-weight:600; letter-spacing:-.01em; white-space:nowrap}
+.stat .l{font-size:12px; color:var(--muted); margin-top:3px; letter-spacing:.02em}
+.stat .s{font-size:12px; color:var(--ink-2); margin-top:2px}
+/* KPI row: a wide hero column, then as many standard tiles per row as fit. */
+.stats.kpis{grid-template-columns:minmax(230px,1.7fr) repeat(auto-fit,minmax(118px,1fr))}
+@media (max-width:640px){ .stats.kpis{grid-template-columns:repeat(2,minmax(0,1fr))} .stat.hero{grid-column:1/-1} }
+.stat.hero .v{font-size:clamp(40px,7vw,52px); line-height:1.05}
+
+/* tables */
+.tablewrap{overflow-x:auto; border:1px solid var(--border); border-radius:12px; background:var(--surface)}
+table{border-collapse:collapse; width:100%; font-size:13.5px}
+th,td{padding:9px 10px; text-align:left; border-bottom:1px solid var(--border); white-space:nowrap}
+th{font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); font-weight:600; background:var(--surface-2)}
+td.r, th.r{text-align:right}
+tr:last-child td{border-bottom:0}
+tbody tr.link{cursor:pointer}
+tbody tr.link:hover, tbody tr.link:focus-visible{background:var(--surface-2); outline:none}
+tbody tr.link:focus-visible td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+.better{font-weight:600}
+.better::after{content:" ▲"; font-size:10px; color:var(--ink-2)}
+.gainT{color:var(--ink)} .lossT{color:var(--ink)}
+
+/* charts */
+.chart{position:relative; width:100%}
+.chart svg{display:block; width:100%; overflow:visible}
+.chart svg:focus-visible{outline:2px solid var(--accent); outline-offset:4px; border-radius:6px}
+text.tick{fill:var(--muted); font-family:"IBM Plex Mono",monospace; font-size:11px}
+.gridline{stroke:var(--grid); stroke-width:1}
+.zero{stroke:var(--muted); stroke-width:1}
+.legend{display:flex; flex-wrap:wrap; gap:6px 18px; font-size:13px; color:var(--ink-2); margin:0 0 10px}
+.legend span{display:inline-flex; align-items:center; gap:7px}
+.tip{position:absolute; pointer-events:none; background:var(--surface); border:1px solid var(--border); border-radius:10px; box-shadow:var(--shadow);
+  padding:8px 11px; font-size:12px; color:var(--ink-2); white-space:nowrap; z-index:5; opacity:0; transition:opacity .08s}
+.tip.on{opacity:1}
+.tip strong{display:block; font-family:"IBM Plex Mono",monospace; font-size:15px; color:var(--ink); font-weight:600}
+.tip .row{display:flex; align-items:center; gap:7px}
+.tip .lk{display:inline-block; width:12px; height:2px}
+details{margin-top:12px}
+summary{cursor:pointer; font-size:13px; color:var(--ink-2); font-family:"IBM Plex Mono",monospace}
+.empty{color:var(--ink-2); font-size:15px}
+.empty code, .note code{font-family:"IBM Plex Mono",monospace; font-size:13px; background:var(--surface-2); border:1px solid var(--border); border-radius:6px; padding:1px 6px; overflow-wrap:anywhere}
+.two{display:grid; grid-template-columns:1fr; gap:16px}
+@media (min-width:860px){ .two{grid-template-columns:1fr 1fr} }
+.note{font-size:13px; color:var(--muted); margin-top:10px}
+.invalid-banner{border:1px solid var(--loss); border-left-width:4px; border-radius:8px; padding:10px 14px; margin:12px 0 4px; color:var(--ink); background:var(--surface); font-size:14px; max-width:80ch}
+.invalid-tag{font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--loss); margin-left:6px}
+tr.invalid td{opacity:.55}
+.args{font-family:"IBM Plex Mono",monospace; font-size:12px; color:var(--ink-2); background:var(--surface-2); border:1px solid var(--border); border-radius:8px; padding:10px 12px; overflow-wrap:anywhere; white-space:pre-wrap}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><p class="empty">Loading…</p></div>
+<script>
+"use strict";
+const RUNS = "runs/";
+
+// ---------- small DOM helpers (all data goes in as text, never HTML) ----------
+const SVGNS = "http://www.w3.org/2000/svg";
+function el(tag, attrs, ...kids) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v == null || v === false) continue;
+    if (k === "class") n.className = v;
+    else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+    else n.setAttribute(k, v === true ? "" : v);
+  }
+  for (const k of kids.flat()) if (k != null && k !== false) n.append(k instanceof Node ? k : document.createTextNode(String(k)));
+  return n;
+}
+function sv(tag, attrs, ...kids) {
+  const n = document.createElementNS(SVGNS, tag);
+  for (const [k, v] of Object.entries(attrs || {})) if (v != null) n.setAttribute(k, v);
+  for (const k of kids.flat()) if (k != null) n.append(k instanceof Node ? k : document.createTextNode(String(k)));
+  return n;
+}
+
+// ---------- formatting ----------
+const usd = (v, signed) => {
+  if (v == null || !isFinite(v)) return "—";
+  const a = Math.abs(v);
+  const s = a >= 1e6 ? (a / 1e6).toFixed(2) + "M" : a >= 1e4 ? (a / 1e3).toFixed(1) + "k" : a.toFixed(2);
+  const sign = v < 0 ? "−" : signed && v > 0 ? "+" : "";
+  return sign + "$" + s;
+};
+const pct = (v, signed) => v == null || !isFinite(v) ? "—" : (v < 0 ? "−" : signed && v > 0 ? "+" : "") + Math.abs(v * 100).toFixed(Math.abs(v) < 0.1 ? 2 : 1) + "%";
+const pct0 = v => Math.round(v * 100) + "%";
+const count = n => n == null ? "—" : n >= 1e9 ? (n / 1e9).toFixed(2) + "G" : n >= 1e6 ? (n / 1e6).toFixed(2) + "M" : n >= 1e4 ? (n / 1e3).toFixed(1) + "k" : n.toLocaleString();
+const dur = s => s == null ? "—" : s < 90 ? s.toFixed(1) + "s" : s < 5400 ? Math.round(s / 60) + "m" : (s / 3600).toFixed(1) + "h";
+const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const day = d => MON[d.getMonth()] + " " + d.getDate();
+const hm = d => String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+const when = t => { const d = new Date(t); return day(d) + " " + hm(d); };
+const dataSpan = r => r.data_from && r.data_to ? span(r.data_from, r.data_to)
+  : r.span_s ? "≈" + (r.span_s >= 172800 ? Math.round(r.span_s / 86400) + " days" : Math.round(r.span_s / 3600) + " hours") + " of data" : "—";
+const span = (a, b) => { const x = new Date(a), y = new Date(b);
+  return x.toDateString() === y.toDateString() ? day(x) + " " + hm(x) + "–" + hm(y) : day(x) + " – " + day(y) + " " + y.getFullYear(); };
+const windowText = r => {
+  if (r.from || r.to) return (r.from ? day(new Date(r.from)) : "start") + " → " + (r.to ? day(new Date(r.to)) : "end");
+  return r.window_hours ? "last " + (r.window_hours % 24 === 0 ? r.window_hours / 24 + "d" : r.window_hours + "h") : "all data";
+};
+const runName = r => (r.label || "—") + (r.variant ? " · " + r.variant : "");
+// The effective settings a run used. Runs from builds before 2026-09-22 didn't
+// record them — and ran without the liquidity floor.
+function paramsLine(run) {
+  const p = run.params;
+  if (!p) return el("p", {class: "note", style: "margin-top:10px"}, "Settings not recorded: this run's build predates 2026-09-22, when the backtest also ignored the liquidity floor (min depth). Re-run it for comparable numbers.");
+  return el("p", {class: "note mono", style: "margin-top:10px"},
+    `latency ${p.latency_ms}ms · min edge ${p.min_edge_cents}¢ · floor ${p.min_depth_contracts ? p.min_depth_contracts + " contracts" : "off"} · max clip ${p.max_clip_contracts || "unlimited"} · Kalshi fee ×${p.kalshi_fee_mult} · skew ≤${p.max_skew_ms}ms · book age ≤${p.max_book_age_ms}ms` +
+    (run.mode === "maker" && p.rest_wait_s != null ? ` · rest ${p.rest_wait_s ? "≤" + fmtSecs(p.rest_wait_s) : "until filled"}` : ""));
+}
+const fillRate = m => m && m.rests_placed ? m.rests_filled / m.rests_placed : null;
+const modeBadge = (mode, adverse) => el("span", {class: "badge"}, el("span", {class: "key " + mode}), mode + (adverse ? " + adverse" : ""));
+
+// Clean axis ticks: 1/2/5 × 10^n steps.
+function niceTicks(lo, hi, n) {
+  if (lo === hi) { lo -= 1; hi += 1; }
+  const raw = (hi - lo) / Math.max(1, n), mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 5, 10].map(m => m * mag).find(s => s >= raw);
+  const out = [], end = Math.ceil(hi / step - 1e-9) * step;
+  for (let v = Math.floor(lo / step + 1e-9) * step; v <= end + step * 1e-9; v += step) out.push(+v.toFixed(10));
+  return out;
+}
+function timeTicks(t0, t1, n) {
+  const out = [], d = (t1 - t0) / Math.max(1, n);
+  for (let i = 0; i <= n; i++) out.push(t0 + d * i);
+  return out;
+}
+const timeLabel = (t, spanMs) => { const d = new Date(t);
+  return spanMs < 6e5 ? hm(d) + ":" + String(d.getSeconds()).padStart(2, "0") : spanMs < 2 * 864e5 ? hm(d) : day(d); };
+
+// One tooltip element per chart, positioned inside the chart box.
+function tooltip(box) {
+  const tip = el("div", {class: "tip", role: "status", "aria-live": "polite"});
+  box.append(tip);
+  return {
+    show(x, y, build) {
+      tip.replaceChildren(...build());
+      tip.classList.add("on");
+      const bw = box.clientWidth, tw = tip.offsetWidth, th = tip.offsetHeight;
+      let left = x + 14; if (left + tw > bw) left = x - tw - 14; if (left < 0) left = 0;
+      let top = y - th - 10; if (top < 0) top = y + 14;
+      tip.style.left = left + "px"; tip.style.top = top + "px";
+    },
+    hide() { tip.classList.remove("on"); },
+  };
+}
+const tipLine = (color, text) => el("div", {class: "row"}, el("span", {class: "lk", style: "background:" + color}), text);
+
+// Redraw a chart when its box resizes.
+function responsive(box, draw) {
+  let w = 0;
+  const ro = new ResizeObserver(() => { if (box.clientWidth !== w) { w = box.clientWidth; draw(w); } });
+  ro.observe(box);
+}
+
+// ---------- data ----------
+async function getJSON(path) {
+  const r = await fetch(path, {cache: "no-cache"});
+  if (!r.ok) throw new Error(path + ": HTTP " + r.status);
+  return r.json();
+}
+let INDEX = null;
+async function loadIndex() {
+  if (!INDEX) {
+    try { INDEX = await getJSON(RUNS + "index.json"); } catch (e) { INDEX = {runs: [], error: String(e)}; }
+  }
+  return INDEX;
+}
+
+// ---------- router ----------
+const app = document.getElementById("app");
+async function route() {
+  const m = location.hash.match(/^#run=([A-Za-z0-9_.-]+)$/);
+  window.scrollTo(0, 0);
+  if (m) await showRun(m[1]); else await showIndex();
+}
+window.addEventListener("hashchange", route);
+
+// ---------- index view ----------
+const FILTER = {label: null, mode: "all"};
+
+async function showIndex() {
+  document.title = "Backtest runs";
+  const idx = await loadIndex();
+  const runs = idx.runs || [];
+  const head = [
+    el("div", {class: "eyebrow"}, "predbot · backtests"),
+    el("h1", {}, "Backtest runs"),
+    el("p", {class: "lede"}, "Every replay of the recorded order books: how the maker and taker strategies compare and hold up as data accumulates, plus read-only analyses that look for other edges in the same data. Click a run for the full breakdown."),
+  ];
+  if (!runs.length) {
+    app.replaceChildren(...head, el("div", {class: "card", style: "margin-top:28px"},
+      el("p", {class: "empty"}, "No runs published yet. Run a backtest with ", el("code", {}, "-report-json run.json"),
+        ", then publish it with ", el("code", {}, "scripts/publish-backtest.sh run.json"), "."),
+      idx.error ? el("p", {class: "note"}, "(" + idx.error + ")") : null));
+    return;
+  }
+  const labels = [...new Set(runs.map(r => r.label || "(no label)"))];
+  const isTrading = r => (r.kind || "trading") === "trading";
+  if (FILTER.label === null) FILTER.label = labels.length > 1 ? (runs[0].label || "(no label)") : "all";
+
+  const labelSel = el("select", {"aria-label": "Label", onchange: e => { FILTER.label = e.target.value; showIndex(); }},
+    el("option", {value: "all"}, "All labels"), labels.map(l => el("option", {value: l, selected: l === FILTER.label}, l)));
+  const modeSel = el("select", {"aria-label": "Strategy", onchange: e => { FILTER.mode = e.target.value; showIndex(); }},
+    ["all", "maker", "taker"].map(m => el("option", {value: m, selected: m === FILTER.mode}, m === "all" ? "Maker and taker" : m)));
+  const byLabel = runs.filter(r => FILTER.label === "all" || (r.label || "(no label)") === FILTER.label);
+  const shown = byLabel.filter(r => isTrading(r) && (FILTER.mode === "all" || r.mode === FILTER.mode));
+  // Known-wrong runs stay in the table (flagged) but out of every comparison.
+  const valid = shown.filter(r => !r.invalid);
+  const analyses = byLabel.filter(r => !isTrading(r));
+
+  const body = [el("div", {class: "filters"}, el("label", {}, "Runs", labelSel), el("label", {}, "Strategy", modeSel),
+    el("span", {class: "note", style: "margin:0"}, (shown.length + analyses.length) + " of " + runs.length + " runs"))];
+
+  if (!shown.length && !analyses.length) {
+    body.push(el("p", {class: "empty", style: "margin-top:24px"}, "No runs match these filters."));
+  } else if (!shown.length) {
+    body.push(el("h2", {}, "Strategy runs"), el("p", {class: "h2note"}, "No maker or taker runs match these filters."));
+  } else {
+    if (valid.length) body.push(headToHead(valid));
+    const isSweep = new Set(valid.map(r => r.variant).filter(Boolean)).size >= 2;
+    if (shown.length > valid.length) body.push(el("p", {class: "note"},
+      (shown.length - valid.length) + " run(s) flagged invalid are left out of the comparison and charts; they stay in the table below."));
+    if (valid.length >= 2 && !isSweep) body.push(el("h2", {}, "Net P&L by run"),
+      el("p", {class: "h2note"}, "Each point is one run, placed by when it finished. Only compare runs over the same kind of window — the label filter above keeps them apples to apples."),
+      el("div", {class: "card"}, runsChart(valid)));
+    if (isSweep) body.push(el("h2", {}, "By variant"),
+      el("p", {class: "h2note"}, "Net P&L for each variant in the current filter — one bar per run, newest run per variant and mode. Bars that swing sign or collapse under small setting changes mean the result is fragile."),
+      el("div", {class: "card"}, variantChart(valid)));
+    body.push(el("h2", {}, "All strategy runs"), el("p", {class: "h2note"}, "Newest first. Select a row for its detail."), runsTable(shown));
+  }
+  if (analyses.length) body.push(...analysesSection(analyses));
+  app.replaceChildren(...head, ...body);
+}
+
+function headToHead(runs) {
+  const maker = runs.find(r => r.mode === "maker"), taker = runs.find(r => r.mode === "taker");
+  const pair = [maker, taker].filter(Boolean);
+  const wrap = [el("h2", {}, pair.length === 2 ? "Latest maker vs taker" : "Latest run"),
+    el("p", {class: "h2note"}, pair.length === 2 ? "The most recent run of each mode in the current filter. ▲ marks the better value." : "Only one mode in the current filter.")];
+  const rows = [
+    ["Net P&L", r => r.net_pnl_usd, v => usd(v, true), 1],
+    ["Annualized return", r => r.settled_pairs ? r.annualized : null, v => pct(v, true), 1],
+    ["vs idle-balance hurdle", r => r.settled_pairs ? r.excess_annualized : null, v => pct(v, true), 1],
+    ["Win rate", r => r.settled_pairs ? r.win_rate : null, v => pct(v), 1],
+    ["Max drawdown", r => r.max_drawdown_usd, v => v ? usd(-v) : "$0.00", -1],
+    ["Pairs completed / attempted", r => r.pairs_attempted ? r.pairs_completed / r.pairs_attempted : null, (v, r) => r.pairs_completed + " / " + r.pairs_attempted, 1],
+    ["Peak capital at once", r => r.peak_capital_usd, v => v == null ? "—" : usd(v), 0],
+    ["Return on peak capital", r => r.return_on_peak, v => v == null ? "—" : pct(v, true), 1],
+    ["Maker rests filled", r => r.fill_rate, (v, r) => v == null ? "—" : pct(v) + " of " + r.rests_placed, 0],
+    ["Data", r => null, (v, r) => dataSpan(r), 0],
+    ["Snapshots", r => r.snapshots, v => count(v), 0],
+    ["Finished", r => null, (v, r) => when(r.finished_at) + (r.duration_s ? " · " + dur(r.duration_s) : ""), 0],
+  ];
+  const thead = el("tr", {}, el("th", {}, ""), pair.map(r => el("th", {}, el("a", {href: "#run=" + r.id, style: "text-decoration:none"}, modeBadge(r.mode, r.adverse)))));
+  const tbody = rows.map(([name, get, fmt, dir]) => {
+    const vals = pair.map(get);
+    let best = -1;
+    if (pair.length === 2 && dir && vals.every(v => v != null && isFinite(v)) && vals[0] !== vals[1]) best = (vals[0] > vals[1]) === (dir > 0) ? 0 : 1;
+    return el("tr", {}, el("td", {}, name), pair.map((r, i) => el("td", {class: "num" + (i === best ? " better" : "")}, fmt(vals[i], r))));
+  });
+  wrap.push(el("div", {class: "tablewrap"}, el("table", {}, el("thead", {}, thead), el("tbody", {}, tbody))));
+  return el("div", {}, wrap);
+}
+
+function runsTable(runs) {
+  const cols = [
+    ["Finished", r => when(r.finished_at)],
+    ["Label", r => [runName(r), r.imported ? el("span", {class: "note", style: "margin:0 0 0 6px"}, "imported") : null,
+      r.invalid ? el("span", {class: "invalid-tag", title: r.invalid}, r.invalid.startsWith("Overstated") ? "overstated" : "invalid") : null]],
+    ["Mode", r => modeBadge(r.mode, r.adverse)],
+    ["Data", r => dataSpan(r)],
+    ["Net P&L", r => usd(r.net_pnl_usd, true), 1],
+    ["Annualized", r => r.settled_pairs ? pct(r.annualized, true) : "—", 1],
+    ["Win rate", r => r.settled_pairs ? pct(r.win_rate) : "—", 1],
+    ["Max DD", r => r.max_drawdown_usd ? usd(-r.max_drawdown_usd) : "$0.00", 1],
+    ["Pairs", r => r.pairs_completed + "/" + r.pairs_attempted, 1],
+    ["Fill rate", r => r.fill_rate == null ? "—" : pct(r.fill_rate), 1],
+  ];
+  const open = r => { location.hash = "run=" + r.id; };
+  return el("div", {class: "tablewrap"}, el("table", {},
+    el("thead", {}, el("tr", {}, cols.map(([h, , right]) => el("th", {class: right ? "r" : null}, h)))),
+    el("tbody", {}, runs.map(r => el("tr", {class: r.invalid ? "link invalid" : "link", tabindex: "0", "aria-label": "Open run " + r.id,
+      onclick: () => open(r), onkeydown: e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(r); } }},
+      cols.map(([, f, right]) => el("td", {class: right ? "r num" : null}, f(r))))))));
+}
+
+// Dot chart: one point per run, x = finish time, y = net P&L. Maker in the
+// accent (circle), taker in gray (square) — shape backs up color.
+function runsChart(runs) {
+  const box = el("div", {class: "chart"});
+  const legend = el("div", {class: "legend"},
+    runs.some(r => r.mode === "maker") ? el("span", {}, el("span", {class: "key maker"}), "maker") : null,
+    runs.some(r => r.mode === "taker") ? el("span", {}, el("span", {class: "key taker"}), "taker") : null);
+  const out = el("div", {}, legend, box);
+  const tip = tooltip(box);
+  responsive(box, W => {
+    box.querySelector("svg")?.remove();
+    const H = 240, m = {l: 64, r: 18, t: 12, b: 28};
+    const ts = runs.map(r => Date.parse(r.finished_at)), vs = runs.map(r => r.net_pnl_usd);
+    let t0 = Math.min(...ts), t1 = Math.max(...ts); if (t0 === t1) { t0 -= 36e5; t1 += 36e5; }
+    const pad = (t1 - t0) * 0.04; t0 -= pad; t1 += pad;
+    const yt = niceTicks(Math.min(0, ...vs), Math.max(0, ...vs), 4);
+    const y0 = yt[0], y1 = yt[yt.length - 1];
+    const X = t => m.l + (t - t0) / (t1 - t0) * (W - m.l - m.r), Y = v => m.t + (1 - (v - y0) / (y1 - y0)) * (H - m.t - m.b);
+    const svg = sv("svg", {viewBox: `0 0 ${W} ${H}`, height: H, role: "img", "aria-label": "Net P&L by run; the runs table below has the same values"});
+    for (const v of yt) svg.append(sv("line", {class: v === 0 ? "zero" : "gridline", x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v)}),
+      sv("text", {class: "tick", x: m.l - 8, y: Y(v) + 4, "text-anchor": "end"}, usd(v)));
+    const xt = timeTicks(t0 + pad, t1 - pad, Math.max(2, Math.min(5, Math.floor(W / 150))));
+    for (const t of xt) svg.append(sv("text", {class: "tick", x: X(t), y: H - 8, "text-anchor": "middle"}, timeLabel(t, t1 - t0)));
+    // Oldest first so the newest paints on top.
+    runs.map((r, i) => ({r, x: X(ts[i]), y: Y(vs[i])})).reverse().forEach(({r, x, y}) => {
+      const g = sv("g", {tabindex: "0", role: "link", "aria-label": `${r.mode} run ${when(r.finished_at)}: ${usd(r.net_pnl_usd, true)}`, style: "cursor:pointer"});
+      const mark = r.mode === "maker"
+        ? sv("circle", {cx: x, cy: y, r: 5, fill: "var(--mark-accent)", stroke: "var(--surface)", "stroke-width": 2})
+        : sv("rect", {x: x - 5, y: y - 5, width: 10, height: 10, rx: 2, fill: "var(--mark-muted)", stroke: "var(--surface)", "stroke-width": 2});
+      g.append(sv("circle", {cx: x, cy: y, r: 13, fill: "transparent"}), mark);
+      const show = () => { mark.setAttribute("stroke-width", 3); tip.show(x, y, () => [
+        el("strong", {}, usd(r.net_pnl_usd, true)),
+        tipLine(r.mode === "maker" ? "var(--mark-accent)" : "var(--mark-muted)", r.mode + (r.label ? " · " + r.label : "")),
+        el("div", {}, when(r.finished_at) + " · " + windowText(r))]); };
+      const hide = () => { mark.setAttribute("stroke-width", 2); tip.hide(); };
+      g.addEventListener("pointerenter", show); g.addEventListener("pointerleave", hide);
+      g.addEventListener("focus", show); g.addEventListener("blur", hide);
+      g.addEventListener("click", () => { location.hash = "run=" + r.id; });
+      g.addEventListener("keydown", e => { if (e.key === "Enter") location.hash = "run=" + r.id; });
+      svg.append(g);
+    });
+    box.prepend(svg);
+  });
+  return out;
+}
+
+// ---------- run detail view ----------
+async function showRun(id) {
+  let d;
+  try { d = await getJSON(RUNS + id + ".json"); }
+  catch (e) {
+    app.replaceChildren(el("a", {class: "back", href: "#"}, "← All runs"), el("p", {class: "empty"}, "Couldn't load run " + id + " (" + e.message + ")."));
+    return;
+  }
+  const run = d.run;
+  if (run.kind === "leadlag") return showLeadLag(d);
+  if (run.kind === "longshot") return showLongshot(d);
+  if (run.kind === "moves") return showMoves(d);
+  if (run.kind === "spreadmr") return showSpreadMR(d);
+  if (run.kind === "autocorr") return showAutocorr(d);
+  if (run.kind === "outcomereg") return showOutcomeReg(d);
+  if (run.kind === "fairvalue") return showFairValue(d);
+  const rep = d.report;
+  document.title = (run.label || "Run") + " · " + run.mode + " · Backtest runs";
+  const flagged = ((await loadIndex()).runs.find(r => r.id === id) || {}).invalid;
+
+  const head = [
+    el("a", {class: "back", href: "#"}, "← All runs"),
+    el("div", {class: "eyebrow"}, "predbot · backtest run"),
+    el("h1", {}, run.label || run.id),
+    flagged ? el("div", {class: "invalid-banner", role: "note"}, flagged) : null,
+    el("div", {class: "meta"},
+      modeBadge(run.mode, run.adverse),
+      el("span", {}, el("b", {}, dataSpan(run)), run.imported_from ? null : " · " + windowText(run)),
+      el("span", {}, el("b", {}, count(run.snapshots)), " snapshots · ", el("b", {}, run.markets), " markets"),
+      run.duration_s ? el("span", {}, "ran ", el("b", {}, dur(run.duration_s)), " on ", run.host || "?", run.shards ? " · " + run.shards + (run.shards === 1 ? " shard" : " shards") : "") : null,
+      run.imported_from ? el("span", {}, "finished ", el("b", {}, when(run.finished_at))) : null,
+      run.revision ? el("span", {class: "mono"}, "build " + run.revision.slice(0, 7), run.dirty ? el("span", {class: "dirty"}, " (uncommitted changes)") : null) : null),
+  ];
+
+  head.push(paramsLine(run));
+  const settled = rep.settled_pairs > 0;
+  const kpis = el("div", {class: "stats kpis"},
+    stat("Net P&L", usd(rep.net_pnl_usd, true), rep.capital_locked_usd ? usd(rep.capital_locked_usd) + " staked over the run" : null, true),
+    rep.peak_capital_usd && Object.keys(rep.peak_capital_usd).length ? stat("Peak capital at once",
+      usd(Object.values(rep.peak_capital_usd).reduce((a, b) => a + b, 0)),
+      Object.entries(rep.peak_capital_usd).sort().map(([v, c]) => (v === "polymarketus" ? "Poly" : venueName(v)) + " " + usd(c)).join(" · ") +
+      (rep.return_on_peak != null ? " · return " + pct(rep.return_on_peak, true) : "")) : null,
+    stat("Annualized return", settled ? pct(rep.annualized, true) : "—",
+      !settled ? "no settled pairs" : rep.avg_hold_days == null ? "not valid in this run (pre-fix maker dating)" : "avg hold " + Math.round(rep.avg_hold_days) + " days"),
+    stat("vs idle-balance hurdle", settled ? pct(rep.excess_annualized, true) : "—", "hurdle " + pct(rep.idle_yield)),
+    stat("Win rate", settled ? pct(rep.win_rate) : "—", "of " + rep.settled_pairs + " settled pairs"),
+    stat("Max drawdown", rep.max_drawdown_usd ? usd(-rep.max_drawdown_usd) : "$0.00", "cumulative net, in entry order"),
+    stat("Sharpe (per trade)", rep.settled_pairs >= 2 ? rep.sharpe_per_trade.toFixed(2) : "—", rep.settled_pairs >= 2 ? null : "needs ≥ 2 trades"));
+
+  const pairsTiles = el("div", {class: "stats"},
+    stat("Pairs attempted", rep.pairs_attempted),
+    stat("Completed", rep.pairs_completed, rep.pairs_attempted ? pct(rep.pairs_completed / rep.pairs_attempted) + " hit rate" : null),
+    stat("Legged", rep.pairs_legged, "filled unevenly"),
+    stat("Faded", rep.pairs_faded, "gone within latency"),
+    d.maker ? stat("Maker rests filled", d.maker.rests_filled + " / " + d.maker.rests_placed,
+      [fillRate(d.maker) == null ? null : pct(fillRate(d.maker)),
+       d.maker.rests_cancelled ? d.maker.rests_cancelled + " timed out" : null,
+       d.maker.rests_partial ? d.maker.rests_partial + " part-filled" : null].filter(Boolean).join(" · ") || null) : null,
+    stat("Opportunities", d.opportunities == null ? "—" : d.opportunities, d.opportunities == null ? "not in text reports" : "gap-open episodes"),
+    stat("Intra-venue crossings", rep.intra_crossings, "feed-consistency check"));
+
+  const imported = !!run.imported_from;
+  const notRecorded = what => el("div", {class: "card"}, el("p", {class: "empty"},
+    what + " isn't available: this run was imported from its text report (", el("code", {}, run.imported_from),
+    "), which doesn't list individual pairs. Runs made with ", el("code", {}, "-report-json"), " have it."));
+  const body = [
+    imported ? el("p", {class: "note", style: "margin-top:14px"}, "Imported from the text report ", el("code", {}, run.imported_from),
+      ": headline numbers only, rounded as printed.") : null,
+    kpis,
+    el("h2", {}, "Equity curve"),
+    el("p", {class: "h2note"}, "Cumulative net P&L as each pair is entered. Hold-to-resolution arbs enter each market once, so each step is one market."),
+    imported ? notRecorded("The equity curve") :
+    el("div", {class: "card"}, d.pairs.length ? equityChart(d.pairs) : el("p", {class: "empty"}, "No settled pairs in this run."),
+      d.pairs.length ? el("details", {}, el("summary", {}, "Table view (" + d.pairs.length + " pairs)"), pairsTable(d.pairs)) : null),
+    el("div", {class: "two"},
+      el("div", {}, el("h2", {}, "Where the money went"),
+        el("p", {class: "h2note"}, "Gross gap captured, less fees and legging exits, is net P&L."),
+        el("div", {class: "card"}, waterfall(rep))),
+      el("div", {}, el("h2", {}, "Pairs"), el("p", {class: "h2note"}, "What happened to every attempt."), pairsTiles)),
+    d.adverse ? el("h2", {}, "Adverse selection") : null,
+    d.adverse ? el("p", {class: "h2note"}, `After each real trade print, how far the price moved against the maker who was filled, measured ${d.adverse.horizons.map(h => h.seconds + "s").join(", ")} later (${count(d.adverse.trades)} prints). Maker resting only pays if this stays below the ~${d.adverse.rebate_cents}¢ rebate plus the spread it captures. Bars are rough 95% ranges.`) : null,
+    d.adverse ? el("div", {class: "card"}, adverseChart(d.adverse), adverseTable(d.adverse)) : null,
+    el("h2", {}, "P&L by market"),
+    el("p", {class: "h2note"}, "Net P&L per market, best to worst." + (d.markets.length > 24 ? " Showing the 12 best and 12 worst; the table has all " + d.markets.length + "." : "")),
+    imported ? notRecorded("P&L by market") :
+    el("div", {class: "card"}, d.markets.length ? marketBars(d.markets) : el("p", {class: "empty"}, "No market-level results."),
+      d.markets.length ? el("details", {}, el("summary", {}, "Table view (" + d.markets.length + " markets)"), marketsTable(d.markets)) : null),
+    imported ? null : el("h2", {}, "Command"),
+    imported ? null : el("div", {class: "args"}, "backtest " + (run.args || []).join(" ")),
+  ];
+  app.replaceChildren(...head.filter(Boolean), ...body.filter(Boolean));
+}
+
+function stat(label, value, sub, hero) {
+  return el("div", {class: "stat" + (hero ? " hero" : "")}, el("div", {class: "v"}, value), el("div", {class: "l"}, label), sub ? el("div", {class: "s"}, sub) : null);
+}
+
+// Step line of cumulative net over entry time, with a crosshair that snaps to
+// the nearest pair. Arrow keys step through pairs when focused.
+function equityChart(pairs) {
+  const box = el("div", {class: "chart"});
+  const tip = tooltip(box);
+  let cum = 0;
+  const pts = pairs.map(p => ({t: p.entry_ms, v: (cum += p.net_usd), p}));
+  responsive(box, W => {
+    box.querySelector("svg")?.remove();
+    const H = 280, m = {l: 64, r: 18, t: 14, b: 28};
+    let t0 = pts[0].t, t1 = pts[pts.length - 1].t; if (t0 === t1) { t0 -= 36e5; t1 += 36e5; }
+    const yt = niceTicks(Math.min(0, ...pts.map(p => p.v)), Math.max(0, ...pts.map(p => p.v)), 4);
+    const y0 = yt[0], y1 = yt[yt.length - 1];
+    const X = t => m.l + (t - t0) / (t1 - t0) * (W - m.l - m.r), Y = v => m.t + (1 - (v - y0) / (y1 - y0)) * (H - m.t - m.b);
+    const svg = sv("svg", {viewBox: `0 0 ${W} ${H}`, height: H, tabindex: "0", role: "img",
+      "aria-label": `Equity curve: ${pts.length} pairs, ending at ${usd(pts[pts.length - 1].v, true)}. Use arrow keys to step through pairs.`});
+    for (const v of yt) svg.append(sv("line", {class: v === 0 ? "zero" : "gridline", x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v)}),
+      sv("text", {class: "tick", x: m.l - 8, y: Y(v) + 4, "text-anchor": "end"}, usd(v)));
+    for (const t of timeTicks(t0, t1, Math.max(2, Math.min(6, Math.floor(W / 140)))))
+      svg.append(sv("text", {class: "tick", x: X(t), y: H - 8, "text-anchor": "middle"}, timeLabel(t, t1 - t0)));
+    let d = `M${X(t0)},${Y(0)}`;
+    for (const p of pts) d += `H${X(p.t)}V${Y(p.v)}`;
+    d += `H${X(t1)}`;
+    svg.append(sv("path", {d: d + `V${Y(0)}Z`, fill: "var(--mark-accent)", "fill-opacity": .1, stroke: "none"}),
+      sv("path", {d, fill: "none", stroke: "var(--mark-accent)", "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round"}));
+    const last = pts[pts.length - 1];
+    svg.append(sv("circle", {cx: X(t1), cy: Y(last.v), r: 4, fill: "var(--mark-accent)", stroke: "var(--surface)", "stroke-width": 2}));
+    const cross = sv("line", {x1: 0, x2: 0, y1: m.t, y2: H - m.b, stroke: "var(--muted)", "stroke-width": 1, visibility: "hidden"});
+    const dot = sv("circle", {r: 5, fill: "var(--mark-accent)", stroke: "var(--surface)", "stroke-width": 2, visibility: "hidden"});
+    svg.append(cross, dot);
+    let cur = -1;
+    const at = i => {
+      cur = Math.max(0, Math.min(pts.length - 1, i));
+      const p = pts[cur], x = X(p.t), y = Y(p.v);
+      cross.setAttribute("x1", x); cross.setAttribute("x2", x); cross.setAttribute("visibility", "visible");
+      dot.setAttribute("cx", x); dot.setAttribute("cy", y); dot.setAttribute("visibility", "visible");
+      tip.show(x, y, () => [el("strong", {}, usd(p.v, true)),
+        tipLine("var(--mark-accent)", "this pair " + usd(p.p.net_usd, true) + " · " + p.p.canonical),
+        el("div", {}, when(p.t) + " · pair " + (cur + 1) + " of " + pts.length)]);
+    };
+    const off = () => { cross.setAttribute("visibility", "hidden"); dot.setAttribute("visibility", "hidden"); tip.hide(); };
+    const hit = sv("rect", {x: m.l, y: m.t, width: Math.max(0, W - m.l - m.r), height: H - m.t - m.b, fill: "transparent"});
+    hit.addEventListener("pointermove", e => {
+      const r = svg.getBoundingClientRect(), t = t0 + (e.clientX - r.left - m.l) / (W - m.l - m.r) * (t1 - t0);
+      let lo = 0, hi = pts.length - 1;
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (pts[mid].t < t) lo = mid + 1; else hi = mid; }
+      at(lo > 0 && Math.abs(pts[lo - 1].t - t) < Math.abs(pts[lo].t - t) ? lo - 1 : lo);
+    });
+    hit.addEventListener("pointerleave", off);
+    svg.addEventListener("keydown", e => {
+      if (e.key === "ArrowRight" || e.key === "ArrowLeft") { e.preventDefault(); at(cur < 0 ? (e.key === "ArrowRight" ? 0 : pts.length - 1) : cur + (e.key === "ArrowRight" ? 1 : -1)); }
+      if (e.key === "Home") { e.preventDefault(); at(0); }
+      if (e.key === "End") { e.preventDefault(); at(pts.length - 1); }
+    });
+    svg.addEventListener("blur", off);
+    svg.append(hit);
+    box.prepend(svg);
+  });
+  return box;
+}
+
+// Horizontal bar, 4px rounded at the data end, square at the baseline.
+function hbar(x0, x1, y, h) {
+  const r = Math.min(4, Math.abs(x1 - x0) / 2, h / 2);
+  if (Math.abs(x1 - x0) < 0.5) return `M${x0},${y}h0.5v${h}h-0.5Z`;
+  if (x1 >= x0) return `M${x0},${y}H${x1 - r}Q${x1},${y} ${x1},${y + r}V${y + h - r}Q${x1},${y + h} ${x1 - r},${y + h}H${x0}Z`;
+  return `M${x0},${y}H${x1 + r}Q${x1},${y} ${x1},${y + r}V${y + h - r}Q${x1},${y + h} ${x1 + r},${y + h}H${x0}Z`;
+}
+
+// Rows of labelled horizontal bars sharing one scale: used by the waterfall
+// and the per-market chart. Each row: {label, from, to, color, value, tip[]}.
+function barRows(rows, opts) {
+  const box = el("div", {class: "chart"});
+  const tip = tooltip(box);
+  responsive(box, W => {
+    box.querySelector("svg")?.remove();
+    const rowH = 30, barH = 16, labW = Math.min(opts.labelWidth || 150, W * 0.38), valW = 76;
+    const H = rows.length * rowH + 24;
+    const lo = Math.min(0, ...rows.map(r => Math.min(r.from, r.to))), hi = Math.max(0, ...rows.map(r => Math.max(r.from, r.to)));
+    const x0 = labW + 8, x1 = W - valW, X = v => x0 + (v - lo) / ((hi - lo) || 1) * (x1 - x0);
+    const svg = sv("svg", {viewBox: `0 0 ${W} ${H}`, height: H, role: "img", "aria-label": opts.aria});
+    svg.append(sv("line", {class: "zero", x1: X(0), x2: X(0), y1: 0, y2: rows.length * rowH}));
+    rows.forEach((r, i) => {
+      const y = i * rowH + (rowH - barH) / 2, g = sv("g", {tabindex: "0", role: "img", "aria-label": r.label + ": " + r.valueText});
+      const maxChars = Math.max(8, Math.floor(labW / 7.4));
+      const label = r.label.length > maxChars ? r.label.slice(0, maxChars - 1) + "…" : r.label;
+      const bar = sv("path", {d: hbar(X(r.from), X(r.to), y, barH), fill: r.color});
+      g.append(sv("rect", {x: 0, y: i * rowH, width: W, height: rowH, fill: "transparent"}),
+        sv("text", {x: labW, y: y + barH / 2 + 4, "text-anchor": "end", fill: r.strong ? "var(--ink)" : "var(--ink-2)", "font-size": 12,
+          "font-family": "IBM Plex Mono, monospace", "font-weight": r.strong ? 600 : 400}, sv("title", {}, r.label), label),
+        bar,
+        sv("text", {x: Math.max(X(r.from), X(r.to)) + 6, y: y + barH / 2 + 4, fill: "var(--ink)", "font-size": 12,
+          "font-family": "IBM Plex Mono, monospace", "font-weight": r.strong ? 600 : 400}, r.valueText));
+      const show = () => { bar.setAttribute("fill-opacity", .78); const bx = Math.max(X(r.from), X(r.to));
+        tip.show(Math.min(bx, W - 20), y, () => [el("strong", {}, r.valueText), ...(r.tip || []).map(t => el("div", {}, t))]); };
+      const hide = () => { bar.removeAttribute("fill-opacity"); tip.hide(); };
+      g.addEventListener("pointerenter", show); g.addEventListener("pointerleave", hide);
+      g.addEventListener("focus", show); g.addEventListener("blur", hide);
+      svg.append(g);
+    });
+    for (const v of niceTicks(lo, hi, 4)) if (v >= lo - 1e-9 && v <= hi + 1e-9)
+      svg.append(sv("text", {class: "tick", x: X(v), y: H - 6, "text-anchor": "middle"}, (opts.tick || usd)(v)));
+    box.prepend(svg);
+  });
+  return box;
+}
+
+function waterfall(rep) {
+  const rows = [];
+  let run = 0;
+  const step = (label, delta, tipText) => {
+    rows.push({label, from: run, to: run + delta, color: delta >= 0 ? "var(--gain)" : "var(--loss)",
+      valueText: usd(delta, true), tip: [label, tipText].filter(Boolean)});
+    run += delta;
+  };
+  step("Gross captured", rep.gross_usd, "gap at realized fill prices");
+  for (const [venue, fee] of Object.entries(rep.fees_by_venue_usd || {}).sort())
+    step(venue + " fees", -fee, fee < 0 ? "net maker rebate" : "taker/maker fees paid");
+  if (rep.legging_cost_usd) step("Legging exits", -rep.legging_cost_usd, "closing unhedged excess");
+  rows.push({label: "Net P&L", from: 0, to: rep.net_pnl_usd, color: "var(--ink-2)", strong: true, valueText: usd(rep.net_pnl_usd, true), tip: ["Net P&L"]});
+  const out = el("div", {}, barRows(rows, {labelWidth: 130, aria: "Waterfall from gross captured to net P&L"}));
+  if (rep.slippage_usd) out.append(el("p", {class: "note"}, "Slippage vs top of book " + usd(-rep.slippage_usd, true) + " — already inside gross, shown for information."));
+  return out;
+}
+
+function marketBars(markets) {
+  const pick = markets.length > 24 ? [...markets.slice(0, 12), ...markets.slice(-12)] : markets;
+  const rows = pick.map(m => ({label: m.canonical, from: 0, to: m.net_usd, color: m.net_usd >= 0 ? "var(--gain)" : "var(--loss)",
+    valueText: usd(m.net_usd, true), tip: [m.canonical, m.pairs + " pair" + (m.pairs === 1 ? "" : "s") + " · " + usd(m.capital_usd) + " capital", m.attempts + " attempts"]}));
+  return barRows(rows, {labelWidth: 190, aria: "Net P&L by market; the table view has every market"});
+}
+
+function pairsTable(pairs) {
+  let cum = 0;
+  return el("div", {class: "tablewrap", style: "margin-top:10px; max-height:360px; overflow:auto"}, el("table", {},
+    el("thead", {}, el("tr", {}, el("th", {}, "Entered"), el("th", {}, "Market"), el("th", {class: "r"}, "Net"), el("th", {class: "r"}, "Capital"), el("th", {class: "r"}, "Cumulative"))),
+    el("tbody", {}, pairs.map(p => el("tr", {}, el("td", {}, when(p.entry_ms)), el("td", {class: "mono"}, p.canonical),
+      el("td", {class: "r num"}, usd(p.net_usd, true)), el("td", {class: "r num"}, usd(p.capital_usd)), el("td", {class: "r num"}, usd((cum += p.net_usd), true)))))));
+}
+
+function marketsTable(markets) {
+  return el("div", {class: "tablewrap", style: "margin-top:10px; max-height:360px; overflow:auto"}, el("table", {},
+    el("thead", {}, el("tr", {}, ["Market", "Category"].map(h => el("th", {}, h)), ["Net", "Capital", "Pairs", "Attempts"].map(h => el("th", {class: "r"}, h)))),
+    el("tbody", {}, markets.map(m => el("tr", {}, el("td", {class: "mono"}, m.canonical), el("td", {}, m.category),
+      el("td", {class: "r num"}, usd(m.net_usd, true)), el("td", {class: "r num"}, usd(m.capital_usd)), el("td", {class: "r num"}, m.pairs), el("td", {class: "r num"}, m.attempts))))));
+}
+
+function variantChart(runs) {
+  const seen = new Set(), pick = [];
+  for (const r of runs) { const k = r.variant + "|" + r.mode; if (r.variant && !seen.has(k)) { seen.add(k); pick.push(r); } }
+  // The sweep's own order (baseline first), not alphabetical.
+  pick.sort((a, b) => a.finished_at.localeCompare(b.finished_at));
+  // Name the mode only when the sweep mixes maker and taker.
+  const mixed = new Set(pick.map(r => r.mode)).size > 1;
+  const name = r => !mixed || r.variant.includes(r.mode) ? r.variant : r.variant + " · " + r.mode;
+  return barRows(pick.map(r => ({label: name(r), from: 0, to: r.net_pnl_usd,
+    color: r.net_pnl_usd >= 0 ? "var(--gain)" : "var(--loss)", valueText: usd(r.net_pnl_usd, true),
+    tip: [name(r), r.pairs_completed + "/" + r.pairs_attempted + " pairs completed",
+      r.peak_capital_usd != null ? "peak capital " + usd(r.peak_capital_usd) + " · return on it " + pct(r.return_on_peak, true) : null,
+      when(r.finished_at)].filter(Boolean)})),
+    {labelWidth: 260, aria: "Net P&L by variant; the runs table below has the same values"});
+}
+
+// Mean adverse drift per horizon with 95% bars, against the rebate line.
+function adverseChart(a) {
+  const box = el("div", {class: "chart"});
+  const tip = tooltip(box);
+  const hs = a.horizons.filter(h => h.fills);
+  if (!hs.length) return el("p", {class: "empty"}, "No fills measured — this window had no trade prints.");
+  responsive(box, W => {
+    box.querySelector("svg")?.remove();
+    const H = 220, m = {l: 56, r: 18, t: 14, b: 28};
+    const vals = hs.flatMap(h => [h.mean_cents - 1.96 * h.stderr_cents, h.mean_cents + 1.96 * h.stderr_cents]).concat([0, a.rebate_cents]);
+    const yt = niceTicks(Math.min(...vals), Math.max(...vals), 4), y0 = yt[0], y1 = yt[yt.length - 1];
+    const X = i => m.l + (i + 0.5) / hs.length * (W - m.l - m.r), Y = v => m.t + (1 - (v - y0) / (y1 - y0)) * (H - m.t - m.b);
+    const svg = sv("svg", {viewBox: `0 0 ${W} ${H}`, height: H, role: "img", "aria-label": "Adverse drift by horizon; the table below has the same values"});
+    for (const v of yt) svg.append(sv("line", {class: v === 0 ? "zero" : "gridline", x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v)}),
+      sv("text", {class: "tick", x: m.l - 8, y: Y(v) + 4, "text-anchor": "end"}, v.toFixed(2) + "¢"));
+    svg.append(sv("line", {x1: m.l, x2: W - m.r, y1: Y(a.rebate_cents), y2: Y(a.rebate_cents), stroke: "var(--loss)", "stroke-width": 1.5}),
+      sv("text", {class: "tick", x: W - m.r, y: Y(a.rebate_cents) - 6, "text-anchor": "end"}, "rebate " + a.rebate_cents + "¢ — above this, resting loses"));
+    hs.forEach((h, i) => {
+      const x = X(i), ci = 1.96 * h.stderr_cents;
+      const g = sv("g", {tabindex: "0", role: "img", "aria-label": `${h.seconds}s: ${h.mean_cents.toFixed(3)}¢ over ${h.fills} fills`});
+      const dot = sv("circle", {cx: x, cy: Y(h.mean_cents), r: 5, fill: "var(--mark-accent)", stroke: "var(--surface)", "stroke-width": 2});
+      g.append(sv("rect", {x: x - 24, y: m.t, width: 48, height: H - m.t - m.b, fill: "transparent"}),
+        sv("line", {x1: x, x2: x, y1: Y(h.mean_cents + ci), y2: Y(h.mean_cents - ci), stroke: "var(--mark-accent)", "stroke-width": 2, "stroke-opacity": .45, "stroke-linecap": "round"}), dot,
+        sv("text", {class: "tick", x, y: H - 8, "text-anchor": "middle"}, h.seconds >= 60 ? h.seconds / 60 + " min" : h.seconds + "s"));
+      const show = () => { dot.setAttribute("r", 6); tip.show(x, Y(h.mean_cents), () => [el("strong", {}, (h.mean_cents > 0 ? "+" : "") + h.mean_cents.toFixed(3) + "¢ drift"),
+        el("div", {}, "±" + ci.toFixed(3) + "¢ · " + count(h.fills) + " fills"), el("div", {}, pct(h.against_share) + " moved against the maker")]); };
+      const hide = () => { dot.setAttribute("r", 5); tip.hide(); };
+      g.addEventListener("pointerenter", show); g.addEventListener("pointerleave", hide);
+      g.addEventListener("focus", show); g.addEventListener("blur", hide);
+      svg.append(g);
+    });
+    box.prepend(svg);
+  });
+  return box;
+}
+
+function adverseTable(a) {
+  return el("div", {class: "tablewrap", style: "margin-top:12px"}, el("table", {},
+    el("thead", {}, el("tr", {}, el("th", {}, "After"), ["Fills", "Mean drift", "±95%", "Moved against", "vs rebate"].map(h => el("th", {class: "r"}, h)))),
+    el("tbody", {}, a.horizons.map(h => {
+      const ci = 1.96 * h.stderr_cents;
+      const vs = !h.fills ? "—" : h.mean_cents - ci > a.rebate_cents ? "clearly above" : h.mean_cents + ci < a.rebate_cents ? "clearly below" : "can't tell";
+      return el("tr", {}, el("td", {}, h.seconds >= 60 ? h.seconds / 60 + " min" : h.seconds + "s"), el("td", {class: "r num"}, count(h.fills)),
+        el("td", {class: "r num"}, h.fills ? (h.mean_cents > 0 ? "+" : "") + h.mean_cents.toFixed(3) + "¢" : "—"),
+        el("td", {class: "r num"}, h.fills ? "±" + ci.toFixed(3) + "¢" : "—"), el("td", {class: "r num"}, h.fills ? pct(h.against_share) : "—"), el("td", {class: "r"}, vs));
+    }))));
+}
+
+// ---------- analyses (lead-lag, longshot) ----------
+const ANALYSIS = {
+  fairvalue: {name: "Fair value", q: "Combining both exchanges' prices into one fair chance — does it beat either price alone, and does betting where an exchange strays from it pay, on days the model never saw?"},
+  outcomereg: {name: "Outcome regression", q: "Does anything — the price itself, the exchange, the league, the spread — predict who wins better than the market's own price, on days the model never saw?"},
+  autocorr: {name: "Price momentum / reversion", q: "On one exchange, does a price change predict the next one — does it keep going or undo itself — and does trading that pay after costs?"},
+  spreadmr: {name: "Spread mean-reversion", q: "When the Kalshi–Polymarket gap stretches, how fast does it snap back — and does trading the snap-back pay after costs?"},
+  moves: {name: "Overreaction", q: "After a sharp price move or a burst of one-sided trading, does the price keep going or snap back — and does trading it pay after costs?"},
+  leadlag: {name: "Lead-lag", q: "Does one exchange's price move before the other's?"},
+  longshot: {name: "Longshot / calibration", q: "Do games resolve as often as their opening price implies?"},
+};
+const analysisBadge = kind => el("span", {class: "badge"}, el("span", {class: "key analysis"}), ANALYSIS[kind].name);
+
+const fmtSecs = s => !s ? "—" : s < 90 ? Math.round(s) + "s" : s < 5400 ? (s / 60).toFixed(1) + " min" : (s / 3600).toFixed(1) + " h";
+
+const calibRead = c => c.slope - 1.96 * c.slope_se > 1 ? "favorites underpriced" : c.slope + 1.96 * c.slope_se < 1 ? "favorites overpriced" : "calibrated";
+function fairvalueVerdict(r) {
+  if (r.note && !r.cv_n) return r.note.charAt(0).toUpperCase() + r.note.slice(1) + ".";
+  const best = venueName(r.best_single);
+  const lead = r.cv_verdict === "beats" ? `Combining both prices predicts unseen days better than ${best} alone`
+    : r.cv_verdict === "worse" ? `Combining both prices predicts unseen days worse than ${best} alone — the fit doesn't generalize`
+    : `Combining both prices predicts unseen days no better than ${best} alone`;
+  const trade = r.edges ? `${r.edges} of ${r.rules} betting rules clear zero after fees, held to settlement — check they hold across margins and weeks.`
+    : "No betting rule clears zero after fees on held-out days.";
+  return `${lead}. ${trade}`;
+}
+
+function outcomeregVerdict(r) {
+  if (r.note && !r.cv_n) return r.note.charAt(0).toUpperCase() + r.note.slice(1) + ".";
+  const calib = r.calibration || [];
+  const cal = calib.map(c => `${venueName(c.venue)} ${calibRead(c)} (slope ${c.slope.toFixed(2)})`).join("; ");
+  const biased = calib.some(c => calibRead(c) !== "calibrated");
+  const cv = r.cv_verdict === "beats" ? "The model predicts unseen days better than the market price — there's structure the price misses, worth a trading test."
+    : r.cv_verdict === "worse" ? "The model predicts unseen days worse than the market price: the price already knows more than these features."
+    : biased ? "The bias shows in the fit, but on days the model never saw it's no better than the price — too small, or too little data, to exploit reliably yet."
+    : "On days it never saw, the model is no better than the market's own price — nothing here to exploit.";
+  return (cal ? cal + ". " : "") + cv;
+}
+
+function autocorrVerdict(r) {
+  if (!r.fits) return "No series had enough continuous prices to fit.";
+  const s = r.strongest, shape = r.reversion > r.momentum ? "reversion — a change tends to be partly undone" : r.momentum > r.reversion ? "momentum — a change tends to continue" : "no consistent pattern";
+  const lead = r.reversion + r.momentum ? `Mostly ${shape}` : "Price changes don't predict the next ones";
+  const str = s && (r.reversion + r.momentum) ? ` (strongest: ${venueName(s.venue)} over ${hLabel(s.horizon_s)}, β ${s.beta > 0 ? "+" : ""}${s.beta.toFixed(2)})` : "";
+  if (!r.edges) return `${lead}${str}. But no follow-or-fade rule clears zero once you pay the spread and fees — the pattern is too small to trade.`;
+  return `${lead}${str}. ${r.edges} of ${r.rules_readable} trading rules clear zero after costs — check they hold across horizons and in each week.`;
+}
+
+function spreadmrVerdict(r) {
+  if (!r.markets) return "No market had enough time with both exchanges quoting to fit.";
+  const hl = r.half_life_s ? `A stretched gap closes halfway in about ${fmtSecs(r.half_life_s)}` : "The gap shows no measurable pull-back";
+  const size = r.median_sigma_eq ? `, and typically strays ±${r.median_sigma_eq.toFixed(1)}¢` : "";
+  if (!r.edges) return `${hl}${size}. No trading rule clears zero after paying the spread and four fees — the snap-back is real but too small or too quick to capture.`;
+  return `${hl}${size}. ${r.edges} of ${r.strategies_tested} trading rules clear zero after costs — check they hold across entry thresholds and in each week before trusting them.`;
+}
+
+function movesVerdict(r) {
+  if (!r.rows_readable) return "Too little data: no size band and horizon has 10+ games and 30+ events yet.";
+  const cost = r.round_trip_cents != null ? ` A taker round trip costs about ${r.round_trip_cents.toFixed(1)}¢ in spread and fees.` : "";
+  if (!r.edges) return `No edge after costs: across ${r.rows_readable} readable size/horizon combinations, neither fading nor following a move clears zero once you pay to trade it.` + cost;
+  return `${r.edges} of ${r.rows_readable} combinations clear zero after costs. With this many tested, some will by chance — look for a pattern that holds across neighbouring sizes and horizons, and in each week.` + cost;
+}
+
+function leadlagVerdict(r) {
+  const lagged = r.kalshi_leads + r.poly_leads;
+  if (!r.analyzed) return "No market had enough two-exchange overlap to analyze.";
+  const share = lagged / r.analyzed;
+  if (share < 0.2) return `No usable lead: only ${lagged} of ${r.analyzed} markets show one exchange moving first. Prices move together or independently, so a lead-lag bot has little to trade on.`;
+  const who = r.kalshi_leads >= r.poly_leads ? "Kalshi" : "Polymarket", n = Math.max(r.kalshi_leads, r.poly_leads);
+  return `${who} tends to move first: ${n} of ${lagged} markets with a lead (median ${Math.abs(r.median_lead_s)}s, median strength |corr| ${r.median_peak_corr.toFixed(2)}). Worth a closer look — the lead has to beat fees and latency to be tradeable.`;
+}
+function longshotVerdict(r) {
+  if (r.markets < 2) return "Not enough settled markets with price history to analyze.";
+  if (!r.solid_buckets) return `Too little data: no price bucket has 30+ settled markets yet (${r.markets} markets in total). Any pattern here is noise.`;
+  if (!r.clear_buckets) return `No clear mispricing: in every bucket with 30+ markets, how often YES happened is within noise of what the price implied.`;
+  return `${r.clear_buckets} of ${r.solid_buckets} well-populated price buckets resolve YES clearly more or less often than priced — a possible calibration edge. Check which buckets, and whether the gap survives fees.`;
+}
+
+function analysesSection(runs) {
+  const out = [el("h2", {}, "Analyses"),
+    el("p", {class: "h2note"}, "Read-only studies of the same recorded data, for ideas beyond arbitrage. The latest of each, then the history.")];
+  const cards = ["fairvalue", "outcomereg", "spreadmr", "autocorr", "moves", "longshot", "leadlag"].map(kind => {
+    const r = runs.find(x => x.kind === kind);
+    if (!r) return null;
+    const big = kind === "leadlag"
+      ? `${r.kalshi_leads} Kalshi-first · ${r.poly_leads} Poly-first · ${r.contemporaneous} together`
+      : kind === "moves" ? `${r.edges} edge${r.edges === 1 ? "" : "s"} after costs · ${count(r.move_events + r.flow_events)} events`
+      : kind === "spreadmr" ? `half-life ${fmtSecs(r.half_life_s)} · ${r.edges} edge${r.edges === 1 ? "" : "s"} after costs`
+      : kind === "autocorr" ? `${r.reversion} reversion · ${r.momentum} momentum · ${r.flat} flat · ${r.edges} edge${r.edges === 1 ? "" : "s"}`
+      : kind === "outcomereg" ? (r.cv_n ? `model ${r.cv_verdict === "beats" ? "beats" : r.cv_verdict === "worse" ? "loses to" : "ties"} the market out of sample` : "not enough data")
+      : kind === "fairvalue" ? (r.cv_n ? `fair value ${r.cv_verdict === "beats" ? "beats" : r.cv_verdict === "worse" ? "loses to" : "ties"} the best exchange · ${r.edges} edge${r.edges === 1 ? "" : "s"}` : "not enough data")
+      : `${r.clear_buckets} of ${r.solid_buckets} solid buckets show a clear edge`;
+    const verdict = kind === "leadlag" ? leadlagVerdict(r) : kind === "moves" ? movesVerdict(r) : kind === "spreadmr" ? spreadmrVerdict(r) : kind === "autocorr" ? autocorrVerdict(r) : kind === "outcomereg" ? outcomeregVerdict(r) : kind === "fairvalue" ? fairvalueVerdict(r) : longshotVerdict(r);
+    return el("a", {class: "card acard", href: "#run=" + r.id},
+      el("h3", {}, ANALYSIS[kind].name), el("div", {class: "big"}, big),
+      el("div", {class: "sub"}, verdict),
+      el("div", {class: "sub"}, (r.label ? r.label + " · " : "") + dataSpan(r) + " · finished " + when(r.finished_at)));
+  }).filter(Boolean);
+  out.push(el("div", {class: "acards"}, cards));
+  const open = r => { location.hash = "run=" + r.id; };
+  out.push(el("div", {class: "tablewrap", style: "margin-top:16px"}, el("table", {},
+    el("thead", {}, el("tr", {}, ["Finished", "Label", "Analysis", "Data", "Result"].map(h => el("th", {}, h)))),
+    el("tbody", {}, runs.map(r => el("tr", {class: "link", tabindex: "0", "aria-label": "Open run " + r.id,
+      onclick: () => open(r), onkeydown: e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(r); } }},
+      el("td", {}, when(r.finished_at)), el("td", {}, runName(r)), el("td", {}, analysisBadge(r.kind)), el("td", {}, dataSpan(r)),
+      el("td", {}, r.kind === "leadlag" ? `${r.kalshi_leads}/${r.poly_leads}/${r.contemporaneous} of ${r.analyzed} (K/P/together)`
+        : r.kind === "moves" ? `${r.edges} edge${r.edges === 1 ? "" : "s"} · ${count(r.move_events)} moves, ${count(r.flow_events)} flow bursts`
+        : r.kind === "spreadmr" ? `half-life ${fmtSecs(r.half_life_s)} · ${r.edges}/${r.strategies_tested} rules clear · ${r.markets} markets`
+        : r.kind === "autocorr" ? `${r.reversion}/${r.momentum}/${r.flat} of ${r.fits} (rev/mom/flat) · ${r.edges} edges`
+        : r.kind === "outcomereg" ? `${r.obs} markets · out of sample: ${r.cv_verdict}`
+        : r.kind === "fairvalue" ? `${r.markets} markets · vs best exchange: ${r.cv_verdict} · ${r.edges}/${r.rules} rules clear`
+        : `${r.clear_buckets}/${r.solid_buckets} clear · ${r.markets} markets`)))))));
+  return out;
+}
+
+function analysisHeader(run) {
+  return [
+    el("a", {class: "back", href: "#"}, "← All runs"),
+    el("div", {class: "eyebrow"}, "predbot · analysis"),
+    el("h1", {}, ANALYSIS[run.kind].name),
+    el("p", {class: "lede"}, ANALYSIS[run.kind].q),
+    el("div", {class: "meta"},
+      analysisBadge(run.kind),
+      run.label ? el("span", {}, el("b", {}, run.label)) : null,
+      el("span", {}, el("b", {}, dataSpan(run)), " · ", windowText(run)),
+      el("span", {}, el("b", {}, count(run.snapshots)), " snapshots · ", el("b", {}, run.markets), " markets"),
+      run.duration_s ? el("span", {}, "ran ", el("b", {}, dur(run.duration_s)), " on ", run.host || "?") : null,
+      run.revision ? el("span", {class: "mono"}, "build " + run.revision.slice(0, 7), run.dirty ? el("span", {class: "dirty"}, " (uncommitted changes)") : null) : null),
+  ];
+}
+
+function showLongshot(d) {
+  const run = d.run, r = d.longshot;
+  document.title = "Longshot · " + (run.label || run.id) + " · Backtest runs";
+  const solid = r.buckets.filter(b => b.n >= 30), clear = solid.filter(b => Math.abs(b.edge) > 1.96 * b.stderr);
+  const fitUsable = r.fit_ok && solid.length >= 3;
+  const summary = {markets: r.markets, solid_buckets: solid.length, clear_buckets: clear.length};
+  const verdictName = {"favorite-longshot": "favorite–longshot bias", reverse: "reverse bias", calibrated: "roughly calibrated"}[r.verdict] || "—";
+  const kpis = el("div", {class: "stats kpis"},
+    stat("Settled markets", r.markets, r.outcomes ? "with an opening price, of " + r.outcomes + " outcomes loaded" : null, true),
+    stat("Resolved YES", pct(r.realized_rate), "priced at " + pct(r.mean_implied) + " on average"),
+    stat("Clear-edge buckets", clear.length + " / " + solid.length, "buckets with 30+ markets"),
+    stat("Fitted line", fitUsable ? r.intercept.toFixed(2) + " + " + r.slope.toFixed(2) + "·p" : "—", fitUsable ? verdictName : "needs 3+ buckets of 30+ markets"),
+    stat("Brier score", r.markets >= 2 ? r.brier.toFixed(3) : "—", r.markets >= 2 ? "baseline " + r.brier_base.toFixed(3) + " · lower is sharper" : null));
+  const rows = r.buckets.map(b => {
+    const ci = 1.96 * b.stderr, status = b.n < 30 ? "too few" : Math.abs(b.edge) > ci ? "clear" : "noise";
+    return el("tr", {}, el("td", {class: "num"}, Math.round(b.lo * 100) + "–" + pct0(b.hi)), el("td", {class: "r num"}, b.n),
+      el("td", {class: "r num"}, pct(b.mean_implied)), el("td", {class: "r num"}, pct(b.realized)),
+      el("td", {class: "r num" + (status === "clear" ? " better" : "")}, pct(b.edge, true)), el("td", {class: "r num"}, "±" + pct(ci)), el("td", {}, status));
+  });
+  app.replaceChildren(...analysisHeader(run).filter(Boolean),
+    el("p", {class: "verdict"}, longshotVerdict(summary)),
+    kpis,
+    el("h2", {}, "Calibration"),
+    el("p", {class: "h2note"}, "Each point is a price bucket: its average opening price against how often those games actually resolved YES. On the diagonal is perfectly priced; above it the market underpriced YES, below it overpriced. Bars are rough 95% ranges — a point whose bar crosses the diagonal is indistinguishable from fair."),
+    el("div", {class: "card"}, r.buckets.length ? calibrationChart(r, fitUsable) : el("p", {class: "empty"}, "No settled markets with price history.")),
+    el("h2", {}, "By price bucket"),
+    el("p", {class: "h2note"}, "Edge = resolved YES − priced. ▲ marks a clear edge: outside the ±95% range, with 30+ markets."),
+    el("div", {class: "tablewrap"}, el("table", {},
+      el("thead", {}, el("tr", {}, el("th", {}, "Priced"), ["Markets", "Avg price", "Resolved YES", "Edge", "±95%"].map(h => el("th", {class: "r"}, h)), el("th", {}, "Reads as"))),
+      el("tbody", {}, rows))));
+}
+
+// Reliability diagram: bucket mean price (x) vs realized YES rate (y), with the
+// y = x diagonal, 95% error bars, and the least-squares fit when it's usable.
+function calibrationChart(r, fitUsable) {
+  const box = el("div", {class: "chart"});
+  const tip = tooltip(box);
+  responsive(box, W => {
+    box.querySelector("svg")?.remove();
+    const H = Math.min(420, Math.max(280, W * 0.55)), m = {l: 52, r: 18, t: 14, b: 40};
+    const X = v => m.l + v * (W - m.l - m.r), Y = v => m.t + (1 - v) * (H - m.t - m.b);
+    const svg = sv("svg", {viewBox: `0 0 ${W} ${H}`, height: H, role: "img", "aria-label": "Calibration chart; the bucket table below has the same values"});
+    for (const v of [0, .25, .5, .75, 1]) svg.append(
+      sv("line", {class: "gridline", x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v)}),
+      sv("text", {class: "tick", x: m.l - 8, y: Y(v) + 4, "text-anchor": "end"}, pct0(v)),
+      sv("text", {class: "tick", x: X(v), y: H - m.b + 16, "text-anchor": "middle"}, pct0(v)));
+    svg.append(sv("text", {class: "tick", x: (m.l + W - m.r) / 2, y: H - 4, "text-anchor": "middle"}, "opening price (implied chance of YES)"),
+      sv("line", {x1: X(0), y1: Y(0), x2: X(1), y2: Y(1), stroke: "var(--muted)", "stroke-width": 1}),
+      sv("text", {class: "tick", x: X(.04), y: Y(.93), "text-anchor": "start"}, "underpriced YES"),
+      sv("text", {class: "tick", x: X(.96), y: Y(.06), "text-anchor": "end"}, "overpriced YES"));
+    if (fitUsable) {
+      const f = v => Math.max(0, Math.min(1, r.intercept + r.slope * v));
+      svg.append(sv("line", {x1: X(0), y1: Y(f(0)), x2: X(1), y2: Y(f(1)), stroke: "var(--ink-2)", "stroke-width": 1.5, "stroke-opacity": .5}));
+    }
+    for (const b of r.buckets) {
+      const x = X(b.mean_implied), y = Y(b.realized), ci = 1.96 * b.stderr;
+      const g = sv("g", {tabindex: "0", role: "img", "aria-label": `Priced ${pct(b.mean_implied)}, resolved YES ${pct(b.realized)}, ${b.n} markets`});
+      const faint = b.n < 30 ? .45 : 1;
+      g.append(sv("circle", {cx: x, cy: y, r: 14, fill: "transparent"}),
+        sv("line", {x1: x, x2: x, y1: Y(Math.min(1, b.realized + ci)), y2: Y(Math.max(0, b.realized - ci)), stroke: "var(--mark-accent)", "stroke-width": 2, "stroke-opacity": .45 * faint, "stroke-linecap": "round"}));
+      const dot = sv("circle", {cx: x, cy: y, r: 5, fill: "var(--mark-accent)", "fill-opacity": faint, stroke: "var(--surface)", "stroke-width": 2});
+      g.append(dot);
+      const show = () => { dot.setAttribute("r", 6); tip.show(x, y, () => [el("strong", {}, pct(b.realized) + " resolved YES"),
+        el("div", {}, "priced " + pct(b.mean_implied) + " · edge " + pct(b.edge, true) + " ±" + pct(ci)),
+        el("div", {}, b.n + " markets" + (b.n < 30 ? " — too few to read" : ""))]); };
+      const hide = () => { dot.setAttribute("r", 5); tip.hide(); };
+      g.addEventListener("pointerenter", show); g.addEventListener("pointerleave", hide);
+      g.addEventListener("focus", show); g.addEventListener("blur", hide);
+      svg.append(g);
+    }
+    box.prepend(svg);
+  });
+  return box;
+}
+
+function showLeadLag(d) {
+  const run = d.run, r = d.leadlag;
+  document.title = "Lead-lag · " + (run.label || run.id) + " · Backtest runs";
+  const signal = r.markets.filter(m => m.signal);
+  const kpis = el("div", {class: "stats kpis"},
+    stat("Markets analyzed", r.analyzed, "with enough two-exchange overlap", true),
+    stat("Kalshi moves first", r.kalshi_leads, "markets"),
+    stat("Polymarket moves first", r.poly_leads, "markets"),
+    stat("Move together", r.contemporaneous, "strongest at lag 0"),
+    stat("No signal", r.no_signal, "|corr| under " + r.corr_floor.toFixed(2)),
+    stat("Median lead", r.kalshi_leads + r.poly_leads ? Math.abs(r.median_lead_s) + "s" : "—",
+      r.kalshi_leads + r.poly_leads ? "median |corr| " + r.median_peak_corr.toFixed(2) : "no lagged markets"));
+  app.replaceChildren(...analysisHeader(run).filter(Boolean),
+    el("p", {class: "verdict"}, leadlagVerdict(r)),
+    kpis,
+    el("h2", {}, "Who moves first"),
+    el("p", {class: "h2note"}, `For each market with a signal, the lag (in ${r.grid_s}s steps, scanned ±${r.max_lag_s}s) at which price changes on the two exchanges line up best. Left of zero, Polymarket moves first; right of zero, Kalshi does.`),
+    el("div", {class: "card"}, signal.length ? lagHistogram(signal, r) : el("p", {class: "empty"}, "No market cleared the correlation floor.")),
+    el("h2", {}, "Markets"),
+    el("p", {class: "h2note"}, `Markets with a signal, strongest first (${signal.length} of ${r.analyzed}). Peak corr is how tightly the two exchanges' price changes line up at the best lag; lag-0 corr is the same at no lag.`),
+    signal.length ? el("div", {class: "tablewrap", style: "max-height:420px; overflow:auto"}, el("table", {},
+      el("thead", {}, el("tr", {}, el("th", {}, "Market"), ["Peak lag", "Peak corr", "Lag-0 corr", "Points"].map(h => el("th", {class: "r"}, h)))),
+      el("tbody", {}, signal.map(m => el("tr", {}, el("td", {class: "mono"}, m.canonical),
+        el("td", {class: "r num"}, (m.peak_lag_s > 0 ? "+" : "") + m.peak_lag_s + "s"), el("td", {class: "r num"}, m.peak_corr.toFixed(3)),
+        el("td", {class: "r num"}, m.lag0_corr.toFixed(3)), el("td", {class: "r num"}, count(m.n))))))) : null);
+}
+
+const hLabel = h => h === 0 ? "settle" : h >= 60 ? h / 60 + " min" : h + "s";
+const isEdge = r => r.markets >= 10 && r.events >= 30 && (r.fade - 1.96 * r.fade_se > 0 ? "fade" : r.follow - 1.96 * r.follow_se > 0 ? "follow" : null);
+const venueName = v => v === "polymarketus" ? "Polymarket" : v === "kalshi" ? "Kalshi" : v;
+
+function showMoves(d) {
+  const run = d.run, r = d.moves;
+  document.title = "Overreaction · " + (run.label || run.id) + " · Backtest runs";
+  const readable = r.rows.filter(x => x.markets >= 10 && x.events >= 30);
+  const edges = readable.filter(isEdge);
+  const costs = readable.filter(x => x.horizon_s).map(x => -(x.follow + x.fade) / 2);
+  const summary = {rows_readable: readable.length, edges: edges.length, round_trip_cents: costs.length ? costs.reduce((a, b) => a + b, 0) / costs.length : null};
+  const kpis = el("div", {class: "stats kpis"},
+    stat("Edges after costs", edges.length + " / " + readable.length, "readable size × horizon combinations", true),
+    stat("Price moves", count(r.move_events), `≥${r.move_cents}¢ within ${r.lookback_s}s`),
+    stat("Flow bursts", count(r.flow_events), `≥${r.flow_contracts} contracts net within ${r.flow_window_s}s`),
+    stat("Round-trip cost", summary.round_trip_cents != null ? summary.round_trip_cents.toFixed(1) + "¢" : "—", "spread + both fees, avg"),
+    stat("Hold to settlement", r.settlement ? "included" : "—", r.settlement ? "from recorded outcomes" : "no outcomes loaded"));
+  const triggers = [["move", "After a sharp price move", `The mid moved at least ${r.move_cents}¢ within ${r.lookback_s} seconds. Did it keep going, or snap back?`],
+    ["flow", "After one-sided trading", `Takers bought (or sold) at least ${r.flow_contracts} contracts more than the other side within ${r.flow_window_s} seconds — the closest thing in this data to "the public" piling in. Did the price keep going, or reverse?`]];
+  const sections = triggers.flatMap(([trig, title, note]) => {
+    const rows = r.rows.filter(x => x.trigger === trig);
+    if (!rows.length) return [el("h2", {}, title), el("p", {class: "empty"}, trig === "flow" ? "No trade prints in this window, so no flow events." : "No events.")];
+    return [el("h2", {}, title), el("p", {class: "h2note"}, note + " Size bands with fewer than 10 games are left off the charts; they're in the table."),
+      el("div", {class: "card"}, el("div", {class: "multi"}, ["kalshi", "polymarketus"].filter(v => rows.some(x => x.venue === v)).map(v =>
+        el("div", {}, el("h3", {}, venueName(v)), continuationChart(rows.filter(x => x.venue === v), trig))))),
+      el("p", {class: "h2note", style: "margin-top:14px"}, "Net profit per contract of actually trading it — with the move (follow) or against it (fade) — entering and exiting at the real bid/ask and paying both fees. Only combinations with 10+ games and 30+ events are shown; ▲ marks one whose 95% range clears zero."),
+      el("div", {class: "card"}, forestPlot(rows.filter(x => x.markets >= 10 && x.events >= 30)))];
+  });
+  app.replaceChildren(...analysisHeader(run).filter(Boolean),
+    el("p", {class: "verdict"}, movesVerdict(summary)),
+    kpis, ...sections,
+    el("h2", {}, "All combinations"),
+    el("p", {class: "h2note"}, "Every trigger, exchange, size band and horizon. Continuation is before costs (+ kept going, − snapped back); follow and fade are after costs. ± is a 95% range clustered by game; n/a means one game, where no honest range exists."),
+    movesTable(r.rows));
+}
+
+// Mid continuation (before costs) by horizon, one line per size band.
+function continuationChart(rows, trig) {
+  // Same bar as the forest plot: a band backed by a handful of games swings
+  // enough to look like a pattern. Those stay in the table.
+  rows = rows.filter(x => x.markets >= 10 && x.events >= 30);
+  if (!rows.some(x => x.horizon_s)) return el("p", {class: "empty"}, "No size band has 10+ games and 30+ events here yet.");
+  const bands = [...new Map(rows.map(x => [x.bucket, x.bucket_lo])).entries()].sort((a, b) => a[1] - b[1]).map(e => e[0]);
+  const hs = [...new Set(rows.filter(x => x.horizon_s).map(x => x.horizon_s))].sort((a, b) => a - b);
+  const box = el("div", {class: "chart"});
+  const legend = el("div", {class: "legend"}, bands.map((b, i) => el("span", {}, el("span", {class: "lk s" + Math.min(3, i + 1), style: "display:inline-block;width:14px;height:2px"}), b + (trig === "flow" ? " contracts" : ""))));
+  const tip = tooltip(box);
+  responsive(box, W => {
+    box.querySelector("svg")?.remove();
+    const H = 200, m = {l: 48, r: 14, t: 10, b: 26};
+    const pts = rows.filter(x => x.horizon_s);
+    const vals = pts.map(x => x.cont).concat([0]);
+    const yt = niceTicks(Math.min(...vals), Math.max(...vals), 4), y0 = yt[0], y1 = yt[yt.length - 1];
+    const X = i => m.l + (hs.length === 1 ? 0.5 : i / (hs.length - 1)) * (W - m.l - m.r), Y = v => m.t + (1 - (v - y0) / (y1 - y0)) * (H - m.t - m.b);
+    const svg = sv("svg", {viewBox: `0 0 ${W} ${H}`, height: H, role: "img", "aria-label": "Price continuation by horizon; the table below has the same values"});
+    for (const v of yt) svg.append(sv("line", {class: v === 0 ? "zero" : "gridline", x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v)}),
+      sv("text", {class: "tick", x: m.l - 6, y: Y(v) + 4, "text-anchor": "end"}, (v > 0 ? "+" : "") + v + "¢"));
+    hs.forEach((h, i) => svg.append(sv("text", {class: "tick", x: X(i), y: H - 6, "text-anchor": "middle"}, hLabel(h))));
+    svg.append(sv("text", {class: "tick", x: m.l + 4, y: m.t + 10}, "kept going ↑"), sv("text", {class: "tick", x: m.l + 4, y: H - m.b - 4}, "snapped back ↓"));
+    bands.forEach((b, bi) => {
+      const color = `var(--size${Math.min(3, bi + 1)})`;
+      const series = hs.map((h, i) => ({i, row: pts.find(x => x.bucket === b && x.horizon_s === h)})).filter(p => p.row);
+      if (!series.length) return;
+      svg.append(sv("path", {d: series.map((p, k) => (k ? "L" : "M") + X(p.i) + "," + Y(p.row.cont)).join(""), fill: "none", stroke: color, "stroke-width": 2, "stroke-linejoin": "round"}));
+      for (const p of series) {
+        const x = X(p.i), y = Y(p.row.cont);
+        const g = sv("g", {tabindex: "0", role: "img", "aria-label": `${b}, ${hLabel(p.row.horizon_s)}: ${p.row.cont.toFixed(2)}¢`});
+        const dot = sv("circle", {cx: x, cy: y, r: 4, fill: color, stroke: "var(--surface)", "stroke-width": 2});
+        g.append(sv("circle", {cx: x, cy: y, r: 12, fill: "transparent"}), dot);
+        const show = () => { dot.setAttribute("r", 5); tip.show(x, y, () => [el("strong", {}, (p.row.cont > 0 ? "+" : "") + p.row.cont.toFixed(2) + "¢ " + (p.row.cont >= 0 ? "kept going" : "snapped back")),
+          el("div", {}, b + " · after " + hLabel(p.row.horizon_s)), el("div", {}, "±" + (1.96 * p.row.cont_se).toFixed(2) + "¢ · " + p.row.events + " events in " + p.row.markets + " games")]); };
+        const hide = () => { dot.setAttribute("r", 4); tip.hide(); };
+        g.addEventListener("pointerenter", show); g.addEventListener("pointerleave", hide);
+        g.addEventListener("focus", show); g.addEventListener("blur", hide);
+        svg.append(g);
+      }
+    });
+    box.prepend(svg);
+  });
+  return el("div", {}, legend, box);
+}
+
+// One row per exchange × size × horizon: fade (accent circle) and follow (gray
+// square) net P&L with 95% bars, against zero.
+function forestPlot(rows) {
+  if (!rows.length) return el("p", {class: "empty"}, "No combination has 10+ games and 30+ events yet.");
+  const box = el("div", {class: "chart"});
+  const legend = el("div", {class: "legend"}, el("span", {}, el("span", {class: "key fade"}), "fade (trade against it)"), el("span", {}, el("span", {class: "key follow"}), "follow (trade with it)"));
+  const tip = tooltip(box);
+  responsive(box, W => {
+    box.querySelector("svg")?.remove();
+    const narrow = W < 600, fs = narrow ? 11 : 12;
+    const labelOf = x => narrow
+      ? ({polymarketus: "Poly", kalshi: "Kal"}[x.venue] || x.venue) + " · " + x.bucket + " · " + hLabel(x.horizon_s).replace(" min", "m")
+      : venueName(x.venue) + " · " + x.bucket + " · " + hLabel(x.horizon_s);
+    // Size the label column to the longest label (mono: ~0.61em per char, +2 for "▲ ").
+    const longest = Math.max(...rows.map(x => labelOf(x).length + 2));
+    const rowH = 26, labW = Math.min(W * 0.5, longest * fs * 0.61 + 6), m = {l: labW + 10, r: 16, t: 6, b: 24}, H = rows.length * rowH + m.t + m.b;
+    const vals = rows.flatMap(x => [x.fade - 1.96 * x.fade_se, x.fade + 1.96 * x.fade_se, x.follow - 1.96 * x.follow_se, x.follow + 1.96 * x.follow_se]).concat([0]);
+    const xt = niceTicks(Math.min(...vals), Math.max(...vals), 5), x0 = xt[0], x1 = xt[xt.length - 1];
+    const X = v => m.l + (v - x0) / (x1 - x0) * (W - m.l - m.r);
+    const svg = sv("svg", {viewBox: `0 0 ${W} ${H}`, height: H, role: "img", "aria-label": "Net P&L after costs, fade vs follow; the table below has the same values"});
+    for (const v of xt) svg.append(sv("line", {class: v === 0 ? "zero" : "gridline", x1: X(v), x2: X(v), y1: m.t, y2: H - m.b}),
+      sv("text", {class: "tick", x: X(v), y: H - 6, "text-anchor": "middle"}, (v > 0 ? "+" : "") + v + "¢"));
+    rows.forEach((x, i) => {
+      const y = m.t + i * rowH + rowH / 2, edge = isEdge(x);
+      const label = labelOf(x);
+      svg.append(sv("text", {x: labW, y: y + 4, "text-anchor": "end", fill: edge ? "var(--ink)" : "var(--ink-2)", "font-size": fs, "font-family": "IBM Plex Mono, monospace", "font-weight": edge ? 600 : 400}, (edge ? "▲ " : "") + label));
+      const g = sv("g", {tabindex: "0", role: "img", "aria-label": `${label}: fade ${x.fade.toFixed(2)}¢, follow ${x.follow.toFixed(2)}¢`});
+      g.append(sv("rect", {x: 0, y: y - rowH / 2, width: W, height: rowH, fill: "transparent"}));
+      const mark = (v, se, dy, fade) => {
+        const cy = y + dy;
+        g.append(sv("line", {x1: X(v - 1.96 * se), x2: X(v + 1.96 * se), y1: cy, y2: cy, stroke: fade ? "var(--mark-accent)" : "var(--mark-muted)", "stroke-width": 2, "stroke-opacity": .45, "stroke-linecap": "round"}));
+        g.append(fade ? sv("circle", {cx: X(v), cy, r: 4, fill: "var(--mark-accent)", stroke: "var(--surface)", "stroke-width": 2})
+          : sv("rect", {x: X(v) - 4, y: cy - 4, width: 8, height: 8, rx: 1.5, fill: "var(--mark-muted)", stroke: "var(--surface)", "stroke-width": 2}));
+      };
+      mark(x.fade, x.fade_se, -4, true); mark(x.follow, x.follow_se, 4, false);
+      const show = () => tip.show(X(Math.max(x.fade, x.follow)), y, () => [el("strong", {}, label),
+        tipLine("var(--mark-accent)", "fade " + (x.fade > 0 ? "+" : "") + x.fade.toFixed(2) + "¢ ±" + (1.96 * x.fade_se).toFixed(2)),
+        tipLine("var(--mark-muted)", "follow " + (x.follow > 0 ? "+" : "") + x.follow.toFixed(2) + "¢ ±" + (1.96 * x.follow_se).toFixed(2)),
+        el("div", {}, x.events + " events in " + x.markets + " games" + (edge ? " · " + edge + " clears zero" : ""))]);
+      g.addEventListener("pointerenter", show); g.addEventListener("pointerleave", () => tip.hide());
+      g.addEventListener("focus", show); g.addEventListener("blur", () => tip.hide());
+      svg.append(g);
+    });
+    box.prepend(svg);
+  });
+  return el("div", {}, legend, box);
+}
+
+function movesTable(rows) {
+  const ci = (x, v, se) => x.markets < 2 ? (v > 0 ? "+" : "") + v.toFixed(2) + " n/a" : (v > 0 ? "+" : "") + v.toFixed(2) + " ±" + (1.96 * se).toFixed(2);
+  return el("div", {class: "tablewrap", style: "max-height:460px; overflow:auto"}, el("table", {},
+    el("thead", {}, el("tr", {}, ["Trigger", "Exchange", "Size", "After"].map(h => el("th", {}, h)), ["Events", "Games", "Continuation", "Follow", "Fade"].map(h => el("th", {class: "r"}, h)), el("th", {}, "Edge"))),
+    el("tbody", {}, rows.map(x => { const e = isEdge(x); return el("tr", {},
+      el("td", {}, x.trigger === "move" ? "price move" : "flow burst"), el("td", {}, venueName(x.venue)), el("td", {class: "num"}, x.bucket), el("td", {}, hLabel(x.horizon_s)),
+      el("td", {class: "r num"}, x.events), el("td", {class: "r num"}, x.markets), el("td", {class: "r num"}, ci(x, x.cont, x.cont_se)),
+      el("td", {class: "r num" + (e === "follow" ? " better" : "")}, ci(x, x.follow, x.follow_se)), el("td", {class: "r num" + (e === "fade" ? " better" : "")}, ci(x, x.fade, x.fade_se)),
+      el("td", {}, e || "—")); }))));
+}
+
+function showSpreadMR(d) {
+  const run = d.run, r = d.spreadmr;
+  document.title = "Spread mean-reversion · " + (run.label || run.id) + " · Backtest runs";
+  const edges = r.strategies.filter(x => x.markets >= 10 && x.trades >= 30 && x.pnl - 1.96 * x.pnl_se > 0);
+  const summary = {...r, edges: edges.length, strategies_tested: r.strategies.length};
+  const hlRange = r.half_life_s ? fmtSecs(r.half_life_lo_s) + " – " + (r.half_life_hi_s ? fmtSecs(r.half_life_hi_s) : "∞") : null;
+  const kpis = el("div", {class: "stats kpis"},
+    stat("Half-life (pooled)", fmtSecs(r.half_life_s), hlRange ? "95% range " + hlRange : "no pull-back measured", true),
+    stat("Typical excursion", r.median_sigma_eq ? "±" + r.median_sigma_eq.toFixed(2) + "¢" : "—", "median σ of the gap"),
+    stat("Persistent offset", r.median_abs_level.toFixed(2) + "¢", "median |average gap|"),
+    stat("Markets fitted", r.markets, r.unfit ? r.unfit + " too thin" : "both exchanges quoting"),
+    stat("Rules with an edge", edges.length + " / " + r.strategies.length, "after spread + 4 fees"));
+  const short = s => s < 60 ? s + "s" : Math.round(s / 60) + "m";
+  const rows = r.strategies.map(x => ({label: x.k + "σ · ≤" + short(x.max_hold_s), v: x.pnl, se: x.pnl_se,
+    edge: x.markets >= 10 && x.trades >= 30 && x.pnl - 1.96 * x.pnl_se > 0,
+    tip: [x.trades + " trades in " + x.markets + " games", pct(x.win_share) + " winners · avg hold " + fmtSecs(x.avg_hold_s)]}));
+  const hist = r.half_life_hist.filter(b => b.n || b.lo_s >= 0);
+  app.replaceChildren(...analysisHeader(run).filter(Boolean),
+    el("p", {class: "verdict"}, spreadmrVerdict(summary)),
+    kpis,
+    el("h2", {}, "How fast gaps close"),
+    el("p", {class: "h2note"}, `Each game's gap (Kalshi mid − Polymarket mid) fitted as a mean-reverting process on a ${r.grid_s}s grid. The half-life is how long a stretched gap takes to close halfway. Gaps that close in seconds leave little time to trade; slow ones tie up capital.`),
+    el("div", {class: "card"}, barRows(hist.map(b => ({label: b.label, from: 0, to: b.n, color: b.lo_s < 0 ? "var(--mark-muted)" : "var(--mark-accent)",
+      valueText: b.n + (b.n === 1 ? " game" : " games"), tip: [b.label, b.n + " games"]})), {labelWidth: 110, aria: "Games by gap half-life", tick: v => String(v)})),
+    el("h2", {}, "Trading the snap-back"),
+    el("p", {class: "h2note"}, `When the gap strays k·σ from its trailing average, sell the rich exchange and buy the cheap one (${r.clip_contracts} contracts, taker on both legs in and out), and close when it's back within 0.5σ or at the max hold. The average and σ use only the past — no look-ahead. Rows read "entry threshold · max hold". Net cents per contract pair; bars are 95% ranges clustered by game; ▲ marks a rule that clears zero.`),
+    el("div", {class: "card"}, valueForest(rows, "net ¢ per pair")),
+    el("h2", {}, "Per game"),
+    el("p", {class: "h2note"}, "Each game's own fit, most samples first. b is the pull-back per step (more negative = faster); level is the gap's average — a persistent offset between the exchanges."),
+    el("div", {class: "tablewrap", style: "max-height:420px; overflow:auto"}, el("table", {},
+      el("thead", {}, el("tr", {}, el("th", {}, "Market"), ["Samples", "b", "Half-life", "Excursion σ", "Level", "Gap sd"].map(h => el("th", {class: "r"}, h)))),
+      el("tbody", {}, r.market_fits.slice(0, 200).map(x => el("tr", {}, el("td", {class: "mono"}, x.canonical), el("td", {class: "r num"}, count(x.n)),
+        el("td", {class: "r num"}, x.b.toFixed(3)), el("td", {class: "r num"}, fmtSecs(x.half_life_s)), el("td", {class: "r num"}, x.sigma_eq ? x.sigma_eq.toFixed(2) + "¢" : "—"),
+        el("td", {class: "r num"}, (x.mean_gap > 0 ? "+" : "") + x.mean_gap.toFixed(2) + "¢"), el("td", {class: "r num"}, x.sd_gap.toFixed(2) + "¢")))))));
+}
+
+function showAutocorr(d) {
+  const run = d.run, r = d.autocorr;
+  document.title = "Momentum / reversion · " + (run.label || run.id) + " · Backtest runs";
+  const verdictOf = f => f.markets < 10 ? "none" : f.beta - 1.96 * f.beta_se > 0 ? "momentum" : f.beta + 1.96 * f.beta_se < 0 ? "reversion" : "none";
+  const verdicts = r.fits.map(verdictOf);
+  const readable = r.trades.filter(x => x.markets >= 10 && x.events >= 30);
+  const edges = readable.filter(isEdge);
+  const strongest = r.fits.reduce((b, f) => !b || (f.beta_se && Math.abs(f.beta) / f.beta_se > Math.abs(b.beta) / b.beta_se) ? f : b, null);
+  const summary = {fits: r.fits.length, reversion: verdicts.filter(v => v === "reversion").length, momentum: verdicts.filter(v => v === "momentum").length,
+    flat: verdicts.filter(v => v === "none").length, edges: edges.length, rules_readable: readable.length, strongest};
+  const kpis = el("div", {class: "stats kpis"},
+    stat("Edges after costs", edges.length + " / " + readable.length, "follow/fade rules with 10+ games", true),
+    stat("Reversion", summary.reversion + " / " + r.fits.length, "exchange × horizon fits"),
+    stat("Momentum", summary.momentum + " / " + r.fits.length, "exchange × horizon fits"),
+    stat("Strongest", strongest ? (strongest.beta > 0 ? "+" : "") + strongest.beta.toFixed(2) : "—", strongest ? venueName(strongest.venue) + " · " + hLabel(strongest.horizon_s) : null));
+  app.replaceChildren(...analysisHeader(run).filter(Boolean),
+    el("p", {class: "verdict"}, autocorrVerdict(summary)),
+    kpis,
+    el("h2", {}, "Does a change predict the next one?"),
+    el("p", {class: "h2note"}, `For each horizon, the slope β of the next change on the last one, pooled across games (${r.grid_s}s price grid). Above zero, moves continue (momentum); below, they're partly undone (reversion) — β −0.2 means a 5¢ move is followed on average by a 1¢ undo. Bars are 95% ranges clustered by game.`),
+    el("div", {class: "card"}, betaChart(r.fits)),
+    el("h2", {}, "Trading it"),
+    el("p", {class: "h2note"}, `After a move of at least 2¢ or 5¢ over the horizon, trade with it (follow) or against it (fade), hold one horizon, taker in and out with fees (${r.clip_contracts} contracts). Only rules with 10+ games and 30+ trades are shown; ▲ marks one whose 95% range clears zero.`),
+    el("div", {class: "card"}, forestPlot(readable)),
+    el("h2", {}, "All fits"),
+    el("div", {class: "tablewrap"}, el("table", {},
+      el("thead", {}, el("tr", {}, ["Exchange", "Horizon"].map(h => el("th", {}, h)), ["Pairs", "Games", "β", "±95%", "Typical |Δ|"].map(h => el("th", {class: "r"}, h)), el("th", {}, "Reads as"))),
+      el("tbody", {}, r.fits.map((f, i) => el("tr", {}, el("td", {}, venueName(f.venue)), el("td", {}, hLabel(f.horizon_s)), el("td", {class: "r num"}, count(f.pairs)),
+        el("td", {class: "r num"}, f.markets), el("td", {class: "r num"}, (f.beta > 0 ? "+" : "") + f.beta.toFixed(3)), el("td", {class: "r num"}, "±" + (1.96 * f.beta_se).toFixed(3)),
+        el("td", {class: "r num"}, f.past_sd.toFixed(2) + "¢"), el("td", {}, verdicts[i] === "none" ? "no clear pattern" : verdicts[i])))))));
+}
+
+function showFairValue(d) {
+  const run = d.run, r = d.fairvalue;
+  document.title = "Fair value · " + (run.label || run.id) + " · Backtest runs";
+  const edges = (r.trades || []).filter(x => x.markets >= 10 && x.trades >= 30 && x.pnl - 1.96 * x.pnl_se > 0);
+  const verdict = r.cv_n ? (r.gain_vs_best - 1.96 * r.gain_se > 0 ? "beats" : r.gain_vs_best + 1.96 * r.gain_se < 0 ? "worse" : "ties") : "ties";
+  const summary = {note: r.note, cv_n: r.cv_n, cv_verdict: verdict, best_single: r.best_single, edges: edges.length, rules: (r.trades || []).length};
+  const head = [...analysisHeader(run).filter(Boolean), el("p", {class: "verdict"}, fairvalueVerdict(summary))];
+  if (r.note) { app.replaceChildren(...head); return; }
+  const kpis = el("div", {class: "stats kpis"},
+    stat("vs " + venueName(r.best_single) + " alone", (r.gain_vs_best > 0 ? "+" : "") + r.gain_vs_best.toFixed(4), `log-loss gain per sample, ±${(1.96 * r.gain_se).toFixed(4)} out of sample`, true),
+    stat("Kalshi weight", r.w_kalshi.toFixed(2), "±" + (1.96 * r.w_kalshi_se).toFixed(2)),
+    stat("Polymarket weight", r.w_poly.toFixed(2), "±" + (1.96 * r.w_poly_se).toFixed(2)),
+    stat("Rules with an edge", edges.length + " / " + r.trades.length, "held to settlement, after fees"),
+    stat("Markets", r.markets, count(r.samples) + " samples · " + r.clusters + " league-days"));
+  const rows = r.trades.map(x => ({label: `≥${x.margin_cents}¢ · ${x.venue === "polymarketus" ? "Poly" : venueName(x.venue)}`, v: x.pnl, se: x.pnl_se,
+    edge: x.markets >= 10 && x.trades >= 30 && x.pnl - 1.96 * x.pnl_se > 0,
+    tip: [x.trades + " bets in " + x.markets + " games", "model expected +" + x.avg_edge.toFixed(2) + "¢ · " + pct(x.win_share) + " won"]}));
+  const score = (name, v) => el("tr", {}, el("td", {}, name), el("td", {class: "r num"}, v.toFixed(4)),
+    el("td", {class: "r num"}, (v - r.ll_fair > 0 ? "+" : "") + (v - r.ll_fair).toFixed(4)));
+  app.replaceChildren(...head, kpis,
+    el("h2", {}, "Does combining the prices help?"),
+    el("p", {class: "h2note"}, `Fair value P(yes) = σ(a + wK·logit(Kalshi) + wP·logit(Polymarket)), fitted on settled games from prices sampled every ${fmtSecs(r.grid_s)}. Scored on days the fit never saw (5 folds by day); lower log-loss is better. The last column is how much worse each alternative did than fair value — negative means it did better.`),
+    el("div", {class: "tablewrap"}, el("table", {},
+      el("thead", {}, el("tr", {}, el("th", {}, "Predictor"), el("th", {class: "r"}, "Log-loss"), el("th", {class: "r"}, "vs fair value"))),
+      el("tbody", {}, el("tr", {}, el("td", {}, el("b", {}, "Fair value (model)")), el("td", {class: "r num"}, r.ll_fair.toFixed(4)), el("td", {class: "r num"}, "—")),
+        score("Kalshi price alone", r.ll_kalshi), score("Polymarket price alone", r.ll_poly), score("Average of the two", r.ll_average)))),
+    el("h2", {}, "Betting where an exchange strays"),
+    el("p", {class: "h2note"}, `On held-out days, when an exchange's price is off fair value by more than its fee plus the margin, buy (or sell) YES there at the touch and hold to the result — at most one bet per game, exchange and margin. Net cents per contract (${r.clip_contracts}-contract fees); bars are 95% ranges clustered by league-day. Hover for what the model expected: a big gap between expected and realized means the model is overconfident.`),
+    el("div", {class: "card"}, valueForest(rows, "net ¢ per contract")),
+    el("h2", {}, "Weights"),
+    el("p", {class: "h2note"}, "How much each exchange's price (as log-odds) counts toward fair value. Equal weights that sum to about 1 mean both are equally informative; a weight near zero means that exchange adds nothing once you know the other."),
+    el("div", {class: "tablewrap"}, el("table", {},
+      el("thead", {}, el("tr", {}, el("th", {}, "Term"), el("th", {class: "r"}, "Estimate"), el("th", {class: "r"}, "±95%"))),
+      el("tbody", {}, [["Kalshi weight", r.w_kalshi, r.w_kalshi_se], ["Polymarket weight", r.w_poly, r.w_poly_se], ["Intercept", r.a, r.a_se]].map(([n, v, se]) =>
+        el("tr", {}, el("td", {}, n), el("td", {class: "r num"}, (v > 0 ? "+" : "") + v.toFixed(3)), el("td", {class: "r num"}, "±" + (1.96 * se).toFixed(3))))))));
+}
+
+function showOutcomeReg(d) {
+  const run = d.run, r = d.outcomereg, cv = r.cv || {};
+  document.title = "Outcome regression · " + (run.label || run.id) + " · Backtest runs";
+  const beats = cv.n ? (cv.logloss_diff - 1.96 * cv.logloss_diff_se > 0 ? "beats" : cv.logloss_diff + 1.96 * cv.logloss_diff_se < 0 ? "worse" : "ties") : "ties";
+  const summary = {note: r.note, cv_n: cv.n, cv_verdict: beats, calibration: r.calibration};
+  const head = [...analysisHeader(run).filter(Boolean), el("p", {class: "verdict"}, outcomeregVerdict(summary))];
+  if (!r.coefficients || !r.coefficients.length) { app.replaceChildren(...head); return; }
+  const kpis = el("div", {class: "stats kpis"},
+    stat("Out of sample", cv.n ? (cv.logloss_diff > 0 ? "+" : "") + cv.logloss_diff.toFixed(4) : "—", cv.n ? `log-loss gain vs the price, ±${(1.96 * cv.logloss_diff_se).toFixed(4)} (${cv.folds} folds by day)` : null, true),
+    ...(r.calibration || []).map(c => stat(venueName(c.venue) + " slope", c.slope.toFixed(2), "±" + (1.96 * c.slope_se).toFixed(2) + " · " + calibRead(c))),
+    stat("Settled markets", r.obs, r.clusters + " league-days · YES " + pct(r.yes_rate)));
+  // No standard error (e.g. two exchanges with identical data) is no evidence either way.
+  const sig = c => c.se > 0 && (c.name === "log-odds of price" ? Math.abs(c.beta - 1) > 1.96 * c.se : c.name !== "intercept" && Math.abs(c.beta) > 1.96 * c.se);
+  app.replaceChildren(...head, kpis,
+    el("h2", {}, "Calibration"),
+    el("p", {class: "h2note"}, "The fitted chance of YES at each opening price, P(yes) = σ(a + b·log-odds), for each exchange, with the binned data behind it (faint points have fewer than 30 markets). On the diagonal the price is right; a steeper curve means favorites win more often than priced."),
+    el("div", {class: "card"}, orCalibChart(r)),
+    el("h2", {}, "Full model"),
+    el("p", {class: "h2note"}, "Log-odds coefficients with 95% ranges clustered by league-day. ▲ marks a feature whose range excludes no effect (0 — or 1 for the price's own slope). Features that don't vary in this sample are left out."),
+    el("div", {class: "tablewrap"}, el("table", {},
+      el("thead", {}, el("tr", {}, el("th", {}, "Feature"), el("th", {class: "r"}, "Coefficient"), el("th", {class: "r"}, "±95%"), el("th", {}, "Reads as"))),
+      el("tbody", {}, r.coefficients.map(c => el("tr", {}, el("td", {}, c.name),
+        el("td", {class: "r num" + (sig(c) ? " better" : "")}, (c.beta > 0 ? "+" : "") + c.beta.toFixed(3)), el("td", {class: "r num"}, "±" + (1.96 * c.se).toFixed(3)),
+        el("td", {style: "white-space:normal"}, c.what)))))),
+    el("h2", {}, "Out-of-sample test"),
+    el("p", {class: "h2note"}, `The model is fitted on four fifths of the days and scored on the fifth it never saw, five times over (${cv.n} held-out markets). Lower log-loss and Brier are better. If the model can't beat the market's own price here, the features carry no exploitable information.`),
+    el("div", {class: "tablewrap"}, el("table", {},
+      el("thead", {}, el("tr", {}, el("th", {}, "Score"), ["Market price", "Model", "Market − model", "±95%"].map(h => el("th", {class: "r"}, h)))),
+      el("tbody", {},
+        el("tr", {}, el("td", {}, "Log-loss"), el("td", {class: "r num"}, cv.market_logloss.toFixed(4)), el("td", {class: "r num"}, cv.model_logloss.toFixed(4)),
+          el("td", {class: "r num"}, (cv.logloss_diff > 0 ? "+" : "") + cv.logloss_diff.toFixed(4)), el("td", {class: "r num"}, "±" + (1.96 * cv.logloss_diff_se).toFixed(4))),
+        el("tr", {}, el("td", {}, "Brier"), el("td", {class: "r num"}, cv.market_brier.toFixed(4)), el("td", {class: "r num"}, cv.model_brier.toFixed(4)),
+          el("td", {class: "r num"}, (cv.brier_diff > 0 ? "+" : "") + cv.brier_diff.toFixed(4)), el("td", {class: "r num"}, "±" + (1.96 * cv.brier_diff_se).toFixed(4)))))));
+}
+
+// Fitted calibration curves per exchange over the binned data.
+function orCalibChart(r) {
+  const venues = (r.calibration || []).map(c => c.venue);
+  const box = el("div", {class: "chart"});
+  const legend = el("div", {class: "legend"}, venues.map(v => el("span", {}, el("span", {class: "key " + (v === "kalshi" ? "kalshi" : "poly"), style: v === "kalshi" ? "border-radius:50%" : null}), venueName(v))));
+  const tip = tooltip(box);
+  const sigm = z => 1 / (1 + Math.exp(-z));
+  responsive(box, W => {
+    box.querySelector("svg")?.remove();
+    const H = Math.min(400, Math.max(260, W * 0.5)), m = {l: 48, r: 16, t: 12, b: 40};
+    const X = v => m.l + v * (W - m.l - m.r), Y = v => m.t + (1 - v) * (H - m.t - m.b);
+    const svg = sv("svg", {viewBox: `0 0 ${W} ${H}`, height: H, role: "img", "aria-label": "Calibration curves; the coefficients table has the fitted values"});
+    for (const v of [0, .25, .5, .75, 1]) svg.append(sv("line", {class: "gridline", x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v)}),
+      sv("text", {class: "tick", x: m.l - 6, y: Y(v) + 4, "text-anchor": "end"}, pct0(v)),
+      sv("text", {class: "tick", x: X(v), y: H - m.b + 16, "text-anchor": "middle"}, pct0(v)));
+    svg.append(sv("text", {class: "tick", x: (m.l + W - m.r) / 2, y: H - 4, "text-anchor": "middle"}, "opening price (implied chance of YES)"),
+      sv("line", {x1: X(0), y1: Y(0), x2: X(1), y2: Y(1), stroke: "var(--muted)", "stroke-width": 1}));
+    for (const c of r.calibration || []) {
+      const color = c.venue === "kalshi" ? "var(--kalshi)" : "var(--poly)";
+      let d = "";
+      for (let i = 0; i <= 96; i++) { const p = 0.02 + i * 0.01; d += (i ? "L" : "M") + X(p) + "," + Y(sigm(c.intercept + c.slope * Math.log(p / (1 - p)))); }
+      svg.append(sv("path", {d, fill: "none", stroke: color, "stroke-width": 2}));
+    }
+    for (const pt of r.points || []) {
+      const color = pt.venue === "kalshi" ? "var(--kalshi)" : "var(--poly)", x = X(pt.mean_p), y = Y(pt.realized), faint = pt.n < 30 ? .4 : 1;
+      const g = sv("g", {tabindex: "0", role: "img", "aria-label": `${venueName(pt.venue)} priced ${pct(pt.mean_p)}: won ${pct(pt.realized)} of ${pt.n}`});
+      const mark = pt.venue === "kalshi" ? sv("circle", {cx: x, cy: y, r: 4, fill: color, "fill-opacity": faint, stroke: "var(--surface)", "stroke-width": 2})
+        : sv("rect", {x: x - 4, y: y - 4, width: 8, height: 8, rx: 1.5, fill: color, "fill-opacity": faint, stroke: "var(--surface)", "stroke-width": 2});
+      g.append(sv("circle", {cx: x, cy: y, r: 12, fill: "transparent"}), mark);
+      const show = () => tip.show(x, y, () => [el("strong", {}, pct(pt.realized) + " won YES"), tipLine(color, venueName(pt.venue) + " · priced " + pct(pt.lo) + "–" + pct(pt.hi)), el("div", {}, pt.n + " markets" + (pt.n < 30 ? " — too few to read" : ""))]);
+      g.addEventListener("pointerenter", show); g.addEventListener("pointerleave", () => tip.hide());
+      g.addEventListener("focus", show); g.addEventListener("blur", () => tip.hide());
+      svg.append(g);
+    }
+    box.prepend(svg);
+  });
+  return el("div", {}, legend, box);
+}
+
+// β by horizon, one series per exchange (Kalshi blue, Polymarket amber; the
+// legend and shapes back up the color), with 95% bars and a zero line.
+function betaChart(fits) {
+  const venues = ["kalshi", "polymarketus"].filter(v => fits.some(f => f.venue === v));
+  const hs = [...new Set(fits.map(f => f.horizon_s))].sort((a, b) => a - b);
+  const box = el("div", {class: "chart"});
+  // Keys mirror the marks: Kalshi circle, Polymarket square.
+  const legend = el("div", {class: "legend"}, venues.map(v => el("span", {}, el("span", {class: "key " + (v === "kalshi" ? "kalshi" : "poly"), style: v === "kalshi" ? "border-radius:50%" : null}), venueName(v))));
+  const tip = tooltip(box);
+  responsive(box, W => {
+    box.querySelector("svg")?.remove();
+    const H = 240, m = {l: 52, r: 16, t: 12, b: 28};
+    const vals = fits.flatMap(f => [f.beta - 1.96 * f.beta_se, f.beta + 1.96 * f.beta_se]).concat([0]);
+    const yt = niceTicks(Math.min(...vals), Math.max(...vals), 4), y0 = yt[0], y1 = yt[yt.length - 1];
+    const slot = (W - m.l - m.r) / hs.length, X = (i, vi) => m.l + (i + 0.5) * slot + (vi - (venues.length - 1) / 2) * 16;
+    const Y = v => m.t + (1 - (v - y0) / (y1 - y0)) * (H - m.t - m.b);
+    const svg = sv("svg", {viewBox: `0 0 ${W} ${H}`, height: H, role: "img", "aria-label": "β by horizon and exchange; the table below has the same values"});
+    for (const v of yt) svg.append(sv("line", {class: v === 0 ? "zero" : "gridline", x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v)}),
+      sv("text", {class: "tick", x: m.l - 6, y: Y(v) + 4, "text-anchor": "end"}, (v > 0 ? "+" : "") + v));
+    hs.forEach((h, i) => svg.append(sv("text", {class: "tick", x: m.l + (i + 0.5) * slot, y: H - 6, "text-anchor": "middle"}, hLabel(h))));
+    svg.append(sv("text", {class: "tick", x: m.l + 4, y: m.t + 10}, "momentum ↑"), sv("text", {class: "tick", x: m.l + 4, y: H - m.b - 4}, "reversion ↓"));
+    venues.forEach((v, vi) => {
+      const color = v === "kalshi" ? "var(--kalshi)" : "var(--poly)";
+      hs.forEach((h, i) => {
+        const f = fits.find(x => x.venue === v && x.horizon_s === h);
+        if (!f) return;
+        const x = X(i, vi), y = Y(f.beta), ci = 1.96 * f.beta_se;
+        const g = sv("g", {tabindex: "0", role: "img", "aria-label": `${venueName(v)} ${hLabel(h)}: β ${f.beta.toFixed(3)}`});
+        const mark = v === "kalshi" ? sv("circle", {cx: x, cy: y, r: 4.5, fill: color, stroke: "var(--surface)", "stroke-width": 2})
+          : sv("rect", {x: x - 4.5, y: y - 4.5, width: 9, height: 9, rx: 1.5, fill: color, stroke: "var(--surface)", "stroke-width": 2});
+        g.append(sv("rect", {x: x - 12, y: m.t, width: 24, height: H - m.t - m.b, fill: "transparent"}),
+          sv("line", {x1: x, x2: x, y1: Y(f.beta + ci), y2: Y(f.beta - ci), stroke: color, "stroke-width": 2, "stroke-opacity": .5, "stroke-linecap": "round"}), mark);
+        const show = () => tip.show(x, y, () => [el("strong", {}, "β " + (f.beta > 0 ? "+" : "") + f.beta.toFixed(3) + " ±" + ci.toFixed(3)),
+          tipLine(color, venueName(v) + " · " + hLabel(h)), el("div", {}, count(f.pairs) + " pairs in " + f.markets + " games")]);
+        g.addEventListener("pointerenter", show); g.addEventListener("pointerleave", () => tip.hide());
+        g.addEventListener("focus", show); g.addEventListener("blur", () => tip.hide());
+        svg.append(g);
+      });
+    });
+    box.prepend(svg);
+  });
+  return el("div", {}, legend, box);
+}
+
+// One mark per row: value with its 95% bar against zero. rows: {label, v, se, edge, tip[]}.
+function valueForest(rows, unit) {
+  if (!rows.length) return el("p", {class: "empty"}, "Nothing to show.");
+  const box = el("div", {class: "chart"});
+  const tip = tooltip(box);
+  responsive(box, W => {
+    box.querySelector("svg")?.remove();
+    const fs = W < 600 ? 11 : 12, longest = Math.max(...rows.map(x => x.label.length + 2));
+    const rowH = 26, labW = Math.min(W * 0.5, longest * fs * 0.61 + 6), m = {l: labW + 10, r: 16, t: 6, b: 24}, H = rows.length * rowH + m.t + m.b;
+    const vals = rows.flatMap(x => [x.v - 1.96 * x.se, x.v + 1.96 * x.se]).concat([0]);
+    const xt = niceTicks(Math.min(...vals), Math.max(...vals), 5), x0 = xt[0], x1 = xt[xt.length - 1];
+    const X = v => m.l + (v - x0) / (x1 - x0) * (W - m.l - m.r);
+    const svg = sv("svg", {viewBox: `0 0 ${W} ${H}`, height: H, role: "img", "aria-label": unit + " by rule; the table has the same values"});
+    for (const v of xt) svg.append(sv("line", {class: v === 0 ? "zero" : "gridline", x1: X(v), x2: X(v), y1: m.t, y2: H - m.b}),
+      sv("text", {class: "tick", x: X(v), y: H - 6, "text-anchor": "middle"}, (v > 0 ? "+" : "") + v + "¢"));
+    rows.forEach((x, i) => {
+      const y = m.t + i * rowH + rowH / 2;
+      svg.append(sv("text", {x: labW, y: y + 4, "text-anchor": "end", fill: x.edge ? "var(--ink)" : "var(--ink-2)", "font-size": fs, "font-family": "IBM Plex Mono, monospace", "font-weight": x.edge ? 600 : 400}, (x.edge ? "▲ " : "") + x.label));
+      const g = sv("g", {tabindex: "0", role: "img", "aria-label": `${x.label}: ${x.v.toFixed(2)}¢`});
+      const dot = sv("circle", {cx: X(x.v), cy: y, r: 4.5, fill: "var(--mark-accent)", stroke: "var(--surface)", "stroke-width": 2});
+      g.append(sv("rect", {x: 0, y: y - rowH / 2, width: W, height: rowH, fill: "transparent"}),
+        sv("line", {x1: X(x.v - 1.96 * x.se), x2: X(x.v + 1.96 * x.se), y1: y, y2: y, stroke: "var(--mark-accent)", "stroke-width": 2, "stroke-opacity": .45, "stroke-linecap": "round"}), dot);
+      const show = () => { dot.setAttribute("r", 5.5); tip.show(X(x.v), y, () => [el("strong", {}, (x.v > 0 ? "+" : "") + x.v.toFixed(2) + "¢ ±" + (1.96 * x.se).toFixed(2)), el("div", {}, x.label), ...(x.tip || []).map(t => el("div", {}, t))]); };
+      const hide = () => { dot.setAttribute("r", 4.5); tip.hide(); };
+      g.addEventListener("pointerenter", show); g.addEventListener("pointerleave", hide);
+      g.addEventListener("focus", show); g.addEventListener("blur", hide);
+      svg.append(g);
+    });
+    box.prepend(svg);
+  });
+  return box;
+}
+
+// Columns: how many markets peak at each lag. Poly-first left, Kalshi-first
+// right, together (lag 0) gray; the legend and axis labels back up the color.
+function lagHistogram(markets, r) {
+  const counts = new Map();
+  for (const m of markets) counts.set(m.peak_lag_s, (counts.get(m.peak_lag_s) || 0) + 1);
+  const maxLag = r.max_lag_s, maxN = Math.max(...counts.values());
+  const box = el("div", {class: "chart"});
+  const legend = el("div", {class: "legend"},
+    el("span", {}, el("span", {class: "key poly"}), "Polymarket first"),
+    el("span", {}, el("span", {class: "key together"}), "together"),
+    el("span", {}, el("span", {class: "key kalshi"}), "Kalshi first"));
+  const tip = tooltip(box);
+  responsive(box, W => {
+    box.querySelector("svg")?.remove();
+    const H = 240, m = {l: 44, r: 12, t: 12, b: 34};
+    const slots = 2 * maxLag + 1, slotW = (W - m.l - m.r) / slots, bw = Math.max(2, Math.min(24, slotW - 2));
+    const X = lag => m.l + (lag + maxLag + 0.5) * slotW, yt = niceTicks(0, maxN, 4), top = yt[yt.length - 1];
+    const Y = v => m.t + (1 - v / top) * (H - m.t - m.b);
+    const svg = sv("svg", {viewBox: `0 0 ${W} ${H}`, height: H, role: "img", "aria-label": "Markets by peak lag; the markets table below has the same values"});
+    for (const v of yt) svg.append(sv("line", {class: v === 0 ? "zero" : "gridline", x1: m.l, x2: W - m.r, y1: Y(v), y2: Y(v)}),
+      sv("text", {class: "tick", x: m.l - 8, y: Y(v) + 4, "text-anchor": "end"}, v));
+    const step = maxLag >= 10 ? 5 : 1;
+    for (let lag = -maxLag; lag <= maxLag; lag += step)
+      svg.append(sv("text", {class: "tick", x: X(lag), y: H - m.b + 16, "text-anchor": "middle"}, (lag > 0 ? "+" : "") + lag + "s"));
+    svg.append(sv("text", {class: "tick", x: m.l, y: H - 4, "text-anchor": "start"}, "← Polymarket first"),
+      sv("text", {class: "tick", x: W - m.r, y: H - 4, "text-anchor": "end"}, "Kalshi first →"));
+    for (const [lag, n] of counts) {
+      const x = X(lag) - bw / 2, y = Y(n), h = Y(0) - y, rr = Math.min(4, bw / 2, h);
+      const color = lag < 0 ? "var(--poly)" : lag > 0 ? "var(--kalshi)" : "var(--mark-muted)";
+      const g = sv("g", {tabindex: "0", role: "img", "aria-label": `${n} markets at lag ${lag}s`});
+      const bar = sv("path", {d: `M${x},${Y(0)}V${y + rr}Q${x},${y} ${x + rr},${y}H${x + bw - rr}Q${x + bw},${y} ${x + bw},${y + rr}V${Y(0)}Z`, fill: color});
+      g.append(sv("rect", {x: X(lag) - slotW / 2, y: m.t, width: slotW, height: H - m.t - m.b, fill: "transparent"}), bar,
+        sv("text", {x: X(lag), y: y - 5, "text-anchor": "middle", fill: "var(--ink-2)", "font-size": 11, "font-family": "IBM Plex Mono, monospace"}, n));
+      const show = () => { bar.setAttribute("fill-opacity", .78); tip.show(X(lag), y, () => [el("strong", {}, n + " market" + (n === 1 ? "" : "s")),
+        el("div", {}, lag === 0 ? "move together (lag 0)" : (lag < 0 ? "Polymarket" : "Kalshi") + " first by " + Math.abs(lag) + "s")]); };
+      const hide = () => { bar.removeAttribute("fill-opacity"); tip.hide(); };
+      g.addEventListener("pointerenter", show); g.addEventListener("pointerleave", hide);
+      g.addEventListener("focus", show); g.addEventListener("blur", hide);
+      svg.append(g);
+    }
+    box.prepend(svg);
+  });
+  return el("div", {}, legend, box);
+}
+
+route();
+</script>
+</body>
+</html>

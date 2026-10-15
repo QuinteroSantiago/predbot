@@ -1,0 +1,93 @@
+# predbot LIVE TRADING — REAL ORDERS, REAL MONEY (design §8, §11, §17 Phase 4).
+#
+# Deliberately NOT enabled at boot: a reboot must never silently resume trading.
+# Operate it ONLY via scripts/trading.sh (start runs preflight first; stop/kill/
+# clear/deploy-live) — see the operator manual, the operator manual (not published).
+# deploy-live installs this file; editing it on the VM is overwritten next deploy.
+#
+# Restart=no is also deliberate. If the process dies mid-pair it may hold an
+# unhedged position; an automatic restart could compound that before a human
+# looks. Startup reconciliation runs on every manual start.
+[Unit]
+Description=predbot LIVE TRADING (real orders, real money)
+After=network-online.target chronyd.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=predbot
+Group=predbot
+WorkingDirectory=/opt/predbot
+# Mode: TAKER (2026-09-24). Kalshi leg first (IOC), the Poly hedge only after
+# it fills — a naked leg needs the hedge IOC to miss, not a rest to sit.
+# Maker mode (-maker, armed 2026-09-10) had NO edge: its rests were priced
+# through the book, so they filled at once as takers while the strategy and
+# backtest credited a maker rebate. With rests priced correctly (7562339) the
+# full-archive backtest (20260924T215058Z) filled 412 of 53,242 rests and could
+# hedge 7; the other 405 were one-sided bets (adverse selection). Taker on the
+# same archive: +$85 over 32 days, 37 completed / 7 legged.
+#
+# Caps (1 contract since 2026-08-28; 10 on 2026-09-13; 50 on 2026-09-23; taker
+# at 50 from 2026-09-24; 20 on 2026-09-28 — each the operator's call). 20 fits the
+# ~$75 Kalshi balance (50 made one MLB game unaffordable on 09-26). 50 was the
+# clip the taker
+# backtest ran at (+$83.49 after legging, peak capital ~$94 Kalshi / $140 Poly),
+# so live P&L per pair (~$1.85) is directly comparable:
+#   -max-order-contracts=20  up to 20 contracts per leg. Orders are sized
+#     min(top-of-book depth on both legs, this cap).
+#   -max-unhedged-contracts=40  2x the order cap: the Kalshi exchange-side order
+#     groups (one per exchange shard) are sized to this cap (cmd/live), and the safety EXIT of a naked
+#     Kalshi leg is itself a Kalshi order. Equal to the order cap would let the
+#     entry through but block its own exit; 2x leaves room for entry + exit.
+#   -pnl-floor-usd=-10       halt after $10 of realized loss — a hard backstop.
+#     A badly legged 20-contract pair can lose ~$2–4, so -$10 survives one or
+#     two and still stops a losing streak.
+#   -min-depth-contracts=10  both legs need 10 contracts of real depth before we
+#     act — the phantom-edge guard that the 2026-08-24 naked-leg incident was
+#     missing. A floor on depth, not the order size (that's the cap above).
+#   -edge-step=24h           min edge grows with time to game start (2026-09-24,
+#     the operator's call): config min_edge (1c) inside 24h, 2c inside 48h, 3c
+#     inside 72h... A pair locks capital until the game resolves, so a game days
+#     out must pay more to take one of the few slots buying power allows.
+#   Always on: no new pair once a game is past regulation (OT, shootout, extra
+#     innings) or over. Timings and tolerances (hedge grace, slow-ack pause,
+#     ...) are config.yaml's live: block, logged as "live tuning" at arm.
+#   -sports=mlb,nfl,wnba,cfb,nhl  the universe: daily games discovered at runtime
+#     (markets.yaml is empty). Keep predbot-record.service's -sports in step.
+ExecStart=/opt/predbot/predbot-live \
+  -config /opt/predbot/config/config.yaml \
+  -markets /opt/predbot/config/markets.yaml \
+  -dry-run=false \
+  -i-understand-this-places-real-orders \
+  -max-order-contracts=20 \
+  -max-unhedged-contracts=40 \
+  -pnl-floor-usd=-10 \
+  -min-depth-contracts=10 \
+  -edge-step=24h \
+  -sports=mlb,nfl,wnba,cfb,nhl
+
+# SIGUSR1 = engage the kill switch without stopping (writes the KILLED marker,
+# which then blocks any restart until a human removes it).
+ExecReload=/bin/kill -USR1 $MAINPID
+
+Restart=no
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+EnvironmentFile=/etc/predbot/env
+Environment=OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+Environment=OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+Environment=OTEL_SERVICE_NAME=predbot-live
+Environment=OTEL_METRIC_EXPORT_INTERVAL=10000
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/predbot
+StateDirectory=predbot
+
+# NOT [Install]-enabled on purpose — no WantedBy, so `systemctl enable` is an
+# explicit, deliberate act rather than something that happens by default.
+[Install]
+WantedBy=

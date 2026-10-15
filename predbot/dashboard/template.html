@@ -1,0 +1,319 @@
+<meta charset="utf-8">
+<title>The Fee Wall</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  color-scheme: light;
+  --ground:#f4f1ea; --surface:#ffffff; --surface-2:#faf8f2; --border:#e5e0d4;
+  --ink:#181c20; --ink-2:#4c5660; --muted:#8a94a0;
+  --accent:#9a6a12; --accent-mark:#c68a29;
+  --wall:#c0463f;
+  --c-elections:#2a78d6; --c-culture:#eb6834; --c-crypto:#1baf7a; --c-macro:#c98500; --c-tech:#d55181;
+  --grid:#ece7db;
+  --shadow: 0 1px 2px rgba(20,24,28,.05), 0 8px 24px rgba(20,24,28,.06);
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  color-scheme: dark;
+  --ground:#0d1116; --surface:#151b21; --surface-2:#1b232b; --border:#28313b;
+  --ink:#eef1f4; --ink-2:#aeb8c2; --muted:#78828e;
+  --accent:#e0a95e; --accent-mark:#e0a95e;
+  --wall:#e0685f;
+  --c-elections:#3987e5; --c-culture:#e0703a; --c-crypto:#22b985; --c-macro:#e0a020; --c-tech:#e06699;
+  --grid:#1f2831;
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+}}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --ground:#0d1116; --surface:#151b21; --surface-2:#1b232b; --border:#28313b;
+  --ink:#eef1f4; --ink-2:#aeb8c2; --muted:#78828e;
+  --accent:#e0a95e; --accent-mark:#e0a95e;
+  --wall:#e0685f;
+  --c-elections:#3987e5; --c-culture:#e0703a; --c-crypto:#22b985; --c-macro:#e0a020; --c-tech:#e06699;
+  --grid:#1f2831;
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:"IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  line-height:1.55; -webkit-font-smoothing:antialiased;
+}
+.mono{font-family:"IBM Plex Mono", ui-monospace, monospace; font-variant-numeric:tabular-nums}
+.wrap{max-width:1060px; margin:0 auto; padding:clamp(20px,4vw,52px) clamp(16px,4vw,40px) 80px}
+.eyebrow{font-family:"IBM Plex Mono",monospace; font-size:12px; letter-spacing:.18em; text-transform:uppercase; color:var(--accent); font-weight:600}
+h1{font-family:"IBM Plex Mono",monospace; font-weight:700; font-size:clamp(34px,6vw,60px); line-height:1.02; letter-spacing:-.02em; margin:.35em 0 .1em; text-wrap:balance}
+.lede{font-size:clamp(16px,2.1vw,19px); color:var(--ink-2); max-width:60ch; margin:.6em 0 0}
+.lede b{color:var(--ink); font-weight:600}
+.rule{height:1px; background:var(--border); border:0; margin:36px 0}
+
+/* funnel */
+.funnel{display:flex; flex-wrap:wrap; gap:10px; margin-top:26px}
+.fstage{flex:1 1 200px; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:16px 18px; position:relative; overflow:hidden; box-shadow:var(--shadow)}
+.fstage .bar{position:absolute; left:0; top:0; bottom:0; background:var(--surface-2); z-index:0}
+.fstage > *{position:relative; z-index:1}
+.fstage .k{font-family:"IBM Plex Mono",monospace; font-size:34px; font-weight:700; letter-spacing:-.02em}
+.fstage .lab{font-size:13px; color:var(--ink-2); margin-top:2px}
+.fstage .sub{font-size:12px; color:var(--muted); margin-top:2px}
+.fstage.win{border-color:var(--accent)}
+.fstage.win .k{color:var(--accent)}
+.arrow{align-self:center; color:var(--muted); font-family:"IBM Plex Mono",monospace; font-size:20px}
+
+/* stat strip */
+.stats{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:1px; background:var(--border); border:1px solid var(--border); border-radius:12px; overflow:hidden; margin-top:14px}
+.stat{background:var(--surface); padding:16px 18px}
+.stat .v{font-family:"IBM Plex Mono",monospace; font-size:26px; font-weight:600; letter-spacing:-.01em}
+.stat .l{font-size:12px; color:var(--muted); margin-top:3px; letter-spacing:.02em}
+.pos{color:var(--accent)}
+
+h2{font-family:"IBM Plex Mono",monospace; font-size:13px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-2); font-weight:600; margin:44px 0 4px}
+.h2note{font-size:14px; color:var(--muted); margin:0 0 18px; max-width:62ch}
+
+/* opportunity cards */
+.opps{display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:16px}
+.opp{background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:20px 22px; box-shadow:var(--shadow)}
+.opp .cat{display:inline-flex; align-items:center; gap:7px; font-size:12px; font-family:"IBM Plex Mono",monospace; color:var(--ink-2); text-transform:uppercase; letter-spacing:.08em}
+.dot{width:9px; height:9px; border-radius:50%; display:inline-block}
+.opp h3{font-family:"IBM Plex Mono",monospace; font-size:18px; margin:8px 0 2px; letter-spacing:-.01em}
+.legs{display:flex; gap:10px; margin:14px 0; font-size:13px}
+.leg{flex:1; background:var(--surface-2); border:1px solid var(--border); border-radius:9px; padding:9px 11px}
+.leg .side{font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted)}
+.leg .val{font-family:"IBM Plex Mono",monospace; font-size:15px; font-weight:600; margin-top:2px}
+.leg .ven{font-size:12px; color:var(--ink-2)}
+/* waterfall */
+.wf{display:flex; align-items:flex-end; gap:8px; height:96px; margin:8px 0 4px}
+.wf .col{flex:1; display:flex; flex-direction:column; justify-content:flex-end; align-items:center; gap:6px; height:100%}
+.wf .barw{width:100%; border-radius:5px 5px 3px 3px; min-height:3px}
+.wf .g{background:color-mix(in srgb, var(--ink-2) 35%, transparent)}
+.wf .f{background:var(--wall)}
+.wf .n{background:var(--accent)}
+.wf .cl{font-size:11px; color:var(--muted)}
+.wf .cv{font-family:"IBM Plex Mono",monospace; font-size:12px; font-weight:600}
+.econ{display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:14px; border-top:1px solid var(--border); padding-top:12px}
+.econ div .l{font-size:11px; color:var(--muted)}
+.econ div .v{font-family:"IBM Plex Mono",monospace; font-size:15px; font-weight:600}
+
+/* charts */
+.panels{display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:14px}
+.panel{background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:16px 16px 8px; box-shadow:var(--shadow)}
+.panel .ph{display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:4px}
+.panel .pt{font-family:"IBM Plex Mono",monospace; font-size:14px; font-weight:600; display:flex; align-items:center; gap:8px}
+.panel .pc{font-size:12px; color:var(--muted); font-family:"IBM Plex Mono",monospace}
+.panel svg{display:block; width:100%; height:auto; overflow:visible}
+.legendline{display:flex; flex-wrap:wrap; gap:16px; align-items:center; margin:12px 2px 0; font-size:12.5px; color:var(--ink-2)}
+.legendline span{display:inline-flex; align-items:center; gap:7px}
+.sw{width:14px; height:0; border-top:2px dashed var(--wall)}
+.swd{width:10px;height:10px;border-radius:50%}
+.tip{position:fixed; pointer-events:none; z-index:50; background:var(--surface); border:1px solid var(--border); border-radius:9px; padding:8px 10px; font-size:12px; box-shadow:var(--shadow); opacity:0; transition:opacity .1s; max-width:240px}
+.tip .tm{font-family:"IBM Plex Mono",monospace; font-weight:600}
+.tip .tl{color:var(--muted)}
+
+/* table */
+table{width:100%; border-collapse:collapse; font-size:13px; margin-top:6px}
+th,td{text-align:right; padding:8px 10px; border-bottom:1px solid var(--border)}
+th:first-child,td:first-child{text-align:left}
+th{font-size:11px; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); font-weight:600}
+td.mono,th.mono{font-family:"IBM Plex Mono",monospace}
+.tablewrap{overflow-x:auto; border:1px solid var(--border); border-radius:12px; background:var(--surface)}
+.note{font-size:14px; color:var(--ink-2); max-width:66ch; margin-top:12px}
+.note b{color:var(--ink)}
+footer{margin-top:40px; padding-top:20px; border-top:1px solid var(--border); font-size:12.5px; color:var(--muted); display:flex; flex-wrap:wrap; gap:6px 18px}
+.toggle{position:fixed; top:14px; right:14px; z-index:60; background:var(--surface); border:1px solid var(--border); color:var(--ink-2); border-radius:20px; padding:6px 12px; font-size:12px; cursor:pointer; font-family:"IBM Plex Mono",monospace}
+@media (prefers-reduced-motion: reduce){*{transition:none!important; animation:none!important}}
+</style>
+
+<button class="toggle mono" id="tg" aria-label="Toggle theme">◐ theme</button>
+<div class="wrap">
+  <div class="eyebrow">predbot · phase 2 backtest · Kalshi ⇄ Polymarket US</div>
+  <h1>The Fee&nbsp;Wall</h1>
+  <p class="lede">Across <b id="l-markets"></b> cross-listed markets and <b id="l-obs"></b> cross-venue price observations over <b id="l-hours"></b>, this is every arbitrage the bot could have taken — and why the fees left only <b id="l-trade"></b> standing. <span class="mono" style="color:var(--muted)">gross&nbsp;edge&nbsp;vs&nbsp;the&nbsp;~3.49¢&nbsp;round-trip&nbsp;fee&nbsp;hurdle.</span></p>
+
+  <div class="funnel" id="funnel"></div>
+
+  <div class="stats" id="stats"></div>
+
+  <h2>The two that cleared</h2>
+  <p class="h2note">The only gaps wide enough to survive both venues' taker fees and a same-time (&lt;1s) cross-venue quote. Each is a hold-to-resolution pair: capital locks on both venues until the market settles.</p>
+  <div class="opps" id="opps"></div>
+
+  <h2>The arbitrage surface</h2>
+  <p class="h2note">Best cross-venue gross edge per market, sampled every 5 minutes, by category. The dashed line is the fee wall — a gap must clear it before fees even to break even. Dots above it are gold; nearly everything sits below.</p>
+  <div class="panels" id="panels"></div>
+  <div class="legendline">
+    <span><span class="sw"></span> fee wall ≈ 3.49¢</span>
+    <span><span class="swd" style="background:var(--accent-mark)"></span> above the wall</span>
+    <span><span class="swd" style="background:var(--muted);opacity:.5"></span> below (no arb)</span>
+    <span><span class="mono" style="color:var(--accent)">◆</span> taken</span>
+  </div>
+
+  <h2>Every candidate, by market</h2>
+  <p class="h2note">Categories ranked by how often their spread even poked above the fee wall. "Tradeable" applies the same-time quote + hold-to-resolution filters the live bot would.</p>
+  <div class="tablewrap"><table id="tbl"><thead><tr>
+    <th>Category</th><th class="mono">Markets</th><th class="mono">Obs</th><th class="mono">Max edge</th><th class="mono">Above wall</th><th class="mono">Tradeable</th>
+  </tr></thead><tbody></tbody></table></div>
+
+  <p class="note"><b>Read it honestly.</b> 166 of 4,205 samples poked above the fee wall — but almost all were the same one or two markets flickering, or a stale quote on one venue. After requiring both venues' books within a second of each other and modeling that you enter a standing gap once and hold to resolution, <b id="n-final"></b> survived — netting <b id="n-net"></b> on a few dollars of locked capital. That is the finding, not a bug: at retail size, cross-venue taker arb on these markets is a wall of fees with two cracks in it.</p>
+
+  <footer>
+    <span class="mono">predbot</span>
+    <span id="f-window"></span>
+    <span>fee model: Kalshi 0.07·C·p(1−p) taker · Poly US Θ=0.0695 taker</span>
+    <span>hold-to-resolution · §9.3 / §10.5</span>
+  </footer>
+</div>
+<div class="tip" id="tip"></div>
+
+<script>
+const DATA = __DATA__;
+const CATCOL = {Elections:'--c-elections',Culture:'--c-culture',Crypto:'--c-crypto',Macro:'--c-macro',Tech:'--c-tech'};
+const catVar = c => 'var('+(CATCOL[c]||'--muted')+')';
+const usd = v => (v<0?'-$':'$')+Math.abs(v).toFixed(v>=1?2:4);
+const fmtHours = ms => (ms/3.6e6).toFixed(1)+' h';
+
+// ---- fill lede / stats ----
+const M = DATA.meta;
+const spanHours = fmtHours(M.t1-M.t0);
+document.getElementById('l-markets').textContent = M.n_markets;
+document.getElementById('l-obs').textContent = M.n_obs.toLocaleString();
+document.getElementById('l-hours').textContent = spanHours;
+document.getElementById('l-trade').textContent = M.tradeable+' trade'+(M.tradeable==1?'':'s');
+document.getElementById('n-final').textContent = M.tradeable+' pair'+(M.tradeable==1?'':'s');
+document.getElementById('n-net').textContent = usd(M.net_if_taken);
+const d0=new Date(M.t0), d1=new Date(M.t1);
+const dfmt = d => d.toISOString().slice(0,16).replace('T',' ')+'Z';
+document.getElementById('f-window').textContent = dfmt(d0)+' → '+dfmt(d1);
+
+// funnel
+const fmax = M.n_obs;
+const funnel = [
+  {k:M.n_obs.toLocaleString(), lab:'spread observations', sub:M.n_markets+' markets · every 5 min', v:M.n_obs},
+  {k:M.above_wall, lab:'poked above the fee wall', sub:'gross edge > 3.49¢', v:M.above_wall},
+  {k:M.tradeable, lab:'actually tradeable', sub:'same-time quote + hold-to-resolution', v:M.tradeable, win:true},
+];
+document.getElementById('funnel').innerHTML = funnel.map((s,i)=>{
+  const w = Math.max(3, Math.sqrt(s.v/fmax)*100); // sqrt so the tiny survivors are still visible
+  return (i?'<div class="arrow">→</div>':'')+
+  `<div class="fstage ${s.win?'win':''}"><div class="bar" style="width:${w}%"></div>
+   <div class="k mono">${s.k}</div><div class="lab">${s.lab}</div><div class="sub">${s.sub}</div></div>`;
+}).join('');
+
+// stats
+const stats = [
+  {v:M.n_markets, l:'markets watched'},
+  {v:M.n_obs.toLocaleString(), l:'spread samples'},
+  {v:M.best_edge.toFixed(1)+'¢', l:'widest gross edge'},
+  {v:M.above_wall, l:'above fee wall'},
+  {v:M.tradeable, l:'tradeable arbs', pos:true},
+  {v:usd(M.net_if_taken), l:'net if taken', pos:true},
+];
+document.getElementById('stats').innerHTML = stats.map(s=>
+  `<div class="stat"><div class="v ${s.pos?'pos':''}">${s.v}</div><div class="l">${s.l}</div></div>`).join('');
+
+// ---- opportunity cards ----
+document.getElementById('opps').innerHTML = DATA.opps.map(o=>{
+  const col = catVar(o.category);
+  const g=o.gross_usd, f=o.fees_usd, n=o.net_usd;
+  const scale = Math.max(g, f+n, 1e-9);
+  const h = x => Math.max(3, x/scale*84);
+  return `<div class="opp">
+    <span class="cat"><span class="dot" style="background:${col}"></span>${o.category} · ${o.hold_days.toFixed(0)}-day hold</span>
+    <h3>${o.canonical}</h3>
+    <div class="legs">
+      <div class="leg"><div class="side">Buy YES</div><div class="val">${o.buy_cents.toFixed(1)}¢</div><div class="ven">${o.buy_venue}</div></div>
+      <div class="leg"><div class="side">Sell YES</div><div class="val">${o.sell_cents.toFixed(1)}¢</div><div class="ven">${o.sell_venue}</div></div>
+    </div>
+    <div class="wf">
+      <div class="col"><div class="cv">${usd(g)}</div><div class="barw g" style="height:${h(g)}px"></div><div class="cl">gross</div></div>
+      <div class="col"><div class="cv" style="color:var(--wall)">−${usd(f).replace('$','$')}</div><div class="barw f" style="height:${h(f)}px"></div><div class="cl">fees</div></div>
+      <div class="col"><div class="cv" style="color:var(--accent)">${usd(n)}</div><div class="barw n" style="height:${h(n)}px"></div><div class="cl">net</div></div>
+    </div>
+    <div class="econ">
+      <div><div class="v">${o.edge_cents.toFixed(2)}¢</div><div class="l">net / contract</div></div>
+      <div><div class="v">${usd(o.capital_usd)}</div><div class="l">capital locked</div></div>
+      <div><div class="v pos">${o.annualized_pct>=0?'+':''}${o.annualized_pct.toFixed(1)}%</div><div class="l">annualized</div></div>
+    </div>
+  </div>`;
+}).join('');
+
+// ---- small multiples ----
+const tip = document.getElementById('tip');
+const byCat = {};
+DATA.cats.forEach(c=>byCat[c]=[]);
+DATA.spread.forEach(r=>{ if(byCat[r[1]]) byCat[r[1]].push({t:r[0],e:r[2],m:r[3]}); });
+const takenByCat = {};
+DATA.opps.forEach(o=>{ (takenByCat[o.category]=takenByCat[o.category]||[]).push(o); });
+
+const t0=M.t0, t1=M.t1, wall=M.fee_wall;
+let eMin=-6.5, eMax=5.5;
+const W=340,H=150,PL=34,PR=10,PT=10,PB=22;
+const px = t => PL + (t-t0)/(t1-t0)*(W-PL-PR);
+const py = e => PT + (eMax-e)/(eMax-eMin)*(H-PT-PB);
+
+// order categories by above-wall count (matches table)
+const catOrder = [...DATA.cats].sort((a,b)=>
+  byCat[b].filter(p=>p.e>wall).length - byCat[a].filter(p=>p.e>wall).length);
+
+document.getElementById('panels').innerHTML = catOrder.map(cat=>{
+  const pts=byCat[cat], col=catVar(cat), above=pts.filter(p=>p.e>wall).length;
+  const dots = pts.map(p=>{
+    const hi = p.e>wall;
+    return `<circle cx="${px(p.t).toFixed(1)}" cy="${py(p.e).toFixed(1)}" r="${hi?3.1:2}"
+      fill="${hi?'var(--accent-mark)':col}" fill-opacity="${hi?1:.28}"
+      ${hi?`stroke="var(--surface)" stroke-width="1"`:''}/>`;
+  }).join('');
+  const taken=(takenByCat[cat]||[]).map(o=>{
+    const x=px(o.ts_ms), y=py(o.edge_cents);
+    return `<path d="M${x} ${y-5.5}L${x+5} ${y}L${x} ${y+5.5}L${x-5} ${y}Z" fill="var(--accent)" stroke="var(--surface)" stroke-width="1.2"/>`;
+  }).join('');
+  const gy0=py(0), gyw=py(wall);
+  return `<div class="panel">
+    <div class="ph"><div class="pt"><span class="swd" style="background:${col}"></span>${cat}</div>
+      <div class="pc">${above} / ${pts.length} above</div></div>
+    <svg viewBox="0 0 ${W} ${H}" data-cat="${cat}" role="img" aria-label="${cat} cross-venue edge over time">
+      <line x1="${PL}" x2="${W-PR}" y1="${gy0}" y2="${gy0}" stroke="var(--grid)" stroke-width="1"/>
+      <line x1="${PL}" x2="${W-PR}" y1="${gyw.toFixed(1)}" y2="${gyw.toFixed(1)}" stroke="var(--wall)" stroke-width="1.4" stroke-dasharray="4 3"/>
+      <text x="${PL-6}" y="${gy0+3}" text-anchor="end" fill="var(--muted)" font-size="9" font-family="IBM Plex Mono">0</text>
+      <text x="${PL-6}" y="${py(eMax)+8}" text-anchor="end" fill="var(--muted)" font-size="9" font-family="IBM Plex Mono">+5¢</text>
+      <text x="${PL-6}" y="${py(eMin)}" text-anchor="end" fill="var(--muted)" font-size="9" font-family="IBM Plex Mono">−6¢</text>
+      ${dots}${taken}
+    </svg>
+  </div>`;
+}).join('');
+
+// hover tooltip: nearest point in the hovered panel
+document.querySelectorAll('.panel svg').forEach(svg=>{
+  const cat=svg.dataset.cat, pts=byCat[cat];
+  svg.addEventListener('mousemove', ev=>{
+    const r=svg.getBoundingClientRect(), sx=(ev.clientX-r.left)/r.width*W, sy=(ev.clientY-r.top)/r.height*H;
+    let best=null,bd=1e9;
+    for(const p of pts){ const dx=px(p.t)-sx, dy=py(p.e)-sy, d=dx*dx+dy*dy; if(d<bd){bd=d;best=p;} }
+    if(!best||bd>400){tip.style.opacity=0;return;}
+    tip.innerHTML=`<div class="tm">${best.e.toFixed(2)}¢ gross</div><div class="tl">${best.m}</div><div class="tl">${new Date(best.t).toISOString().slice(5,16).replace('T',' ')}</div>`;
+    tip.style.left=Math.min(ev.clientX+14, innerWidth-250)+'px'; tip.style.top=(ev.clientY+14)+'px'; tip.style.opacity=1;
+  });
+  svg.addEventListener('mouseleave', ()=>tip.style.opacity=0);
+});
+
+// ---- table ----
+const rows = DATA.cats.map(cat=>{
+  const pts=byCat[cat];
+  return {cat, markets:new Set(pts.map(p=>p.m)).size, obs:pts.length,
+    max:Math.max(...pts.map(p=>p.e)), above:pts.filter(p=>p.e>wall).length,
+    trade:(takenByCat[cat]||[]).length};
+}).sort((a,b)=>b.above-a.above);
+document.querySelector('#tbl tbody').innerHTML = rows.map(r=>`<tr>
+  <td><span class="dot" style="background:${catVar(r.cat)};display:inline-block;margin-right:7px"></span>${r.cat}</td>
+  <td class="mono">${r.markets}</td><td class="mono">${r.obs.toLocaleString()}</td>
+  <td class="mono">${r.max.toFixed(1)}¢</td><td class="mono">${r.above}</td>
+  <td class="mono" style="color:${r.trade?'var(--accent)':'inherit'}">${r.trade}</td></tr>`).join('');
+
+// theme toggle
+const tg=document.getElementById('tg');
+tg.addEventListener('click', ()=>{
+  const cur=document.documentElement.getAttribute('data-theme');
+  const next = cur==='dark'?'light':cur==='light'?'dark':(matchMedia('(prefers-color-scheme: dark)').matches?'light':'dark');
+  document.documentElement.setAttribute('data-theme', next);
+});
+</script>

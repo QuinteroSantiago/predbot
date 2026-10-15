@@ -1,0 +1,45 @@
+# Phase 1 recorder config. Secrets are NOT here — they come from the environment
+# (design §14): KALSHI_API_KEY_ID, KALSHI_PRIVATE_KEY_PATH, POLYMARKET_US_API_KEY.
+data_dir: /var/lib/predbot/data
+poll_interval_ms: 3000             # public-REST cadence (used with --public)
+
+kalshi:
+  # [VERIFY] live WS host/path before Phase 4 (design §6.1).
+  ws_url: wss://external-api-ws.kalshi.com/trade-api/ws/v2
+  ws_path: /trade-api/ws/v2        # path signed for the auth header
+  # Public REST base (no auth) — used by --public. Verified reachable 2026-08-22.
+  rest_url: https://api.elections.kalshi.com/trade-api/v2
+
+polymarketus:
+  # [VERIFY] (design §6.2). Public data is also available unauthenticated at
+  # gateway.polymarket.us if WS auth is delayed (open item #5).
+  ws_url: wss://api.polymarket.us/v1/ws/markets
+  # Public gateway base (no auth) — used by --public. Verified reachable 2026-08-22.
+  rest_url: https://gateway.polymarket.us
+
+# Strategy tunables (design §9, §10), shared by the live trader, the recorder's
+# paper trader (-paper) and the backtester, so all three judge an opportunity
+# the same way. Unset keys take the defaults in internal/config
+# (applyStrategyDefaults): min_edge 100 ($0.0001 units = 1c), kalshi_fee_mult
+# 0.07, max_book_age_ms 5000, max_skew_ms 1000; backtest-only latency_ms 150,
+# max_clip 5000, idle_yield 0.04. (Was "backtest:" until 2026-09-25; the old key
+# still loads, with a warning.)
+strategy:
+  # Liquidity floor (2026-08-28): the MLB fast-arb strategy. A game is only
+  # eligible when BOTH legs show at least this much top-of-book depth; thin
+  # books repriced on zero volume are skipped. 1000 == 10 contracts. 0 = off.
+  # Paper/backtest only — the live trader's floor is -min-depth-contracts.
+  min_depth: 1000
+
+# Live trader timing and tolerances. Every key is optional; the defaults (and
+# why each is what it is) are in internal/config DefaultLive, and config.Load
+# rejects combinations the trader can't run safely (e.g. hedge_grace must stay
+# below max_unhedged_for). The trader logs the effective values as "live
+# tuning" when it arms. Keys: fill_wait, rest_poll, hedge_grace, hedge_retry,
+# hedge_slip, max_completion_loss ($0.0001 units), max_unhedged_for, max_errors,
+# error_window, slow_ack, slow_ack_pause, sports_entry_ttl, loop_tick.
+# Durations are Go strings, e.g. "30s", "1500ms", "12h".
+#
+# Size caps, the loss floor, the mode and the leagues are NOT here: they are
+# flags in systemd/predbot-live.service, where each arming decision is visible.
+live: {}

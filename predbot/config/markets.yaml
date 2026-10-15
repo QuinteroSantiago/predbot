@@ -1,0 +1,19 @@
+# Canonical market -> venue identifiers (design §12).
+#
+# MLB-ONLY as of 2026-08-28. The static cross-category basket (House/Senate
+# control, Fed, BTC, Emmys, Grok) was REMOVED: those markets are thin and
+# slow-repricing, so their "edges" were phantom — a quote drifting on zero
+# volume, not an executable arb. The recorded data pointed the same way the
+# whole time: the fast, real cross-venue gaps are on MLB daily games.
+#
+# The tradeable universe is now discovered dynamically by the sports supervisor
+# (internal/sports, `-sports mlb`), which cross-lists each day's MLB games on
+# Kalshi (KXMLBGAME) and Polymarket US and registers them at runtime via
+# book.AddMarkets. A liquidity floor (backtest.min_depth in config.yaml) then
+# drops any game whose book is too thin to actually clear.
+#
+# To restore the old static basket, recover it from git history (the last
+# version before this commit) — it was hand-QA'd and the resolution notes are
+# worth keeping if any of those markets ever tighten up.
+
+[]
