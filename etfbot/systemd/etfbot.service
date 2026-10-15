@@ -1,0 +1,28 @@
+[Unit]
+Description=etfbot — monthly ETF rotation (one run)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=etfbot
+Group=etfbot
+WorkingDirectory=/opt/etfbot
+# APCA_API_KEY_ID, APCA_API_SECRET_KEY, APCA_API_BASE_URL, OTEL_* settings.
+EnvironmentFile=/etc/etfbot/env
+# Dry run until -live is added here deliberately.
+ExecStart=/opt/etfbot/etfbot -config /opt/etfbot/config/config.yaml -state /var/lib/etfbot
+TimeoutStartSec=15min
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+StateDirectory=etfbot
+ReadWritePaths=/var/lib/etfbot
