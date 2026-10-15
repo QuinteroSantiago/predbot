@@ -2,7 +2,7 @@
 #
 # Deliberately NOT enabled at boot: a reboot must never silently resume trading.
 # Operate it ONLY via scripts/trading.sh (start runs preflight first; stop/kill/
-# clear/deploy-live) — see the operator manual, https://rpi5/predbot-manual.html.
+# clear/deploy-live) — see the operator manual, the operator manual (not published).
 # deploy-live installs this file; editing it on the VM is overwritten next deploy.
 #
 # Restart=no is also deliberate. If the process dies mid-pair it may hold an
@@ -28,7 +28,7 @@ WorkingDirectory=/opt/predbot
 # same archive: +$85 over 32 days, 37 completed / 7 legged.
 #
 # Caps (1 contract since 2026-08-28; 10 on 2026-09-13; 50 on 2026-09-23; taker
-# at 50 from 2026-09-24; 20 on 2026-09-28 — each santiago's call). 20 fits the
+# at 50 from 2026-09-24; 20 on 2026-09-28 — each the operator's call). 20 fits the
 # ~$75 Kalshi balance (50 made one MLB game unaffordable on 09-26). 50 was the
 # clip the taker
 # backtest ran at (+$83.49 after legging, peak capital ~$94 Kalshi / $140 Poly),
@@ -46,7 +46,7 @@ WorkingDirectory=/opt/predbot
 #     act — the phantom-edge guard that the 2026-08-24 naked-leg incident was
 #     missing. A floor on depth, not the order size (that's the cap above).
 #   -edge-step=24h           min edge grows with time to game start (2026-09-24,
-#     santiago's call): config min_edge (1c) inside 24h, 2c inside 48h, 3c
+#     the operator's call): config min_edge (1c) inside 24h, 2c inside 48h, 3c
 #     inside 72h... A pair locks capital until the game resolves, so a game days
 #     out must pay more to take one of the few slots buying power allows.
 #   Always on: no new pair once a game is past regulation (OT, shootout, extra
@@ -75,7 +75,7 @@ KillSignal=SIGTERM
 TimeoutStopSec=30
 
 EnvironmentFile=/etc/predbot/env
-Environment=OTEL_EXPORTER_OTLP_ENDPOINT=http://192.168.3.198:4318
+Environment=OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
 Environment=OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 Environment=OTEL_SERVICE_NAME=predbot-live
 Environment=OTEL_METRIC_EXPORT_INTERVAL=10000

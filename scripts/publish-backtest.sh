@@ -10,7 +10,7 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.."; pwd)"
-WEB="${WEB:-/home/santiago/home-frontend/backtests}"
+WEB="${WEB:-/var/www/predbot/backtests}"
 
 # Replace dst with a copy of src by renaming a fresh temp file over it. The web
 # root is shared through the dev group, so dst may belong to another user:

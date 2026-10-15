@@ -5,9 +5,9 @@
 #
 # Runs on the PI (not the VM): the data lands in the backup tree, so the nightly
 # VM->Pi rsync and the Pi->arch rsync carry it with everything else.
-# Install (santiago shell):
-#   go build -o /home/santiago/gomu-apps/predbot/games ./cmd/games   (from the repo)
-#   mkdir -p /home/santiago/backups/predbot/data/games
+# Install (as the predbot user):
+#   go build -o /opt/predbot/src/games ./cmd/games   (from the repo)
+#   mkdir -p /var/lib/predbot/archive/games
 #   sudo cp systemd/predbot-games.service /etc/systemd/system/
 #   sudo systemctl daemon-reload && sudo systemctl enable --now predbot-games.service
 [Unit]
@@ -17,10 +17,10 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=santiago
-Group=santiago
-WorkingDirectory=/home/santiago/gomu-apps/predbot
-ExecStart=/home/santiago/gomu-apps/predbot/games -data /home/santiago/backups/predbot/data
+User=predbot
+Group=predbot
+WorkingDirectory=/opt/predbot/src
+ExecStart=/opt/predbot/src/games -data /var/lib/predbot/archive
 Restart=on-failure
 RestartSec=30
 
@@ -29,12 +29,12 @@ PrivateTmp=true
 ProtectSystem=full
 ProtectHome=false
 # Must exist before start (else 226/NAMESPACE); see the install steps above.
-ReadWritePaths=/home/santiago/backups/predbot/data/games
-InaccessiblePaths=-/home/santiago/.ssh
-InaccessiblePaths=-/home/santiago/.claude
-InaccessiblePaths=-/home/santiago/.config
-InaccessiblePaths=-/home/santiago/.gnupg
-InaccessiblePaths=-/home/santiago/.aws
+ReadWritePaths=/var/lib/predbot/archive/games
+InaccessiblePaths=-/home/predbot/.ssh
+InaccessiblePaths=-/home/predbot/.claude
+InaccessiblePaths=-/home/predbot/.config
+InaccessiblePaths=-/home/predbot/.gnupg
+InaccessiblePaths=-/home/predbot/.aws
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true

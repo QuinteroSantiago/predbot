@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Redeploy the recorder (predbot-record, authenticated WS) to the predbot VM (192.168.3.173).
+# Redeploy the recorder (predbot-record, authenticated WS) to the predbot VM (predbot-vm).
 #
 # Runs tests, cross-compiles a static amd64 binary, syncs binary + config +
 # markets + unit to the VM, and restarts the service, then verifies it came back
@@ -12,7 +12,7 @@
 # Override target via env: REMOTE=root@host  SERVICE=predbot-record
 set -euo pipefail
 
-REMOTE="${REMOTE:-root@192.168.3.173}"
+REMOTE="${REMOTE:-root@predbot-vm}"
 SERVICE="${SERVICE:-predbot-record}"
 REMOTE_DIR="${REMOTE_DIR:-/opt/predbot}"
 UNIT_SRC="systemd/predbot-record.service"
@@ -81,4 +81,4 @@ ssh "${SSH_OPTS[@]}" "$REMOTE" '
   journalctl -u '"$SERVICE"' --no-pager -n 4 -o cat
 '
 step "Done"
-echo "Dashboard: https://rpi5/predbot  (recorder metrics; live bot: https://rpi5/predbot-live)"
+echo "Dashboards: Grafana predbot / predbot-live"

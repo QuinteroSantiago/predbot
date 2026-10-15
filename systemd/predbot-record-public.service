@@ -23,7 +23,7 @@ Restart=on-failure
 RestartSec=5
 
 # Telemetry to the Pi's LGTM over the LAN (OTLP 4318 is LAN-bound).
-Environment=OTEL_EXPORTER_OTLP_ENDPOINT=http://192.168.3.198:4318
+Environment=OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
 Environment=OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 Environment=OTEL_SERVICE_NAME=predbot
 Environment=PREDBOT_HEALTH_ADDR=127.0.0.1:9487

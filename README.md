@@ -4,23 +4,35 @@ Go system for cross-venue arbitrage between **Kalshi** and **Polymarket US**
 prediction markets. It records both venues' order books, backtests and
 paper-trades on them, and runs a separate live trader against real money under a
 risk engine nothing can bypass. It implements the design in
-[`arbitrage-bot.md`](../../arbitrage-bot.md) (v2, 2026-08-22).
+[`docs/design.md`](docs/design.md) (v2, 2026-08-22); `§` references in the code
+point there.
 
-**Operations live in the operator manual:** `https://rpi5/predbot-manual.html`
-(source `~/home-frontend/predbot-manual.html`). It covers arming, killing, adopting,
-flattening, the failure runbook, and monitoring. This README covers the code.
+## Status: retired (2026-10-14)
 
-## Status (2026-09-11)
+The project is finished and no longer runs. It answered its question: **the edge
+isn't there at retail size.**
 
-| Piece | State |
-|---|---|
-| Recorder (`predbot-record`) | Always on, on the predbot VM. Authenticated WS on both venues, runtime MLB game discovery, paper trader on the live feed. |
-| Live trader (`predbot-live`) | **Armed, maker mode**, build `bc2b566`. MLB + NFL. Caps (unit, from the next `deploy-live`): 50 contracts/order, 100 unhedged, −$25 P&L floor, 10-contract min depth. |
-| Universe | Discovered at runtime (`-sports`). `config/markets.yaml` is `[]` on purpose: the static election/macro/crypto basket was removed on 2026-08-28 because its edges were phantom. |
-| Thesis | Taker/taker arbitrage almost never clears the ~3.49¢ fee wall at retail depth. The live run is testing the **maker-rebate** variant: rest the Polymarket leg and earn the rebate, then hedge on Kalshi. In the backtest, adverse drift (0.287¢) is below the rebate (0.31¢); it has not been proven live. |
+- **Live:** of 58 logged cross-venue pairs, only 1 hedged at its quoted prices.
+  The Polymarket hedge quote was usually gone about 1 s after the Kalshi leg filled.
+- **Taker backtest:** +$83 over the full ~83 GB archive, half of it from 3 games.
+  Taker/taker arbitrage almost never clears the ~3.49¢ round-trip fee wall at
+  retail depth.
+- **Maker-rebate variant:** rest the Polymarket leg for the rebate, then hedge on
+  Kalshi. Backtest adverse drift (0.287¢) sat just under the rebate (0.31¢), but
+  the margin didn't survive live conditions.
+- **Other models:** lead-lag, longshot-bias, and statistical variants were all
+  dead on the recorded data.
+- The account was wound down flat; no capital was lost.
 
-Phases 1–4 of the design are built: record, backtest, paper, and live execution.
-Phase 5 (freeze) is not.
+Phases 1–4 of the design were built: record, backtest, paper, and live execution.
+Phase 5 (freeze) was not.
+
+The universe was discovered at runtime (`-sports`, MLB + NFL). `config/markets.yaml`
+is `[]` on purpose: the static election/macro/crypto basket was removed on
+2026-08-28 because its edges were phantom.
+
+Deployment details below (hosts, paths, units) describe how it ran on a homelab;
+host names like `predbot-vm` and `otel-collector` are placeholders.
 
 ## Layout
 
@@ -34,7 +46,7 @@ Phase 5 (freeze) is not.
 | `cmd/dumppos` | Read-only raw venue position dump (used by `trading.sh adopt-once`) | VM |
 | `cmd/dumphist` | Read-only settlement and fill history, for reconciling balances against realized P&L | VM |
 | `cmd/outcomes` | Records how markets resolved → `data/outcomes.jsonl` | VM |
-| `cmd/backtest` | Replay, SimExecutor, and the §10.5 report. Also the `-maker`, `-adverse`, `-leadlag`, and `-longshot` analyzers and `-export` for the Fee Wall. | Pi or off-box |
+| `cmd/backtest` | Replay, SimExecutor, and the §10.5 report. Also the `-maker`, `-adverse`, `-leadlag`, and `-longshot` analyzers and `-export` for the Fee Wall. | Archive host or off-box |
 | `cmd/discover-sports` | Prints today's cross-listed games (`-league mlb\|nfl\|nba`) | anywhere |
 | `cmd/testorder` | **Places real orders.** Previews, places, or cancels one order; used for path verification and manual flattening. | VM, by hand |
 | `cmd/filltest` | **Can place real orders.** Private fill-stream probe. | VM, by hand |
@@ -83,9 +95,9 @@ check. It **never deploys**. A push ships nothing.
 Shipping code and arming real money are separate acts.
 
 ```
-scripts/redeploy.sh [--skip-tests]   # RECORDER only → root@192.168.3.173; refuses any other SERVICE
+scripts/redeploy.sh [--skip-tests]   # RECORDER only → root@predbot-vm; refuses any other SERVICE
 scripts/trading.sh deploy-live       # LIVE binaries + unit; refuses a dirty tree; never starts it
-scripts/trading.sh start             # arm (runs preflight first) — see the manual
+scripts/trading.sh start             # arm (runs preflight first)
 ```
 
 `deploy-live` stamps the git short SHA into the binary. `predbot-live` logs it as
@@ -118,29 +130,27 @@ Under `data_dir` (`/var/lib/predbot/data` on the VM):
   the only way to measure adverse selection, because a book can't tell a trade
   from a cancel.
 - `keep/<YYYY-MM-DDTHH>.keep` marks an hour (±1h) where any edge was at or
-  above `-keep-edge-cents` (default 2¢). VM pruning ignores it; the Pi backup
-  keeps every hour forever.
+  above `-keep-edge-cents` (default 2¢). VM pruning ignores it; the archive
+  host keeps every hour forever.
 - `paper-fills.jsonl` is the paper trader's fills. `outcomes.jsonl` holds
   settlements.
 
-The Pi pulls everything daily to `~/backups/predbot/data` and keeps all of it. That
-data is deliberately **not** in restic/S3. `SIGHUP` flushes the current hour;
+An archive host pulls everything daily (`scripts/pull-backup.sh`) and keeps all of
+it. `SIGHUP` flushes the current hour;
 `SIGINT`/`SIGTERM` shut down cleanly.
 
 ## Backtest & analysis
 
 ```
-go run ./cmd/backtest -data ~/backups/predbot/data -days 3            # taker, §10.5 report
+go run ./cmd/backtest -data /var/lib/predbot/archive -days 3            # taker, §10.5 report
 go run ./cmd/backtest -data … -maker -adverse                          # maker go/no-go
 go run ./cmd/backtest -data … -leadlag | -longshot                     # read-only studies
 ```
 
 Replay is a streaming k-way merge by receive time (§10.1), so memory stays bounded
 on the full archive. Wall-clock time grows linearly with the archive: the full
-archive now takes over 3h on the Pi. Run full-archive jobs on the Arch box
-(`192.168.3.225` on Wi-Fi; `10.42.0.2` over the direct Ethernet link from the
-Pi's `eth0`, `10.42.0.1` — use the link for copying the archive), never on the
-predbot VM.
+archive took over 3h on a Raspberry Pi 5, so full-archive jobs ran on a 24-core
+x86 box (`bt-amd64` build), never on the trading VM.
 
 Open TODOs in code:
 - The Kalshi per-order fee rounding accumulator (§6.1) is not modeled

@@ -4,5 +4,5 @@ After=predbot-backup.service network-online.target
 
 [Service]
 Type=oneshot
-User=santiago
-ExecStart=/home/santiago/gomu-apps/predbot/scripts/gen-dashboard.sh
+User=predbot
+ExecStart=/opt/predbot/src/scripts/gen-dashboard.sh

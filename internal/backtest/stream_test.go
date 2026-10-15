@@ -1,6 +1,7 @@
 package backtest
 
 import (
+	"os"
 	"testing"
 
 	"predbot/internal/core"
@@ -9,7 +10,10 @@ import (
 // Streaming must yield the SAME snapshots, in the same order, as the in-memory
 // loader — just without holding them all.
 func TestStreamMatchesLoad(t *testing.T) {
-	dir := "/home/santiago/backups/predbot/data"
+	dir := os.Getenv("PREDBOT_DATA")
+	if dir == "" {
+		t.Skip("PREDBOT_DATA not set")
+	}
 	want, err := LoadReplayHours(dir, 2)
 	if err != nil || len(want) == 0 {
 		t.Skip("no recent data to compare")

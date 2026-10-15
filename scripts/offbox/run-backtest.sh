@@ -82,11 +82,11 @@ case "$mode" in
   leadlag)  flags=(-leadlag); json=(-label "full archive" -report-json "$mode-full.json") ;;
   fairvalue)
     flags=(-fairvalue); json=(-label "full archive" -report-json "$mode-full.json")
-    [[ -s data/outcomes.jsonl ]] || { echo "fairvalue needs data/outcomes.jsonl; re-rsync the Pi's ~/backups/predbot/data/." >&2; exit 1; }
+    [[ -s data/outcomes.jsonl ]] || { echo "fairvalue needs data/outcomes.jsonl; re-rsync the archive host's data/." >&2; exit 1; }
     ;;
   outcomereg)
     flags=(-outcomereg); json=(-label "full archive" -report-json "$mode-full.json")
-    [[ -s data/outcomes.jsonl ]] || { echo "outcomereg needs data/outcomes.jsonl; re-rsync the Pi's ~/backups/predbot/data/." >&2; exit 1; }
+    [[ -s data/outcomes.jsonl ]] || { echo "outcomereg needs data/outcomes.jsonl; re-rsync the archive host's data/." >&2; exit 1; }
     ;;
   autocorr) flags=(-autocorr); json=(-label "full archive" -report-json "$mode-full.json") ;;
   spreadmr) flags=(-spreadmr); json=(-label "full archive" -report-json "$mode-full.json") ;;
@@ -100,7 +100,7 @@ case "$mode" in
     flags=(-maker -adverse); json=(-label "full archive" -variant "adverse selection" -report-json "$mode-full.json")
     if ! compgen -G "data/trades/*.jsonl.gz" >/dev/null; then
       echo "adverse needs data/trades/ (real trade prints). The recorder writes them on the" >&2
-      echo "predbot VM; re-rsync the Pi's ~/backups/predbot/data/." >&2
+      echo "predbot VM; re-rsync the archive host's data/." >&2
       exit 1
     fi
     ;;
@@ -108,7 +108,7 @@ case "$mode" in
     flags=(-longshot); json=(-label "full archive" -report-json "$mode-full.json")
     if [[ ! -s data/outcomes.jsonl ]]; then
       echo "longshot needs data/outcomes.jsonl (how games resolved). It's recorded hourly on" >&2
-      echo "the predbot VM and backed up to the Pi; re-rsync the Pi's ~/backups/predbot/data/." >&2
+      echo "the predbot VM and backed up to the Pi; re-rsync the archive host's data/." >&2
       exit 1
     fi
     ;;

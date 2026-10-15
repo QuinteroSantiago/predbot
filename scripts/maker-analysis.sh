@@ -14,8 +14,8 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.."; pwd)"
-DATA="${DATA:-/home/santiago/backups/predbot/data}"
-OUTDIR="${OUTDIR:-/home/santiago/backups/predbot/reports}"
+DATA="${DATA:-/var/lib/predbot/archive}"
+OUTDIR="${OUTDIR:-/var/lib/predbot/reports}"
 HOURS="${HOURS:-0}"   # 0 = the whole archive
 
 mkdir -p "$OUTDIR"

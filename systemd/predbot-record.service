@@ -1,5 +1,5 @@
 # Phase 1 recorder, authenticated WebSocket mode (design §6.1/§6.2, §7).
-# Runs on the dedicated predbot VM (192.168.3.173); credentials in
+# Runs on the dedicated predbot VM (predbot-vm); credentials in
 # /etc/predbot/env (0600). Full-depth Kalshi deltas + Poly snapshot pushes.
 # Deployed by scripts/redeploy.sh (which installs this file).
 #
@@ -24,7 +24,7 @@ RestartSec=5
 # Secrets (0600 root:root): KALSHI_API_KEY_ID, KALSHI_PRIVATE_KEY_PATH,
 # POLYMARKET_US_KEY_ID, POLYMARKET_US_SECRET.
 EnvironmentFile=/etc/predbot/env
-Environment=OTEL_EXPORTER_OTLP_ENDPOINT=http://192.168.3.198:4318
+Environment=OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
 Environment=OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 Environment=OTEL_SERVICE_NAME=predbot
 Environment=OTEL_METRIC_EXPORT_INTERVAL=10000

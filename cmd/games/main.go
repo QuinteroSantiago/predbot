@@ -5,7 +5,7 @@
 // It reads MLB's public Stats API (no key) and never touches a venue or the
 // live trader. Run it on the Pi beside the backup, as predbot-games.service:
 //
-//	games -data /home/santiago/backups/predbot/data
+//	games -data /var/lib/predbot/archive
 //	games -data DIR -backfill 2026-08-22:2026-09-22   # finished games, then exit
 package main
 

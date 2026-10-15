@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Control predbot LIVE TRADING (real money) on the predbot VM (192.168.3.173).
-# Operator manual: https://rpi5/predbot-manual.html
+# Control predbot LIVE TRADING (real money) on the predbot VM (predbot-vm).
+# Operator manual: the operator manual (not published)
 #
 #   trading.sh start    arm and run continuously (extra args go to preflight)
 #   trading.sh stop     stop trading, then cancel every open Poly order

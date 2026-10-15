@@ -5,8 +5,8 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.."; pwd)"
-DATA="${DATA:-/home/santiago/backups/predbot/data}"
-OUT="${OUT:-/home/santiago/home-frontend/fee-wall.html}"
+DATA="${DATA:-/var/lib/predbot/archive}"
+OUT="${OUT:-/var/www/predbot/fee-wall.html}"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 

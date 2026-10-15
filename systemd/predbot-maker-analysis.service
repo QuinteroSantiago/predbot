@@ -1,5 +1,5 @@
 # The weekly maker-rebate go/no-go (scripts/maker-analysis.sh): taker baseline +
-# -maker -adverse replay, dated report in ~/backups/predbot/reports/. Runs on the
+# -maker -adverse replay, dated report in /var/lib/predbot/reports/. Runs on the
 # PI (the archive lives there; the cloud has no network and the predbot VM must
 # never run heavy replays). Install: copy this + the timer to /etc/systemd/system.
 #
@@ -13,9 +13,9 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-User=santiago
+User=predbot
 # CPU-heavy single-threaded JSON replay; stay polite to the Pi's other services.
 Nice=10
 Environment=HOURS=168
 TimeoutStartSec=6h
-ExecStart=/home/santiago/gomu-apps/predbot/scripts/maker-analysis.sh
+ExecStart=/opt/predbot/src/scripts/maker-analysis.sh
