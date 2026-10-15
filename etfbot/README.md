@@ -1,7 +1,7 @@
 # etfbot
 
-Monthly ETF rotation on Alpaca, built on [`tradekit`](../tradekit) (checked out
-next to this repo; `go.mod` replaces it).
+Monthly ETF rotation on Alpaca, built on [`tradekit`](../tradekit) (a sibling
+module in this repo; `go.mod` replaces it).
 
 **Strategy.** On the last trading day of each month, rank the universe (SPY,
 QQQ, IWM, EFA, EEM, TLT, IEF, GLD, DBC, VNQ) by the average of 3-, 6- and

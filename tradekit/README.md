@@ -1,8 +1,7 @@
 # tradekit
 
-Shared Go packages for the trading bots in `~/gomu-apps`. Consumers import it
-through a `replace tradekit => ../tradekit` line in their `go.mod`, so it must be
-checked out next to them.
+Shared Go packages for the trading bots in this repo. Consumers import it
+through a `replace tradekit => ../tradekit` line in their `go.mod`.
 
 | Package | Role |
 |---|---|

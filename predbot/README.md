@@ -87,7 +87,7 @@ are pure functions over raw bytes. Seq gaps, resync, normalization, and the
 execution paths (legging, silent fills, drift, maker rest and hedge) are all
 unit-tested without network or credentials.
 
-CI (`.gitea/workflows/ci.yml`) runs vet, `-race` tests, and an amd64 cross-compile
+CI (`.github/workflows/ci.yml` at the repo root) runs vet, `-race` tests, and an amd64 cross-compile
 check. It **never deploys**. A push ships nothing.
 
 ## Deploy
