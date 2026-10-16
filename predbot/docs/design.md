@@ -679,6 +679,6 @@ show it.
    than both venues' taker fees combined.
 3. **Maker rebates are thin.** A rebate only pays if adverse selection stays below it,
    and the measured margin was a few hundredths of a cent.
-4. **Safety rails cost little and were never tested by a loss.** The risk gate,
-   persisted kill switch, and preflight reconcile meant the live run could be
-   tuition-sized and stopped at any time.
+4. **Safety rails are what make a live test cheap.** The risk gate, persisted kill
+   switch, and preflight reconcile let the live run stay tuition-sized and be
+   stopped at any time.
